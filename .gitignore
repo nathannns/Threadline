@@ -1,0 +1,17 @@
+# Build output (JUCE FetchContent + CMake build artifacts)
+build/
+build-*/
+
+# macOS
+.DS_Store
+
+# Editor/IDE
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
