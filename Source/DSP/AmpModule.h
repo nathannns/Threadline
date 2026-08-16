@@ -2,8 +2,14 @@
 
 #include <JuceHeader.h>
 
-// Dynamic, 4x-oversampled 5E3-inspired model. Gain and memory are distributed
-// through the circuit's major functional stages instead of one static clipper.
+// Dynamic, oversampled 5E3-inspired model. Gain and memory are distributed
+// through the circuit's major functional stages instead of one static
+// clipper: input/interstage coupling caps, a two-stage 12AY7 preamp with
+// grid-bias-shift memory (blocking distortion), a cathodyne-style phase
+// inverter, an asymmetric push-pull power stage with a bass-weighted sag
+// detector, and output-transformer core saturation distinct from sag —
+// per Rob Robinette's 5E3 circuit writeup (robrobinette.com).
+
 class AmpModule
 {
 public:
@@ -31,6 +37,13 @@ public:
         }
         sagAttack = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.045));
         sagRelease = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.240));
+        // One-pole ~180Hz tap feeding the sag detector — bass notes draw far
+        // more current than a bright single-note lead at the same peak level,
+        // so weighting the detector toward low frequency content (rather than
+        // full-band peak) is what actually makes sustained low chords "bloom"
+        // and sag while a treble lead stays comparatively tight.
+        sagDetectorLPCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * 180.0f
+            / static_cast<float> (processingSampleRate));
         outputGain.reset (baseSampleRate, 0.025);
         updateStaticFilters();
         updateToneFilter();
@@ -48,6 +61,7 @@ public:
         }
         sagEnvelope = 0.0f;
         biasMemory.fill (0.0f);
+        sagDetectorLP.fill (0.0f);
         outputGain.setCurrentAndTargetValue (targetOutputGain);
     }
 
@@ -101,7 +115,11 @@ public:
                 auto cathodyne = toned >= 0.0f ? std::tanh (toned * 1.18f)
                                                : 0.94f * std::tanh (toned * 1.32f);
                 phaseInverterOut[(size_t) ch] = cathodyne;
-                detector = juce::jmax (detector, std::abs (cathodyne));
+
+                auto& bassTap = sagDetectorLP[(size_t) ch];
+                bassTap += sagDetectorLPCoefficient * (cathodyne - bassTap);
+                const auto weighted = std::abs (cathodyne) * 0.5f + std::abs (bassTap) * 0.5f;
+                detector = juce::jmax (detector, weighted);
             }
 
             const auto coefficient = detector > sagEnvelope ? sagAttack : sagRelease;
@@ -115,6 +133,25 @@ public:
                 const auto pull = std::tanh (phaseInverterOut[(size_t) ch] * effectiveDrive - 0.035f);
                 auto power = (push + pull) * 0.5f;
                 power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+
+                // Output-transformer core saturation — a second, distinct
+                // compression mechanism from tube sag above (Robinette: "at
+                // high volumes, transformer saturation compresses the
+                // signal...loud notes are capped but softer notes are still
+                // amplified"). Sag is a slow, envelope-driven gain reduction
+                // of the drive; this is an instantaneous, level-dependent
+                // soft-knee on the transformer's own output, so a hard
+                // transient still gets capped even before sag has caught up.
+                constexpr float otKnee = 0.65f;
+                const auto otMagnitude = std::abs (power);
+                if (otMagnitude > otKnee)
+                {
+                    const auto excess = otMagnitude - otKnee;
+                    const auto headroom = 1.0f - otKnee;
+                    const auto compressed = otKnee + headroom * std::tanh (excess / headroom);
+                    power = std::copysign (compressed, power);
+                }
+
                 block.setSample (ch, i, transformerLowPass[ch].processSample (power));
             }
         }
@@ -159,9 +196,11 @@ private:
     juce::dsp::IIR::Filter<float> toneFilter[2], transformerLowPass[2];
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> biasMemory {};
+    std::array<float, 2> sagDetectorLP {};
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;
     float driveAmount = 0.4f, lastTone01 = 0.6f;
     float targetOutputGain = 1.0f, sagEnvelope = 0.0f;
     float sagAttack = 0.999f, sagRelease = 0.999f;
+    float sagDetectorLPCoefficient = 0.01f;
 };

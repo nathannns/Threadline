@@ -1,6 +1,6 @@
 #include "Page3Component.h"
 
-Page3Component::Page3Component (ThreadlineAudioProcessor& processor)
+Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
 {
     buildSection (tremSection, *this, processor.apvts, "Tremolo", "tremOn", {
         { "tremAmount", "Amount" }
@@ -10,10 +10,24 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& processor)
         { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusWidth", "Width" },
         { "chorusTone", "Tone" }, { "chorusMix", "Mix" }
     }, false, SectionPlate::Chorus);
-    chorusModeBox.addItemList ({ "CHORUS", "FLANGER I", "FLANGER II", "FLANGER I+II" }, 1);
-    addAndMakeVisible (chorusModeBox);
-    chorusModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        processor.apvts, "chorusFlangerMode", chorusModeBox);
+    flangerMode1Button.setButtonText ("I");
+    flangerMode2Button.setButtonText ("II");
+    flangerMode1Button.setTooltip ("Flanger I: independent warm sweep; enable I + II together for Mode III");
+    flangerMode2Button.setTooltip ("Flanger II: independent faster sweep; enable I + II together for Mode III");
+    const auto toggleFlangerBit = [this] (int bit)
+    {
+        const auto current = juce::roundToInt (processor.apvts.getRawParameterValue ("chorusFlangerMode")->load());
+        if (auto* parameter = processor.apvts.getParameter ("chorusFlangerMode"))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) (current ^ bit)));
+            parameter->endChangeGesture();
+        }
+    };
+    flangerMode1Button.onClick = [toggleFlangerBit] { toggleFlangerBit (1); };
+    flangerMode2Button.onClick = [toggleFlangerBit] { toggleFlangerBit (2); };
+    addAndMakeVisible (flangerMode1Button);
+    addAndMakeVisible (flangerMode2Button);
 
     buildSection (echoSection, *this, processor.apvts, "Delay", "echoOn", {
         { "echoTime", "Time" }, { "echoRepeats", "Repeats" }, { "echoTone", "Tone" },
@@ -43,6 +57,14 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& processor)
     addAndMakeVisible (reverbModelBox);
     reverbModelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "reverbModel", reverbModelBox);
+    startTimerHz (15);
+}
+
+void Page3Component::timerCallback()
+{
+    const auto mode = juce::roundToInt (processor.apvts.getRawParameterValue ("chorusFlangerMode")->load());
+    flangerMode1Button.setToggleState ((mode & 1) != 0, juce::dontSendNotification);
+    flangerMode2Button.setToggleState ((mode & 2) != 0, juce::dontSendNotification);
 }
 
 void Page3Component::paint (juce::Graphics& g)
@@ -63,26 +85,26 @@ void Page3Component::resized()
     area.removeFromTop (gap);
     layoutHorizontalRackSection (chorusSection, area.removeFromTop (cardHeight));
     auto chorusBounds = chorusSection.bounds;
-    chorusModeBox.setBounds (chorusBounds.getX() + 14, chorusBounds.getBottom() - 30,
-                             juce::jmin (170, chorusBounds.getWidth() / 5 - 20), 24);
+    flangerMode1Button.setBounds (chorusBounds.getX() + 74, chorusBounds.getBottom() - 30, 42, 22);
+    flangerMode2Button.setBounds (chorusBounds.getX() + 120, chorusBounds.getBottom() - 30, 42, 22);
     area.removeFromTop (gap);
     layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight));
     auto echoBounds = echoSection.bounds;
     const auto selectorY = echoBounds.getBottom() - 29;
-    echoSyncButton.setBounds (echoBounds.getX() + 12, selectorY, 44, 22);
     echoPatternBox.setBounds (echoBounds.getX() + 60, selectorY, 82, 22);
     echoDivisionBox.setBounds (echoBounds.getX() + 146, selectorY, 62, 22);
+    echoSyncButton.setBounds (echoBounds.getRight() - 62, selectorY, 50, 22);
     area.removeFromTop (gap);
 
     auto reverbArea = area;
     layoutHorizontalRackSection (reverbSection, reverbArea);
     // Type follows the rightmost Width control.
     const auto typeWidth = juce::jlimit (120, 180, reverbArea.getWidth() / 7);
-    reverbModelBox.setBounds (reverbArea.getRight() - typeWidth - 12,
+    reverbModelBox.setBounds (reverbArea.getRight() - typeWidth - 14,
                               reverbArea.getCentreY() - 14, typeWidth, 28);
     if (! reverbSection.knobs.empty())
     {
         auto& width = reverbSection.knobs.back()->slider;
-        width.setBounds (width.getBounds().translated (-typeWidth / 2, 0));
+        width.setBounds (width.getBounds().translated (-(typeWidth * 2) / 3, 0));
     }
 }

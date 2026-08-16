@@ -4,7 +4,7 @@
 #include "../PluginProcessor.h"
 
 // Page 3 — Tremolo, Chorus, Delay, Reverb.
-class Page3Component : public juce::Component
+class Page3Component : public juce::Component, private juce::Timer
 {
 public:
     explicit Page3Component (ThreadlineAudioProcessor& processor);
@@ -13,12 +13,15 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
+    ThreadlineAudioProcessor& processor;
     SectionUI tremSection, chorusSection, echoSection, reverbSection;
 
-    juce::ComboBox chorusModeBox, echoPatternBox, echoDivisionBox;
+    ToggleFootswitch flangerMode1Button, flangerMode2Button;
+    juce::ComboBox echoPatternBox, echoDivisionBox;
     juce::ToggleButton echoSyncButton { "SYNC" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> chorusModeAttachment,
-        echoPatternAttachment, echoDivisionAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> echoPatternAttachment,
+        echoDivisionAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> echoSyncAttachment;
 
     juce::ComboBox reverbModelBox;

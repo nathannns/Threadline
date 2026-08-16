@@ -50,6 +50,8 @@ juce_add_plugin(Threadline
     PLUGIN_CODE Thrd
     FORMATS AU VST3 Standalone
     PRODUCT_NAME "Threadline"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/Reference/threadline_app_icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/Reference/threadline_app_icon.png"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
