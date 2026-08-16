@@ -83,28 +83,41 @@ void Page3Component::resized()
     const auto cardHeight = (area.getHeight() - 3 * gap) / 4;
     layoutHorizontalRackSection (tremSection, area.removeFromTop (cardHeight));
     area.removeFromTop (gap);
-    layoutHorizontalRackSection (chorusSection, area.removeFromTop (cardHeight));
+    layoutHorizontalRackSection (chorusSection, area.removeFromTop (cardHeight), 224);
     auto chorusBounds = chorusSection.bounds;
-    flangerMode1Button.setBounds (chorusBounds.getX() + 74, chorusBounds.getBottom() - 30, 42, 22);
-    flangerMode2Button.setBounds (chorusBounds.getX() + 120, chorusBounds.getBottom() - 30, 42, 22);
+    chorusSection.toggle.setBounds (chorusBounds.getX() + 12, chorusBounds.getBottom() - 30, 56, 22);
+    flangerMode1Button.setBounds (chorusBounds.getX() + 112, chorusBounds.getBottom() - 30, 42, 22);
+    flangerMode2Button.setBounds (chorusBounds.getX() + 160, chorusBounds.getBottom() - 30, 42, 22);
     area.removeFromTop (gap);
-    layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight));
+    layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight), 310);
     auto echoBounds = echoSection.bounds;
     const auto selectorY = echoBounds.getBottom() - 29;
-    echoPatternBox.setBounds (echoBounds.getX() + 60, selectorY, 82, 22);
-    echoDivisionBox.setBounds (echoBounds.getX() + 146, selectorY, 62, 22);
-    echoSyncButton.setBounds (echoBounds.getRight() - 62, selectorY, 50, 22);
+    echoSection.titleLabel.setBounds (echoBounds.getX() + 12, echoBounds.getY() + 7, 108, 28);
+    echoSyncButton.setBounds (echoBounds.getX() + 124, echoBounds.getY() + 10, 52, 22);
+    echoSection.toggle.setBounds (echoBounds.getX() + 12, selectorY, 54, 22);
+    echoPatternBox.setBounds (echoBounds.getX() + 72, selectorY, 146, 22);
+    echoDivisionBox.setBounds (echoBounds.getX() + 224, selectorY, 72, 22);
     area.removeFromTop (gap);
 
     auto reverbArea = area;
     layoutHorizontalRackSection (reverbSection, reverbArea);
-    // Type follows the rightmost Width control.
-    const auto typeWidth = juce::jlimit (120, 180, reverbArea.getWidth() / 7);
+    // Keep the wet controls in the right-hand half and leave a clear gap
+    // before the model selector.
+    const auto typeWidth = juce::jlimit (130, 176, reverbArea.getWidth() / 7);
     reverbModelBox.setBounds (reverbArea.getRight() - typeWidth - 14,
                               reverbArea.getCentreY() - 14, typeWidth, 28);
-    if (! reverbSection.knobs.empty())
+    if (reverbSection.knobs.size() == 4)
     {
-        auto& width = reverbSection.knobs.back()->slider;
-        width.setBounds (width.getBounds().translated (-(typeWidth * 2) / 3, 0));
+        const auto controlsLeft = reverbArea.getX() + juce::jlimit (112, 210, reverbArea.getWidth() / 5) + 18;
+        const auto controlsRight = reverbModelBox.getX() - 18;
+        const auto controlsWidth = controlsRight - controlsLeft;
+        const float positions[] { 0.12f, 0.34f, 0.62f, 0.84f };
+        for (size_t i = 0; i < reverbSection.knobs.size(); ++i)
+        {
+            auto& slider = reverbSection.knobs[i]->slider;
+            const auto width = slider.getWidth();
+            slider.setTopLeftPosition (controlsLeft + juce::roundToInt (positions[i] * (float) controlsWidth) - width / 2,
+                                       slider.getY());
+        }
     }
 }

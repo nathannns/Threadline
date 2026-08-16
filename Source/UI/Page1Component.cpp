@@ -3,8 +3,8 @@
 Page1Component::Page1Component (ThreadlineAudioProcessor& processor)
 {
     buildSection (compSection, *this, processor.apvts, "Compressor", "compOn", {
-        { "compThreshold", "Thresh" }, { "compRatio", "Ratio" },
-        { "compAttack", "Attack" }, { "compRelease", "Release" }, { "compMakeup", "Makeup" }
+        { "compThreshold", "Comp" }, { "compRatio", "Attack" },
+        { "compAttack", "Tilt" }, { "compRelease", "Mid" }, { "compMakeup", "Level" }
     }, false, SectionPlate::Compressor);
 
     buildSection (klonSection, *this, processor.apvts, "Klon", "klonOn", {

@@ -98,6 +98,30 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
     if (section.bounds.isEmpty())
         return;
     auto bounds = section.bounds.toFloat();
+    static const juce::Image plates[] {
+        {},
+        juce::ImageCache::getFromMemory (BinaryData::plate_compressor_png, BinaryData::plate_compressor_pngSize),
+        juce::ImageCache::getFromMemory (BinaryData::plate_klon_png, BinaryData::plate_klon_pngSize),
+        juce::ImageCache::getFromMemory (BinaryData::plate_ts9_png, BinaryData::plate_ts9_pngSize),
+        juce::ImageCache::getFromMemory (BinaryData::plate_tremolo_png, BinaryData::plate_tremolo_pngSize),
+        juce::ImageCache::getFromMemory (BinaryData::plate_chorus_png, BinaryData::plate_chorus_pngSize),
+        juce::ImageCache::getFromMemory (BinaryData::plate_delay_png, BinaryData::plate_delay_pngSize),
+        juce::ImageCache::getFromMemory (BinaryData::plate_reverb_png, BinaryData::plate_reverb_pngSize)
+    };
+    const auto index = juce::jlimit (0, 7, section.plateIndex);
+    if (plates[index].isValid())
+    {
+        g.saveState();
+        g.reduceClipRegion (section.bounds);
+        g.drawImage (plates[index], bounds, juce::RectanglePlacement::fillDestination);
+        g.setColour (juce::Colours::black.withAlpha (0.10f));
+        g.fillRoundedRectangle (bounds, 9.0f);
+        g.restoreState();
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.drawRoundedRectangle (bounds.reduced (0.75f), 9.0f, 1.25f);
+        return;
+    }
+
     static const juce::Colour rackColours[] {
         juce::Colour (0xff26201c), juce::Colour (0xffd0c3aa), juce::Colour (0xff62777a),
         juce::Colour (0xffa34d38), juce::Colour (0xffb5aa92), juce::Colour (0xff536f70),
@@ -116,11 +140,15 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
     g.fillEllipse (bounds.getRight() - 13.0f, bounds.getCentreY() - screwSize * 0.5f, screwSize, screwSize);
 }
 
-inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int> area)
+inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int> area,
+                                         int requestedIdentityWidth = 0)
 {
     section.bounds = area;
     area.reduce (10, 7);
-    auto identity = area.removeFromLeft (juce::jlimit (112, 210, area.getWidth() / 5));
+    const auto identityWidth = requestedIdentityWidth > 0
+        ? juce::jmin (requestedIdentityWidth, area.getWidth() / 2)
+        : juce::jlimit (112, 210, area.getWidth() / 5);
+    auto identity = area.removeFromLeft (identityWidth);
     section.titleLabel.setJustificationType (juce::Justification::centred);
     section.titleLabel.setFont (juce::FontOptions (juce::jlimit (14.0f, 22.0f,
                                                    static_cast<float> (area.getHeight()) * 0.28f),

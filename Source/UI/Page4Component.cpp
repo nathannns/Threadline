@@ -75,7 +75,13 @@ Page4Component::Page4Component (ThreadlineAudioProcessor& p)
 void Page4Component::paint (juce::Graphics& g)
 {
     paintThreadlineBackground (g, getLocalBounds());
-    paintCard (g, cardBounds);
+    static const auto eqPlate = juce::ImageCache::getFromMemory (
+        BinaryData::plate_eq_png, BinaryData::plate_eq_pngSize);
+    g.drawImage (eqPlate, cardBounds.toFloat(), juce::RectanglePlacement::fillDestination);
+    g.setColour (juce::Colours::black.withAlpha (0.12f));
+    g.fillRoundedRectangle (cardBounds.toFloat(), 10.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.drawRoundedRectangle (cardBounds.toFloat(), 10.0f, 1.2f);
 }
 
 void Page4Component::resized()

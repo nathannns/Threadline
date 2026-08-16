@@ -149,9 +149,12 @@ public:
         g.setColour (juce::Colours::white.withAlpha (0.3f));
         g.drawLine (bounds.getX(), centreY, bounds.getRight(), centreY, 1.0f);
 
-        auto cap = juce::Rectangle<float> (bounds.getWidth() * 0.8f, 6.0f).withCentre ({ bounds.getCentreX(), capY });
-        g.setColour (juce::Colours::white.withAlpha (0.95f));
-        g.fillRoundedRectangle (cap, 3.0f);
+        static const auto capImage = juce::ImageCache::getFromMemory (
+            BinaryData::eq_slider_cap_png, BinaryData::eq_slider_cap_pngSize);
+        const auto capWidth = juce::jmin (bounds.getWidth() * 0.96f, 34.0f);
+        const auto capHeight = juce::jlimit (9.0f, 15.0f, capWidth / 3.0f);
+        auto cap = juce::Rectangle<float> (capWidth, capHeight).withCentre ({ bounds.getCentreX(), capY });
+        g.drawImage (capImage, cap, juce::RectanglePlacement::stretchToFit);
     }
 };
 

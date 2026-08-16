@@ -34,16 +34,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
 
     // --- Compressor ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("compOn"), "Comp On", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compThreshold"), "Comp Threshold",
-        Range (-48.0f, 0.0f, 0.1f), -18.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compRatio"), "Comp Ratio",
-        Range (1.0f, 20.0f, 0.1f), 4.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compAttack"), "Comp Attack",
-        Range (0.1f, 100.0f, 0.1f), 5.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compRelease"), "Comp Release",
-        Range (10.0f, 500.0f, 1.0f), 80.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compMakeup"), "Comp Makeup",
-        Range (0.0f, 24.0f, 0.1f), 0.0f));
+    // Keep the legacy IDs so old sessions resolve, while the controls now
+    // drive the Diamond-inspired optical topology.
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compThreshold"), "Compression",
+        Range (0.0f, 100.0f, 0.1f), 42.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compRatio"), "Attack Character",
+        Range (0.0f, 100.0f, 0.1f), 35.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compAttack"), "Tilt EQ",
+        Range (-100.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compRelease"), "Mid EQ",
+        Range (-12.0f, 12.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compMakeup"), "Comp Level",
+        Range (-12.0f, 12.0f, 0.1f), 0.0f));
 
     // --- Klon ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("klonOn"), "Klon On", false));

@@ -27,6 +27,15 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/amp_section_background.png
     Resources/Images/knob_pointer.png
     Resources/Images/knob_effects.png
+    Resources/Images/eq_slider_cap.png
+    Resources/Images/RackPlates/plate_compressor.png
+    Resources/Images/RackPlates/plate_klon.png
+    Resources/Images/RackPlates/plate_ts9.png
+    Resources/Images/RackPlates/plate_tremolo.png
+    Resources/Images/RackPlates/plate_chorus.png
+    Resources/Images/RackPlates/plate_delay.png
+    Resources/Images/RackPlates/plate_reverb.png
+    Resources/Images/RackPlates/plate_eq.png
     Resources/Reference/threadline_logo.png
     Resources/ImpulseResponses/HallRoom/large_hall.wav
     Resources/ImpulseResponses/HallRoom/large_stage.wav

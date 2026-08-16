@@ -1,85 +1,107 @@
 #pragma once
-
 #include <JuceHeader.h>
 
-// Standard feedforward peak-detector compressor: threshold, ratio,
-// attack/release times, and makeup gain. Placed after the input gain/meter
-// and before the drive pedals, so it's evening out pick dynamics before
-// anything downstream (Klon/TS9/Amp) reacts to the transient.
+// Diamond-inspired optical compressor. This is an original model, not a circuit clone.
 class CompressorModule
 {
 public:
     void prepare (const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
+        const juce::dsp::ProcessSpec monoSpec { spec.sampleRate, spec.maximumBlockSize, 1 };
+        for (auto* bank : { &lowShelf, &highShelf, &midBell })
+            for (auto& filter : *bank) filter.prepare (monoSpec);
         reset();
     }
 
     void reset()
     {
-        envelope = 0.0f;
-        currentGainReductionDb = 0.0f;
+        detectorPower = gainReductionDb = currentGainReductionDb = 0.0f;
+        for (auto* bank : { &lowShelf, &highShelf, &midBell })
+            for (auto& filter : *bank) filter.reset();
     }
 
     void setEnabled (bool shouldBeEnabled) { enabled = shouldBeEnabled; }
 
-    // thresholdDb: level above which compression kicks in.
-    // ratio: e.g. 4.0 = 4:1.
-    // attackMs/releaseMs: envelope follower speed.
-    // makeupDb: gain applied after compression to restore level.
-    void setParameters (float thresholdDb, float ratio, float attackMs, float releaseMs, float makeupDb)
+    void setParameters (float compressionPercent, float attackPercent, float tiltPercent,
+                        float midDb, float levelDb)
     {
-        threshold = thresholdDb;
-        compressionRatio = juce::jmax (1.0f, ratio);
-        attackCoeff = std::exp (-1.0f / static_cast<float> (sampleRate * (attackMs * 0.001f)));
-        releaseCoeff = std::exp (-1.0f / static_cast<float> (sampleRate * (releaseMs * 0.001f)));
-        makeupGain = juce::Decibels::decibelsToGain (makeupDb);
+        const auto amount = juce::jlimit (0.0f, 1.0f, compressionPercent * 0.01f);
+        thresholdDb = juce::jmap (amount, -6.0f, -38.0f);
+        ratio = juce::jmap (amount, 1.5f, 4.0f);
+        attackCoeff = timeCoefficient (juce::jmap (juce::jlimit (0.0f, 100.0f, attackPercent), 3.0f, 32.0f));
+        baseReleaseMs = juce::jmap (amount, 180.0f, 480.0f);
+        outputGain = juce::Decibels::decibelsToGain (levelDb);
+
+        const auto tiltDb = juce::jlimit (-100.0f, 100.0f, tiltPercent) * 0.045f;
+        const auto low = juce::dsp::IIR::Coefficients<float>::makeLowShelf (
+            sampleRate, 900.0, 0.707f, juce::Decibels::decibelsToGain (-tiltDb));
+        const auto high = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
+            sampleRate, 900.0, 0.707f, juce::Decibels::decibelsToGain (tiltDb));
+        const auto mid = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
+            sampleRate, 800.0, 0.75f, juce::Decibels::decibelsToGain (midDb));
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            lowShelf[(size_t) ch].coefficients = low;
+            highShelf[(size_t) ch].coefficients = high;
+            midBell[(size_t) ch].coefficients = mid;
+        }
     }
 
     void process (juce::AudioBuffer<float>& buffer)
     {
-        if (! enabled)
+        if (! enabled) { currentGainReductionDb = 0.0f; return; }
+        const auto channels = juce::jmin (2, buffer.getNumChannels());
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
-            currentGainReductionDb = 0.0f;
-            return;
-        }
+            float linkedPower = 0.0f;
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                const auto value = buffer.getSample (ch, sample);
+                linkedPower = juce::jmax (linkedPower, value * value);
+            }
+            const auto release = timeCoefficient (baseReleaseMs + gainReductionDb * 28.0f);
+            const auto detectorCoeff = linkedPower > detectorPower ? attackCoeff : release;
+            detectorPower = detectorCoeff * detectorPower + (1.0f - detectorCoeff) * linkedPower;
+            const auto levelDb = juce::Decibels::gainToDecibels (std::sqrt (detectorPower), -100.0f);
 
-        const auto numChannels = buffer.getNumChannels();
-        const auto numSamples = buffer.getNumSamples();
-
-        for (int i = 0; i < numSamples; ++i)
-        {
-            // Stereo-linked peak detection across channels.
-            float peak = 0.0f;
-            for (int ch = 0; ch < numChannels; ++ch)
-                peak = juce::jmax (peak, std::abs (buffer.getSample (ch, i)));
-
-            const auto coeff = peak > envelope ? attackCoeff : releaseCoeff;
-            envelope = coeff * envelope + (1.0f - coeff) * peak;
-
-            const auto envelopeDb = juce::Decibels::gainToDecibels (envelope, -100.0f);
-            float gainReductionDb = 0.0f;
-            if (envelopeDb > threshold)
-                gainReductionDb = (envelopeDb - threshold) * (1.0f - 1.0f / compressionRatio);
-
+            constexpr float kneeDb = 8.0f;
+            const auto over = levelDb - thresholdDb;
+            const auto slope = 1.0f - 1.0f / ratio;
+            float targetReduction = 0.0f;
+            if (over > kneeDb * 0.5f)
+                targetReduction = slope * (over - kneeDb * 0.25f);
+            else if (over > -kneeDb * 0.5f)
+            {
+                const auto kneePosition = over + kneeDb * 0.5f;
+                targetReduction = slope * kneePosition * kneePosition / (2.0f * kneeDb);
+            }
+            const auto grCoeff = targetReduction > gainReductionDb ? attackCoeff : release;
+            gainReductionDb = grCoeff * gainReductionDb + (1.0f - grCoeff) * targetReduction;
             currentGainReductionDb = gainReductionDb;
-            const auto gain = juce::Decibels::decibelsToGain (-gainReductionDb) * makeupGain;
-
-            for (int ch = 0; ch < numChannels; ++ch)
-                buffer.setSample (ch, i, buffer.getSample (ch, i) * gain);
+            const auto gain = juce::Decibels::decibelsToGain (-gainReductionDb) * outputGain;
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                auto value = buffer.getSample (ch, sample) * gain;
+                value = lowShelf[(size_t) ch].processSample (value);
+                value = highShelf[(size_t) ch].processSample (value);
+                value = midBell[(size_t) ch].processSample (value);
+                buffer.setSample (ch, sample, value);
+            }
         }
     }
 
-    // For an optional gain-reduction meter in the UI.
     float getCurrentGainReductionDb() const noexcept { return currentGainReductionDb; }
 
 private:
+    float timeCoefficient (float milliseconds) const
+    {
+        return std::exp (-1.0f / static_cast<float> (sampleRate * milliseconds * 0.001));
+    }
     double sampleRate = 44100.0;
     bool enabled = false;
-    float threshold = -18.0f;
-    float compressionRatio = 4.0f;
-    float attackCoeff = 0.0f, releaseCoeff = 0.0f;
-    float makeupGain = 1.0f;
-    float envelope = 0.0f;
-    float currentGainReductionDb = 0.0f;
+    float thresholdDb = -20.0f, ratio = 3.0f, attackCoeff = 0.0f;
+    float baseReleaseMs = 260.0f, outputGain = 1.0f;
+    float detectorPower = 0.0f, gainReductionDb = 0.0f, currentGainReductionDb = 0.0f;
+    std::array<juce::dsp::IIR::Filter<float>, 2> lowShelf, highShelf, midBell;
 };
