@@ -5,8 +5,15 @@
 // Klon-style "transparent" overdrive. The character comes from three things:
 //  1. A pre-emphasis treble boost before the clipper (the Klon's distinctive
 //     upper-mid/treble push, active even at Gain=0).
-//  2. Germanium-style soft clipping with a low knee (~0.3 lower threshold
-//     than silicon), so it rounds off peaks gently rather than slicing them.
+//  2. An asinh-shaped diode clip, asymmetric per polarity: asinh(x) is the
+//     closed-form transfer function of a resistor-fed pair of diodes to
+//     ground (solving the diode's exponential I-V law while treating Vout's
+//     own feedback into the diode current as second-order — the standard
+//     real-time simplification for this circuit), which turns on smoothly
+//     like a real diode rather than tanh's more abrupt saturation. The
+//     positive half uses a lower knee (germanium: higher leakage current,
+//     conducts earlier/softer), the negative half a higher one (silicon:
+//     conducts later/harder) — the Klon's actual asymmetric diode pair.
 //  3. A clean/driven BLEND rather than a simple gain stage — Gain controls
 //     how much clipped signal is mixed back in over the clean buffered
 //     signal, which is what keeps it sounding "transparent" instead of
@@ -61,14 +68,16 @@ public:
                 // Pre-emphasis treble boost feeding only the drive path.
                 auto boosted = trebleFilter[ch].processSample (dry);
 
-                // Asymmetric germanium-style soft clip: positive half clips
-                // slightly earlier/softer than negative half, characteristic
-                // of a single-ended germanium diode pair.
+                // Diode-physics knee (see class comment) with a tanh safety
+                // ceiling so output stays bounded across the whole Gain
+                // range — the ceiling doesn't define the clip character,
+                // asinh's knee shape does.
                 const auto driveGain = 1.0f + gainAmount * 11.0f;
                 auto x = boosted * driveGain;
-                auto clipped = x >= 0.0f ? std::tanh (x * 0.8f) * 0.92f
-                                          : std::tanh (x * 0.95f);
-                clipped /= std::max (0.2f, driveGain * 0.35f); // keep loudness sane across gain range
+                const auto kneeScale = x >= 0.0f ? 0.55f : 1.05f; // germanium : silicon
+                const auto shaped = thermalVoltage * std::asinh (x / kneeScale);
+                auto clipped = ceilingLimit * std::tanh (shaped / ceilingLimit);
+                clipped /= std::max (0.5f, driveGain * 0.30f); // keep loudness sane across gain range
 
                 // Blend clean and clipped — the "transparent" part.
                 const auto wet = juce::jlimit (0.0f, 1.0f, gainAmount);
@@ -91,6 +100,8 @@ private:
     }
 
     juce::dsp::IIR::Filter<float> trebleFilter[2];
+    static constexpr float thermalVoltage = 0.62f;
+    static constexpr float ceilingLimit = 1.05f;
     double sampleRate = 44100.0;
     float gainAmount = 0.3f;
     float outputLevel = 1.0f;

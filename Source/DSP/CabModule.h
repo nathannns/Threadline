@@ -6,9 +6,22 @@
 // Speaker cab simulation via convolution. Ships with six built-in IRs
 // (Tweed_Combo_1x12, mic'd multiple ways) selectable by index, plus
 // loadImpulseResponseFile() for loading your own external IR on top.
-class CabModule
+//
+// Built-in IR switches are dispatched through AsyncUpdater rather than
+// decoding the WAV and building FFT partitions inline: the old code did
+// that work synchronously on whatever thread called loadBuiltInIR(), which
+// was the *audio* thread (PluginProcessor::processBlock calls it directly
+// when the cabIRSelect parameter changes) — exactly the kind of blocking
+// work that causes an audible dropout on a real-time thread. Every load now
+// happens on the message thread; process() also fades the newly-swapped IR
+// in over a few milliseconds, masking any residual internal-state
+// discontinuity from the engine swap itself.
+class CabModule : private juce::AsyncUpdater
 {
 public:
+    ~CabModule() override { cancelPendingUpdate(); }
+
+
     static constexpr int numBuiltInIRs = 6;
     static const char* getBuiltInIRName (int index)
     {
@@ -22,6 +35,8 @@ public:
     {
         currentSpec = spec;
         convolution.prepare (spec);
+        fadeInTotalSamples = juce::jmax (1, (int) (spec.sampleRate * 0.015)); // ~15ms
+        fadeInRemaining = 0;
     }
 
     void reset() { convolution.reset(); }
@@ -32,64 +47,27 @@ public:
     // knob is handy for blending in some raw preamp bite.
     void setMix (float mix01) { mixAmount = juce::jlimit (0.0f, 1.0f, mix01); }
 
-    // Loads one of the 6 embedded Tweed_Combo_1x12 IRs. Safe to call from
-    // the audio thread (JUCE's Convolution loads impulse data in the
-    // background) — used from processBlock when the "cabIRSelect" param
-    // changes, so it stays host-automatable/preset-recallable.
+    // Requests one of the 6 embedded Tweed_Combo_1x12 IRs. Non-blocking and
+    // safe to call from the audio thread — the actual decode + FFT
+    // partition build happens later on the message thread via
+    // handleAsyncUpdate(), not here. Used from processBlock when the
+    // "cabIRSelect" param changes, so it stays host-automatable/
+    // preset-recallable without ever blocking real-time audio.
     bool loadBuiltInIR (int index)
     {
         index = juce::jlimit (0, numBuiltInIRs - 1, index);
         if (index == loadedBuiltInIndex && ! usingCustomFile)
             return true;
 
-        static const void* data[numBuiltInIRs] = {
-            BinaryData::Tweed_Combo_1x12_Bright_Mix_wav,
-            BinaryData::Tweed_Combo_1x12_Dark_Mix_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_Mix_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_57_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_87_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_160_wav
-        };
-        static const int sizes[numBuiltInIRs] = {
-            BinaryData::Tweed_Combo_1x12_Bright_Mix_wavSize,
-            BinaryData::Tweed_Combo_1x12_Dark_Mix_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_Mix_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_57_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_87_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_160_wavSize
-        };
-
-        // Same decode-then-load pattern as SpringModule::loadImpulse: read
-        // the embedded wav via AudioFormatReader into an AudioBuffer, then
-        // hand that buffer to Convolution (rather than guessing at a raw
-        // pointer overload).
-        juce::WavAudioFormat wav;
-        std::unique_ptr<juce::AudioFormatReader> reader (wav.createReaderFor (
-            new juce::MemoryInputStream (data[index], (size_t) sizes[index], false), true));
-        if (reader == nullptr)
-            return false;
-
-        // All 6 built-in Tweed_Combo IRs are mono (single-mic recordings).
-        // Passing a 1-channel buffer straight to Convolution with
-        // Stereo::yes is relying on undocumented mono-source-with-stereo-
-        // request behaviour — build a genuine 2-channel buffer (duplicating
-        // the mono data to both sides) so both output channels definitely
-        // get identical, correct IR data.
-        convolution.loadImpulseResponse (makeGuaranteedStereoImpulse (*reader), reader->sampleRate,
-            juce::dsp::Convolution::Stereo::yes,
-            juce::dsp::Convolution::Trim::yes,
-            juce::dsp::Convolution::Normalise::yes);
-
-        loadedBuiltInIndex = index;
-        usingCustomFile = false;
-        loadedFileName = juce::String (getBuiltInIRName (index));
-        hasLoadedIR = true;
+        requestedBuiltInIndex.store (index);
+        triggerAsyncUpdate();
         return true;
     }
 
-    // Returns true on success. Call from the message thread (e.g. after a
-    // file chooser callback) — JUCE's Convolution handles the background
-    // loading itself, safe to call while audio is running.
+    // Call from the message thread (e.g. after a file chooser callback or a
+    // combo-box selection) — already off the audio thread, so this decodes
+    // and loads immediately rather than round-tripping through
+    // triggerAsyncUpdate(), but still gets the same fade-in treatment.
     bool loadImpulseResponseFile (const juce::File& file)
     {
         if (! file.existsAsFile())
@@ -101,13 +79,7 @@ public:
         if (reader == nullptr)
             return false;
 
-        // Same mono-source guarantee as the built-in IRs — a user's own
-        // mono IR file gets duplicated to both channels rather than relying
-        // on Convolution's undocumented handling of a 1-channel buffer.
-        convolution.loadImpulseResponse (makeGuaranteedStereoImpulse (*reader), reader->sampleRate,
-            juce::dsp::Convolution::Stereo::yes,
-            juce::dsp::Convolution::Trim::yes,
-            juce::dsp::Convolution::Normalise::yes);
+        applyImpulse (*reader);
         loadedFileName = file.getFileName();
         usingCustomFile = true;
         hasLoadedIR = true;
@@ -122,28 +94,35 @@ public:
         if (! enabled || ! hasLoadedIR)
             return;
 
-        if (mixAmount >= 0.999f)
-        {
-            juce::dsp::AudioBlock<float> block (buffer);
-            juce::dsp::ProcessContextReplacing<float> context (block);
-            convolution.process (context);
-            return;
-        }
-
-        // Partial mix: convolve a copy, blend back with dry.
+        // A fresh IR was just swapped in on the message thread — fade the
+        // wet signal in over ~15ms rather than jumping straight to full
+        // level, so any residual discontinuity in the convolution engine's
+        // internal (overlap-save) history from the swap itself is masked
+        // rather than heard as a click.
         juce::AudioBuffer<float> wet;
         wet.makeCopyOf (buffer);
         juce::dsp::AudioBlock<float> wetBlock (wet);
         juce::dsp::ProcessContextReplacing<float> wetContext (wetBlock);
         convolution.process (wetContext);
 
+        const auto numSamples = buffer.getNumSamples();
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         {
             auto* dry = buffer.getWritePointer (ch);
             auto* w = wet.getWritePointer (ch);
-            for (int i = 0; i < buffer.getNumSamples(); ++i)
-                dry[i] = dry[i] * (1.0f - mixAmount) + w[i] * mixAmount;
+            auto fadeRemainingForChannel = fadeInRemaining;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto wetGain = mixAmount;
+                if (fadeRemainingForChannel > 0)
+                {
+                    wetGain *= 1.0f - (float) fadeRemainingForChannel / (float) fadeInTotalSamples;
+                    --fadeRemainingForChannel;
+                }
+                dry[i] = dry[i] * (1.0f - wetGain) + w[i] * wetGain;
+            }
         }
+        fadeInRemaining = juce::jmax (0, fadeInRemaining - numSamples);
     }
 
     // Folder the "Custom..." IR list is scanned from, in place of a one-shot
@@ -172,6 +151,57 @@ public:
     }
 
 private:
+    // Runs on the message thread in response to loadBuiltInIR()'s
+    // triggerAsyncUpdate() — this is where the actual WAV decode + FFT
+    // partition build happens, off the audio thread.
+    void handleAsyncUpdate() override
+    {
+        const auto index = requestedBuiltInIndex.exchange (-1);
+        if (index < 0)
+            return;
+
+        static const void* data[numBuiltInIRs] = {
+            BinaryData::Tweed_Combo_1x12_Bright_Mix_wav,
+            BinaryData::Tweed_Combo_1x12_Dark_Mix_wav,
+            BinaryData::Tweed_Combo_1x12_Medium_Mix_wav,
+            BinaryData::Tweed_Combo_1x12_Medium_57_wav,
+            BinaryData::Tweed_Combo_1x12_Medium_87_wav,
+            BinaryData::Tweed_Combo_1x12_Medium_160_wav
+        };
+        static const int sizes[numBuiltInIRs] = {
+            BinaryData::Tweed_Combo_1x12_Bright_Mix_wavSize,
+            BinaryData::Tweed_Combo_1x12_Dark_Mix_wavSize,
+            BinaryData::Tweed_Combo_1x12_Medium_Mix_wavSize,
+            BinaryData::Tweed_Combo_1x12_Medium_57_wavSize,
+            BinaryData::Tweed_Combo_1x12_Medium_87_wavSize,
+            BinaryData::Tweed_Combo_1x12_Medium_160_wavSize
+        };
+
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatReader> reader (wav.createReaderFor (
+            new juce::MemoryInputStream (data[index], (size_t) sizes[index], false), true));
+        if (reader == nullptr)
+            return;
+
+        applyImpulse (*reader);
+        loadedBuiltInIndex = index;
+        usingCustomFile = false;
+        loadedFileName = juce::String (getBuiltInIRName (index));
+        hasLoadedIR = true;
+    }
+
+    // Shared by the built-in and custom-file paths: loads the impulse
+    // (mono sources duplicated to a genuine 2-channel buffer, per the
+    // Stereo::yes fix below) and arms the fade-in in process().
+    void applyImpulse (juce::AudioFormatReader& reader)
+    {
+        convolution.loadImpulseResponse (makeGuaranteedStereoImpulse (reader), reader.sampleRate,
+            juce::dsp::Convolution::Stereo::yes,
+            juce::dsp::Convolution::Trim::yes,
+            juce::dsp::Convolution::Normalise::yes);
+        fadeInRemaining = fadeInTotalSamples;
+    }
+
     // Reads the full IR from `reader` into a genuinely 2-channel buffer —
     // if the source is mono, both output channels get an identical copy of
     // it, rather than handing Convolution a 1-channel buffer and hoping it
@@ -203,4 +233,7 @@ private:
     int loadedBuiltInIndex = -1;
     float mixAmount = 1.0f;
     juce::String loadedFileName;
+
+    std::atomic<int> requestedBuiltInIndex { -1 };
+    int fadeInRemaining = 0, fadeInTotalSamples = 1;
 };
