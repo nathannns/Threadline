@@ -98,12 +98,51 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
     if (section.bounds.isEmpty())
         return;
     auto bounds = section.bounds.toFloat();
-    juce::ColourGradient fill (juce::Colour (0xff241b16), bounds.getX(), bounds.getY(),
-                               juce::Colour (0xff171311), bounds.getRight(), bounds.getBottom(), false);
+    static const juce::Colour rackColours[] {
+        juce::Colour (0xff26201c), juce::Colour (0xffd0c3aa), juce::Colour (0xff62777a),
+        juce::Colour (0xffa34d38), juce::Colour (0xffb5aa92), juce::Colour (0xff536f70),
+        juce::Colour (0xff8e3c31), juce::Colour (0xffc2b69d)
+    };
+    const auto face = rackColours[juce::jlimit (0, 7, section.plateIndex)];
+    juce::ColourGradient fill (face.brighter (0.10f), bounds.getX(), bounds.getY(),
+                               face.darker (0.25f), bounds.getRight(), bounds.getBottom(), false);
     g.setGradientFill (fill);
     g.fillRoundedRectangle (bounds, 9.0f);
     g.setColour (ThreadlineColours::cardBorder);
     g.drawRoundedRectangle (bounds.reduced (0.75f), 9.0f, 1.25f);
+    g.setColour (juce::Colour (0xff2b2520).withAlpha (0.72f));
+    constexpr float screwSize = 6.0f;
+    g.fillEllipse (bounds.getX() + 7.0f, bounds.getCentreY() - screwSize * 0.5f, screwSize, screwSize);
+    g.fillEllipse (bounds.getRight() - 13.0f, bounds.getCentreY() - screwSize * 0.5f, screwSize, screwSize);
+}
+
+inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int> area)
+{
+    section.bounds = area;
+    area.reduce (10, 7);
+    auto identity = area.removeFromLeft (juce::jlimit (112, 210, area.getWidth() / 5));
+    section.titleLabel.setJustificationType (juce::Justification::centred);
+    section.titleLabel.setFont (juce::FontOptions (juce::jlimit (14.0f, 22.0f,
+                                                   static_cast<float> (area.getHeight()) * 0.28f),
+                                                   juce::Font::bold));
+    const auto lightFace = section.plateIndex == SectionPlate::Compressor
+                        || section.plateIndex == SectionPlate::Tremolo
+                        || section.plateIndex == SectionPlate::Reverb;
+    section.titleLabel.setColour (juce::Label::textColourId,
+                                  lightFace ? juce::Colour (0xff352a22) : ThreadlineColours::textCream);
+    section.titleLabel.setBounds (identity.removeFromTop (juce::jmax (24, identity.getHeight() - 24)));
+    if (section.hasToggle)
+        section.toggle.setBounds (identity.withSizeKeepingCentre (58, 20));
+
+    area.removeFromLeft (10);
+    const auto count = juce::jmax (1, (int) section.knobs.size());
+    const auto cellWidth = area.getWidth() / count;
+    for (auto& knob : section.knobs)
+    {
+        knob->slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        auto cell = area.removeFromLeft (cellWidth);
+        knob->slider.setBounds (cell.reduced (4, 3).withTrimmedTop (15));
+    }
 }
 
 // Adds title/toggle/knobs as children of `parent` and wires them to `apvts`.

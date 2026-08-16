@@ -79,6 +79,10 @@ private:
 
     double currentSampleRate = 44100.0;
     int lastCabIRSelection = -1;
+    bool tremoloWasActive = false, chorusWasActive = false, echoWasActive = false;
+    double cachedTempoBpm = -1.0;
+    int cachedEchoDivision = -1;
+    float cachedSyncedEchoMs = 375.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ThreadlineAudioProcessor)
 };

@@ -112,6 +112,8 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     // attached "Amount" caption would overlap its toggle and steal clicks.
     if (! gateSection.knobs.empty())
         gateSection.knobs[0]->label.setVisible (false);
+    gateSection.titleLabel.setVisible (false);
+    gateSection.toggle.setButtonText ("GATE");
 
     setupUtilityKnob (inputLabel, inputGainKnob, "Input");
     setupUtilityKnob (outputLabel, outputGainKnob, "Output");
@@ -299,9 +301,7 @@ void ThreadlineAudioProcessorEditor::resized()
     gateCardBounds = rect (60, 548, 110, 104);
     inputCardBounds = rect (545, 548, 110, 104);
     outputCardBounds = rect (1030, 548, 110, 104);
-    gateSection.titleLabel.setJustificationType (juce::Justification::centred);
-    gateSection.titleLabel.setBounds (rect (60, 550, 110, 20));
-    gateSection.toggle.setBounds (rect (178, 550, 48, 20));
+    gateSection.toggle.setBounds (rect (60, 550, 110, 22));
     if (! gateSection.knobs.empty())
         gateSection.knobs[0]->slider.setBounds (rect (60, 574, 110, 78));
     inputLabel.setJustificationType (juce::Justification::centred);
@@ -315,12 +315,14 @@ void ThreadlineAudioProcessorEditor::resized()
 
     // Navigation and pages occupy the space between Rockalizer's header/footer.
     auto tabRow = rect (28, 88, 1144, 42);
-    auto tabArea = tabRow.reduced (0, 6);
     const auto pillWidth = juce::roundToInt (46 * scaleX);
+    const auto pillGap = juce::roundToInt (8 * scaleX);
+    const auto groupWidth = 4 * pillWidth + 3 * pillGap;
+    auto tabArea = tabRow.withSizeKeepingCentre (groupWidth, tabRow.getHeight()).reduced (0, 6);
     for (auto& pill : tabPills)
     {
         pill.setBounds (tabArea.removeFromLeft (pillWidth));
-        tabArea.removeFromLeft (juce::roundToInt (8 * scaleX));
+        tabArea.removeFromLeft (pillGap);
     }
 
     // Floating Rockalizer-style options panel below the gear button.

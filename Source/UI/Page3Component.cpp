@@ -10,10 +10,26 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& processor)
         { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusWidth", "Width" },
         { "chorusTone", "Tone" }, { "chorusMix", "Mix" }
     }, false, SectionPlate::Chorus);
+    chorusModeBox.addItemList ({ "CHORUS", "FLANGER I", "FLANGER II", "FLANGER I+II" }, 1);
+    addAndMakeVisible (chorusModeBox);
+    chorusModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, "chorusFlangerMode", chorusModeBox);
 
     buildSection (echoSection, *this, processor.apvts, "Delay", "echoOn", {
-        { "echoTime", "Time" }, { "echoRepeats", "Repeats" }, { "echoTone", "Tone" }, { "echoMix", "Mix" }
+        { "echoTime", "Time" }, { "echoRepeats", "Repeats" }, { "echoTone", "Tone" },
+        { "echoWobble", "Wobble" }, { "echoDrive", "Drive" }, { "echoMix", "Mix" }
     }, false, SectionPlate::Delay);
+    echoPatternBox.addItemList ({ "STRAIGHT", "BOUNCE", "GALLOP", "CLUSTER", "WASH" }, 1);
+    echoDivisionBox.addItemList ({ "1/4", "1/4 D", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" }, 1);
+    addAndMakeVisible (echoPatternBox);
+    addAndMakeVisible (echoDivisionBox);
+    addAndMakeVisible (echoSyncButton);
+    echoPatternAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, "echoPattern", echoPatternBox);
+    echoDivisionAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, "echoDivision", echoDivisionBox);
+    echoSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.apvts, "echoSync", echoSyncButton);
 
     // Reverb: 3 spring-tank models + 7 Lexicon 480L hall/room models sharing
     // one Decay/Tone/Mix set. Decay works as pre-delay when a hall/room model
@@ -40,38 +56,33 @@ void Page3Component::paint (juce::Graphics& g)
 
 void Page3Component::resized()
 {
-    auto area = getLocalBounds().reduced (24, 16);
-    const auto cardWidth = (area.getWidth() - 3 * SectionGrid::gap) / 4;
-    layoutRackSection (tremSection, area.removeFromLeft (cardWidth));
-    area.removeFromLeft (SectionGrid::gap);
-    layoutRackSection (chorusSection, area.removeFromLeft (cardWidth));
-    area.removeFromLeft (SectionGrid::gap);
-    layoutRackSection (echoSection, area.removeFromLeft (cardWidth));
-    area.removeFromLeft (SectionGrid::gap);
+    auto area = getLocalBounds().reduced (24, 10);
+    constexpr int gap = 6;
+    const auto cardHeight = (area.getHeight() - 3 * gap) / 4;
+    layoutHorizontalRackSection (tremSection, area.removeFromTop (cardHeight));
+    area.removeFromTop (gap);
+    layoutHorizontalRackSection (chorusSection, area.removeFromTop (cardHeight));
+    auto chorusBounds = chorusSection.bounds;
+    chorusModeBox.setBounds (chorusBounds.getX() + 14, chorusBounds.getBottom() - 30,
+                             juce::jmin (170, chorusBounds.getWidth() / 5 - 20), 24);
+    area.removeFromTop (gap);
+    layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight));
+    auto echoBounds = echoSection.bounds;
+    const auto selectorY = echoBounds.getBottom() - 29;
+    echoSyncButton.setBounds (echoBounds.getX() + 12, selectorY, 44, 22);
+    echoPatternBox.setBounds (echoBounds.getX() + 60, selectorY, 82, 22);
+    echoDivisionBox.setBounds (echoBounds.getX() + 146, selectorY, 62, 22);
+    area.removeFromTop (gap);
 
     auto reverbArea = area;
-    reverbSection.bounds = reverbArea;
-    reverbArea.reduce (12, 10);
-    auto header = reverbArea.removeFromTop (28);
-    reverbSection.toggle.setBounds (header.removeFromRight (48).reduced (3, 3));
-    reverbSection.titleLabel.setBounds (header);
-    reverbArea.removeFromTop (12);
-
-    // Four knobs plus Type form a wrapped 3+2 control grid. This places Type
-    // directly to the right of Width on the second row.
-    constexpr int columns = 3;
-    const auto rows = 2;
-    const auto cellWidth = reverbArea.getWidth() / columns;
-    const auto cellHeight = reverbArea.getHeight() / rows;
-    for (int index = 0; index < (int) reverbSection.knobs.size(); ++index)
+    layoutHorizontalRackSection (reverbSection, reverbArea);
+    // Type follows the rightmost Width control.
+    const auto typeWidth = juce::jlimit (120, 180, reverbArea.getWidth() / 7);
+    reverbModelBox.setBounds (reverbArea.getRight() - typeWidth - 12,
+                              reverbArea.getCentreY() - 14, typeWidth, 28);
+    if (! reverbSection.knobs.empty())
     {
-        auto cell = juce::Rectangle<int> (reverbArea.getX() + (index % columns) * cellWidth,
-                                          reverbArea.getY() + (index / columns) * cellHeight,
-                                          cellWidth, cellHeight);
-        reverbSection.knobs[(size_t) index]->slider.setBounds (cell.reduced (4, 2));
+        auto& width = reverbSection.knobs.back()->slider;
+        width.setBounds (width.getBounds().translated (-typeWidth / 2, 0));
     }
-    auto typeCell = juce::Rectangle<int> (reverbArea.getX() + cellWidth,
-                                          reverbArea.getY() + cellHeight,
-                                          2 * cellWidth, cellHeight).reduced (6, cellHeight / 3);
-    reverbModelBox.setBounds (typeCell);
 }

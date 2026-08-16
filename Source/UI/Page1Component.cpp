@@ -26,11 +26,12 @@ void Page1Component::paint (juce::Graphics& g)
 
 void Page1Component::resized()
 {
-    auto area = getLocalBounds().reduced (24, 16);
-    const auto cardWidth = (area.getWidth() - 2 * SectionGrid::gap) / 3;
-    layoutRackSection (compSection, area.removeFromLeft (cardWidth));
-    area.removeFromLeft (SectionGrid::gap);
-    layoutRackSection (klonSection, area.removeFromLeft (cardWidth));
-    area.removeFromLeft (SectionGrid::gap);
-    layoutRackSection (ts9Section, area);
+    auto area = getLocalBounds().reduced (24, 12);
+    constexpr int gap = 8;
+    const auto cardHeight = (area.getHeight() - 2 * gap) / 3;
+    layoutHorizontalRackSection (compSection, area.removeFromTop (cardHeight));
+    area.removeFromTop (gap);
+    layoutHorizontalRackSection (klonSection, area.removeFromTop (cardHeight));
+    area.removeFromTop (gap);
+    layoutHorizontalRackSection (ts9Section, area);
 }

@@ -90,25 +90,36 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
 
     // --- Chorus ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("chorusOn"), "Chorus On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusFlangerMode"), "Flanger Mode",
+        juce::StringArray { "Off", "Mode I", "Mode II", "Mode III (I + II)" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusRate"), "Chorus Rate",
-        Range (0.05f, 5.0f, 0.01f), 0.6f));
+        Range (0.05f, 5.0f, 0.01f, 0.35f), 0.32f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusDepth"), "Chorus Depth",
-        Range (0.0f, 100.0f, 0.1f), 40.0f));
+        Range (0.0f, 100.0f, 0.1f), 42.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusWidth"), "Chorus Width",
-        Range (0.0f, 100.0f, 0.1f), 60.0f));
+        Range (0.0f, 100.0f, 0.1f), 80.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusTone"), "Chorus Tone",
-        Range (500.0f, 8000.0f, 1.0f), 3500.0f));
+        Range (1000.0f, 16000.0f, 1.0f, 0.35f), 8000.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusMix"), "Chorus Mix",
-        Range (0.0f, 100.0f, 0.1f), 35.0f));
+        Range (0.0f, 100.0f, 0.1f), 20.0f));
 
     // --- Echo (Delay) ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Delay On", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoSync"), "Delay Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoPattern"), "Delay Pattern",
+        juce::StringArray { "Straight", "Bounce", "Gallop", "Cluster", "Wash" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoDivision"), "Delay Division",
+        juce::StringArray { "1/4", "1/4 D", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" }, 2));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Delay Time",
-        Range (10.0f, 1200.0f, 1.0f), 350.0f));
+        Range (40.0f, 1200.0f, 1.0f, 0.35f), 375.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoRepeats"), "Delay Repeats",
         Range (0.0f, 100.0f, 0.1f), 30.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTone"), "Delay Tone",
-        Range (500.0f, 8000.0f, 1.0f), 3000.0f));
+        Range (1200.0f, 14000.0f, 1.0f, 0.35f), 6500.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoWobble"), "Delay Wobble",
+        Range (0.0f, 100.0f, 0.1f), 30.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoDrive"), "Delay Drive",
+        Range (0.0f, 100.0f, 0.1f), 30.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoMix"), "Delay Mix",
         Range (0.0f, 100.0f, 0.1f), 25.0f));
 
@@ -269,19 +280,68 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     }
     cab.process (buffer);
 
-    // --- Tremolo ---
-    tremolo.setAmount (pBool ("tremOn") ? p ("tremAmount") : 0.0f);
-    tremolo.process (buffer);
+    // --- Tremolo: Rockalizer activation/reset topology ---
+    const auto tremoloActive = pBool ("tremOn") && p ("tremAmount") > 0.001f;
+    if (tremoloActive)
+    {
+        tremolo.setAmount (p ("tremAmount"));
+        tremolo.process (buffer);
+    }
+    else if (tremoloWasActive)
+        tremolo.reset();
+    tremoloWasActive = tremoloActive;
 
     // --- Chorus ---
-    chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusWidth"),
-                           p ("chorusTone"), p ("chorusMix"), pBool ("chorusOn"), 0 /* no flanger */);
-    chorus.process (buffer);
+    const auto chorusActive = pBool ("chorusOn");
+    if (chorusActive)
+    {
+        chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusWidth"),
+                              p ("chorusTone"), p ("chorusMix"), true,
+                              (int) p ("chorusFlangerMode"));
+        chorus.process (buffer);
+    }
+    else if (chorusWasActive)
+        chorus.reset();
+    chorusWasActive = chorusActive;
 
     // --- Echo (Delay) ---
-    echo.setParameters (p ("echoTime"), p ("echoRepeats"), p ("echoTone"), 0.0f /* wobble */,
-                         0.0f /* drive */, p ("echoMix"), pBool ("echoOn"), EchoModule::straight);
-    echo.process (buffer);
+    const auto echoActive = pBool ("echoOn");
+    auto echoTime = p ("echoTime");
+    if (echoActive && pBool ("echoSync"))
+    {
+        auto bpm = 120.0;
+        if (auto* playHead = getPlayHead())
+            if (auto position = playHead->getPosition())
+                if (auto hostBpm = position->getBpm()) bpm = *hostBpm;
+        constexpr float beats[] { 1.0f, 1.5f, 0.5f, 0.75f, 1.0f / 3.0f,
+                                  0.25f, 0.375f, 1.0f / 6.0f };
+        const auto division = juce::jlimit (0, 7, (int) p ("echoDivision"));
+        if (std::abs (bpm - cachedTempoBpm) > 0.0001 || division != cachedEchoDivision)
+        {
+            cachedTempoBpm = bpm;
+            cachedEchoDivision = division;
+            cachedSyncedEchoMs = static_cast<float> (60000.0 / bpm) * beats[division];
+        }
+        echoTime = cachedSyncedEchoMs;
+    }
+    if (echoActive)
+    {
+        echo.setParameters (echoTime, p ("echoRepeats"), p ("echoTone"), p ("echoWobble"),
+                            p ("echoDrive"), p ("echoMix"), true, (int) p ("echoPattern"));
+        echo.process (buffer);
+        echoWasActive = true;
+    }
+    else if (echoWasActive)
+    {
+        echo.setParameters (echoTime, p ("echoRepeats"), p ("echoTone"), p ("echoWobble"),
+                            p ("echoDrive"), p ("echoMix"), false, (int) p ("echoPattern"));
+        echo.process (buffer);
+        if (! echo.isWetTransitionActive())
+        {
+            echo.reset();
+            echoWasActive = false;
+        }
+    }
 
     // --- Reverb: route to whichever engine the selected model belongs to.
     // Both are always ticked (each is a cheap no-op when its own wet mix is

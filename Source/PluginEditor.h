@@ -244,7 +244,7 @@ private:
 
     // --- Tab strip: Dirt (Comp/Klon/TS9), Amp (Amp/Cab), Wet (Trem/Chorus/Delay/Reverb), EQ (9-band + HPF/LPF) ---
     std::array<TabPill, 4> tabPills {
-        TabPill ("Dirt", TabPill::Icon::Dirt), TabPill ("Amp", TabPill::Icon::Amp),
+        TabPill ("Pre-FX", TabPill::Icon::Dirt), TabPill ("Amp", TabPill::Icon::Amp),
         TabPill ("Wet FX", TabPill::Icon::Wet), TabPill ("EQ", TabPill::Icon::EQ)
     };
     int currentPage = 0;

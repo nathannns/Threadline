@@ -171,6 +171,7 @@ public:
         g.drawRoundedRectangle (bounds, 5.0f, 1.0f);
         g.setColour (on ? juce::Colour (0xff171311) : juce::Colour (0xffc7b89f));
         g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-        g.drawText (on ? "ON" : "OFF", bounds, juce::Justification::centred);
+        const auto label = getButtonText().isNotEmpty() ? getButtonText() : (on ? "ON" : "OFF");
+        g.drawText (label, bounds, juce::Justification::centred);
     }
 };
