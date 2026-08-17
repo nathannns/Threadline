@@ -1,36 +1,57 @@
 #pragma once
 #include <JuceHeader.h>
 
-// Algorithmic Room/Hall/Plate reverb -- a faithful port of the exact
-// Freeverb structure and gain-staging used by JUCE's own juce::Reverb class
-// (juce_audio_basics/utilities/juce_Reverb.h), which is itself what HISE's
-// own shipped SimpleReverb effect wraps rather than rolling its own. Two
-// earlier custom versions of this module (independent combs with a guessed
-// input gain, then an 8-line Householder FDN) both needed Mix pushed
-// unrealistically high to hear anything -- because their gain constants
-// were guessed rather than taken from a working reference. This version
-// uses JUCE's actual proven numbers instead of guessing: 0.015 input gain
-// into the comb bank, allpass feedback of 0.5, and critically the same
-// damping formula placement (a one-pole lowpass inside each comb's own
-// feedback path, not a separate post-filter) -- these specific constants
-// are why a stock juce::Reverb sounds full and correctly balanced at
-// ordinary-looking Mix settings instead of needing to be driven hot.
+// Algorithmic Room/Hall/Plate reverb, built on the exact Freeverb structure
+// and gain-staging used by JUCE's own juce::Reverb class (itself what
+// HISE's shipped SimpleReverb effect wraps rather than rolling its own):
+// 0.015 input gain into the comb bank, allpass feedback of 0.5, damping
+// inside each comb's own feedback path rather than a separate post-filter.
+//
+// On top of that proven gain-staging, feedback and damping are now derived
+// from an explicit RT60 (reverberation time) model instead of a single
+// shared coefficient applied uniformly to all 8 differently-sized comb
+// lines. That uniform-coefficient approach (what both this module's first
+// version and JUCE's own stock Reverb actually do) is mathematically
+// inconsistent: a comb's decay rate in real time depends on both its
+// feedback gain AND how often it loops (loop period = line length /
+// sample rate), so the same feedback value gives DIFFERENT lines
+// DIFFERENT real-world decay times -- shorter lines loop more often per
+// second and so decay faster than longer ones at an identical gain. The
+// fix is the standard Schroeder result: for a comb of length M samples to
+// reach -60dB after RT60 seconds, its gain must satisfy
+// g^(RT60*fs/M) = 10^-3, i.e. g = 10^(-3M / (RT60*fs)). Computing each
+// comb's own g from its own M, from a single shared RT60 target, makes
+// every line agree on when the tail is "gone" regardless of its length --
+// a physically coherent decay instead of 8 independently-decaying combs
+// that happen to overlap.
+//
+// The same idea extends to frequency-dependent damping: the comb's
+// unity-DC-gain one-pole damping filter (1-d)/(1-d*z^-1) leaves the DC/
+// low-frequency decay rate set purely by g, but attenuates the loop gain
+// at Nyquist by a factor (1-d)/(1+d). Given a desired SHORTER RT60 at high
+// frequency (real spaces and real damping absorb highs faster than lows),
+// solving g*(1-d)/(1+d) = g_highFreq for d gives d = (1-r)/(1+r), where
+// r = g_highFreq/g and g_highFreq is the same Schroeder formula evaluated
+// at the high-frequency target instead of the low-frequency one. Tone now
+// drives that high-frequency RT60 as a fraction of the low-frequency one
+// (Decay), rather than an arbitrary damping-coefficient range, and both
+// are computed per comb from its own length -- see prepareTank() and
+// updateDecayTimes().
 //
 // 8 comb filters run in parallel per channel (accumulated), followed by 4
 // allpass filters in series per channel -- exactly JUCE's topology, just
 // duplicated into 3 pre-sized/pre-tuned tanks for Room/Hall/Plate rather
 // than JUCE's single continuously-sized model, so switching Model is a
 // same-thread index swap with no reload or click. Plate is deliberately
-// tuned bigger than Hall (longer comb/allpass line-length scale, a higher
-// feedback ceiling, and denser diffusion via a higher allpass coefficient)
-// -- a real plate's whole surface resonates almost simultaneously, which
+// tuned bigger than Hall (longer comb/allpass line-length scale, a longer
+// RT60 ceiling, and denser diffusion via a higher allpass coefficient) --
+// a real plate's whole surface resonates almost simultaneously, which
 // reads as more enveloping than a room-shaped space despite the smaller
-// physical device. Tone drives each comb's damping coefficient (JUCE's own
-// `damp`/`1-damp` blend), with a fixed brightness bias for Plate. Decay
-// drives comb feedback within a per-space range. A tanh safety rail is
-// kept as a backstop since resonant combs can in principle still build
-// gain at coincident frequencies, but with real gain-staging this time it
-// should rarely actually engage.
+// physical device. A tanh safety rail is kept as a backstop since summed
+// combs can in principle still build gain at coincident frequencies, but
+// with gain values now derived to guarantee decay (all g < 1 by
+// construction) rather than picked heuristically, it should essentially
+// never actually engage.
 class HallRoomReverbModule
 {
 public:
@@ -55,13 +76,19 @@ public:
     static constexpr int numAllpasses = 4;
 
 private:
-    // Exactly JUCE's CombFilter: the damping one-pole lives inside the
-    // feedback path itself (`last`), not as a separate post-filter stage.
+    // Exactly JUCE's CombFilter structurally (the damping one-pole lives
+    // inside the feedback path itself, `last`, not a separate post-filter
+    // stage) but feedback/damp1/damp2 are now this comb's OWN RT60-derived
+    // values (see setDecayTimes()) rather than shared scalars passed in
+    // from outside -- each of the 8 lines has a different length, so each
+    // needs a different gain to agree on the same real-world decay time.
     struct Comb
     {
         std::vector<float> buffer;
         int index = 0;
         float last = 0.0f;
+        float feedback = 0.7f;
+        float damp1 = 0.2f, damp2 = 0.8f;
 
         void setSize (int size)
         {
@@ -75,11 +102,29 @@ private:
             last = 0.0f;
         }
 
-        float process (float input, float dampAmount, float feedbackAmount)
+        // Schroeder's comb decay-time result: for this line's own length
+        // (buffer.size() samples) to reach -60dB after rt60Low seconds,
+        // gain must be 10^(-3*length/(rt60Low*sampleRate)) -- see file
+        // header. rt60High (<= rt60Low) sets the same result evaluated at
+        // the high-frequency target, from which the damping coefficient
+        // that reconciles the two is solved algebraically.
+        void setDecayTimes (float targetRt60Low, float targetRt60High, double currentSampleRate)
+        {
+            const auto length = static_cast<float> (buffer.size());
+            const auto exponent = -3.0f * length / static_cast<float> (currentSampleRate);
+            const auto gainLow = std::pow (10.0f, exponent / juce::jmax (0.02f, targetRt60Low));
+            const auto gainHigh = std::pow (10.0f, exponent / juce::jmax (0.02f, targetRt60High));
+            feedback = juce::jlimit (0.0f, 0.999f, gainLow);
+            const auto ratio = juce::jlimit (0.0001f, 1.0f, gainHigh / juce::jmax (0.0001f, gainLow));
+            damp1 = juce::jlimit (0.0f, 0.999f, (1.0f - ratio) / (1.0f + ratio));
+            damp2 = 1.0f - damp1;
+        }
+
+        float process (float input)
         {
             const auto output = buffer[static_cast<size_t> (index)];
-            last = (output * (1.0f - dampAmount)) + (last * dampAmount);
-            const auto temp = input + (last * feedbackAmount);
+            last = (output * damp2) + (last * damp1);
+            const auto temp = input + (last * feedback);
             buffer[static_cast<size_t> (index)] = temp;
             if (++index >= static_cast<int> (buffer.size())) index = 0;
             return output;
@@ -128,11 +173,15 @@ private:
     };
 
     void prepareTank (Tank& tank, int modelIndex);
+    void updateDecayTimes();
 
     Tank tanks[numModels];
     int activeModel = 0;
-    float damp = 0.2f;
-    float feedback = 0.7f;
+    // Decay knob's target: the low-frequency (DC) RT60 in seconds. Tone
+    // knob's target: the high-frequency RT60 as a fraction of that (always
+    // <= rt60Low -- highs never outlast lows). See setDecayTimes() in Comb.
+    float rt60Low = 1.0f;
+    float rt60High = 0.5f;
 
     // Fixed rumble cut on the wet tail, independent of the Tone knob --
     // keeps the tail from building up mud regardless of how bright Tone

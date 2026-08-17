@@ -33,7 +33,11 @@ on/off toggle regardless) via the Overdrive Order switch.
   waveform switch, and a Dry/Chorus/Vibrato 3-way switch in place of a
   continuous knob.
 - **Delay** — one shared section/on-off toggle, two selectable engines
-  (`delayModel`); only the active engine's knobs matter for the sound:
+  (`delayModel`); only the active engine's knobs matter for the sound. Both
+  engines' feedback knobs (Sustain / Regen) are derived the same way below
+  their self-oscillation zone: a target repeat count `N` (how many times
+  you want to hear it before it's gone, roughly -40dB down) gives feedback
+  `g = 10^(-2/N)`, rather than an arbitrary coefficient curve:
   - `EchoModule` ("Plexer" in the UI) — modeled on the Maestro Echoplex
     EP-3's control surface: Time, Sustain (feedback), Volume, and an Echo /
     Sound-on-Sound mode switch. The real unit's always-on preamp coloration,
@@ -60,21 +64,30 @@ on/off toggle regardless) via the Overdrive Order switch.
   Householder FDN) both needed Mix pushed unrealistically high to hear
   anything and still didn't sound quite right -- tracing that back to a real
   reference implementation instead of inventing more constants fixed both
-  problems at once. 3 spaces: **Room** (warm, small/dense), **Hall** (clear,
-  spacious -- the least-modified of the three, matching JUCE's own default
-  feedback range almost exactly), **Plate** (metallic, extended highs, and
-  deliberately tuned *bigger* than Hall -- longer comb/allpass line-length
-  scale, a higher decay ceiling, and denser allpass diffusion, the way a
-  real plate's whole surface resonates almost simultaneously). Tone controls
-  each comb's internal damping (highs decay faster than lows in the tail,
-  real air-absorption behaviour, applied exactly where JUCE's own topology
-  puts it); Decay controls comb feedback within a per-space ceiling, live
-  and continuous. (A Shimmer mode — pitch-shifted feedback — was tried and
-  pulled after it produced a runaway-feedback squeal; may come back once
-  the feedback loop gain is worked out properly against a real reference
-  rather than guessed.) The original Lexicon-480L-captured IRs this module
-  used to convolve against are still in `Resources/ImpulseResponses/HallRoom/`
-  but are no longer loaded.
+  problems at once. On top of that, each comb's feedback and damping are
+  now derived from an explicit RT60 (reverberation time) target instead of
+  one coefficient shared across all 8 differently-sized lines -- since a
+  comb's real-time decay rate depends on both its gain and how often it
+  loops (loop period = line length / sample rate), a shared coefficient
+  gives every line a *different* actual decay time. The fix is the
+  standard Schroeder result: a comb of length `M` samples needs gain
+  `g = 10^(-3M / (RT60·fs))` to reach -60dB after `RT60` seconds, computed
+  per comb from its own length so every line agrees on the same decay time
+  instead of 8 lines quietly disagreeing. The same idea sets the damping
+  coefficient from a target high-frequency RT60 as a fraction of the
+  low-frequency one (Tone), rather than an arbitrary damping range -- see
+  the derivation in `HallRoomReverbModule.h`. 3 spaces: **Room** (warm,
+  small/dense, RT60 0.3-1.8s), **Hall** (clear, spacious, RT60 0.8-4.5s --
+  the least-modified of the three), **Plate** (metallic, extended highs,
+  RT60 1.0-5.5s and deliberately tuned *bigger* than Hall -- longer
+  comb/allpass line-length scale, a longer RT60 ceiling, and denser
+  allpass diffusion, the way a real plate's whole surface resonates almost
+  simultaneously). (A Shimmer mode — pitch-shifted feedback — was tried
+  and pulled after it produced a runaway-feedback squeal; may come back
+  once the feedback loop gain is worked out properly against a real
+  reference rather than guessed.) The original Lexicon-480L-captured IRs
+  this module used to convolve against are still in
+  `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
   preset). Ships with 6 factory presets covering clean, edge-of-breakup,

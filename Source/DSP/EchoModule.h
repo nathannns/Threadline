@@ -27,6 +27,13 @@
 // on the real unit, the direct (preamp-colored) signal is always present
 // once patched in, and the knob adds echo volume on top of it rather than
 // trading dry for wet.
+//
+// Below that self-oscillation zone, Sustain's feedback curve is derived
+// from an explicit target repeat count N rather than picked by eye: after
+// N repeats the tail should be about -40dB down (g^N = 10^(-40/20) = 0.01),
+// so g = 10^(-2/N). That maps the knob to "how many times do you want to
+// hear it" — the quantity Sustain actually controls perceptually — instead
+// of an arbitrary coefficient range. See EchoModule::setParameters.
 class EchoModule
 {
 public:

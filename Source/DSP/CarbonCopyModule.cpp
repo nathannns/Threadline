@@ -40,11 +40,31 @@ void CarbonCopyModule::setParameters (float timeMs, float regenPercent, float mi
 {
     delaySamples.setTargetValue (juce::jlimit (20.0f, 600.0f, timeMs) * 0.001f * static_cast<float> (sampleRate));
 
-    // Near-self-oscillation at max Regen, same as the real pedal -- bounded
-    // by the tanh safety rail in process() rather than capped safely below
-    // unity.
+    // Below the crossover, Regen targets an explicit number of audible
+    // repeats N (1 to 35) rather than an arbitrary feedback curve: after N
+    // repeats the tail should be down about -40dB (g^N = 10^(-40/20) =
+    // 0.01), so g = 10^(-2/N) -- a knob position maps to "how many times
+    // do you want to hear it," which is what Regen actually controls
+    // perceptually, rather than a raw coefficient. Above the crossover,
+    // Regen continues smoothly into near-self-oscillation, same as the
+    // real pedal's actual ceiling -- bounded by the tanh safety rail in
+    // process() rather than capped safely below unity.
     const auto regen01 = juce::jlimit (0.0f, 1.0f, regenPercent * 0.01f);
-    feedbackValue.setTargetValue (juce::jmap (regen01, 0.0f, 1.02f));
+    constexpr float crossover = 0.9f;
+    constexpr float maxRepeats = 35.0f;
+    const auto feedbackAtCrossover = std::pow (10.0f, -2.0f / maxRepeats);
+    float feedbackTarget;
+    if (regen01 < crossover)
+    {
+        const auto repeatCount = juce::jmap (regen01 / crossover, 1.0f, maxRepeats);
+        feedbackTarget = std::pow (10.0f, -2.0f / repeatCount);
+    }
+    else
+    {
+        const auto oscillationProgress = (regen01 - crossover) / (1.0f - crossover);
+        feedbackTarget = juce::jmap (oscillationProgress, feedbackAtCrossover, 1.02f);
+    }
+    feedbackValue.setTargetValue (feedbackTarget);
 
     wetMix.setTargetValue (enabled ? juce::jlimit (0.0f, 1.0f, mixPercent * 0.01f) : 0.0f);
     modEnabled = modOn;

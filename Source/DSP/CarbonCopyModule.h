@@ -16,6 +16,13 @@
 // character on the repeats; off by default, same as the real unit's stock
 // switch position. Regen reaches near-self-oscillation at maximum, same as
 // the real pedal, bounded by a tanh safety rail.
+//
+// Below that near-self-oscillation zone, Regen's feedback curve is derived
+// from an explicit target repeat count N rather than picked by eye: after
+// N repeats the tail should be about -40dB down (g^N = 10^(-40/20) = 0.01),
+// so g = 10^(-2/N). That maps the knob to "how many times do you want to
+// hear it" instead of an arbitrary coefficient range. See
+// CarbonCopyModule::setParameters.
 class CarbonCopyModule
 {
 public:

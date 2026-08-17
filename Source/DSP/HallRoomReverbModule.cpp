@@ -15,20 +15,20 @@ namespace
     // place -- see file header.
     constexpr float inputGain = 0.015f;
 
-    // Model 0 = Room, 1 = Hall, 2 = Plate (matches getModelName()). Hall
-    // uses sizeScale 1.0 and the roomOffset/roomScale JUCE itself uses
-    // (0.70/0.28, giving the exact same 0.70-0.98 feedback range as a
-    // stock juce::Reverb) -- it's the least-modified of the three, closest
-    // to an unmodified port. Room is scaled down and given a lower
-    // feedback ceiling; Plate is scaled up, given a higher ceiling than
-    // Hall, and a denser allpass diffusion coefficient plus a fixed
-    // brightness bias -- deliberately bigger and more "extended-highs"
-    // than Hall, per its real-world character.
+    // Model 0 = Room, 1 = Hall, 2 = Plate (matches getModelName()). Decay
+    // now sets an explicit RT60 target in seconds (rt60Low, per model
+    // range below) instead of a raw feedback coefficient -- see file
+    // header for why that's the mathematically correct quantity to expose
+    // rather than "roomSize". Plate gets both a bigger comb/allpass line
+    // scale AND a longer RT60 ceiling than Hall, plus denser allpass
+    // diffusion and a ratioBias that keeps its high-frequency RT60 closer
+    // to its low-frequency one (brighter, "extended highs") even at
+    // matched Tone settings.
     constexpr float modelSizeScale[HallRoomReverbModule::numModels]      { 0.55f, 1.0f, 1.3f };
-    constexpr float modelRoomOffset[HallRoomReverbModule::numModels]     { 0.60f, 0.70f, 0.72f };
-    constexpr float modelRoomScale[HallRoomReverbModule::numModels]      { 0.20f, 0.28f, 0.27f };
+    constexpr float modelRt60LowMin[HallRoomReverbModule::numModels]     { 0.3f, 0.8f, 1.0f };
+    constexpr float modelRt60LowMax[HallRoomReverbModule::numModels]     { 1.8f, 4.5f, 5.5f };
+    constexpr float modelRatioBias[HallRoomReverbModule::numModels]      { 0.0f, 0.0f, 0.15f };
     constexpr float modelAllpassFeedback[HallRoomReverbModule::numModels] { 0.5f, 0.5f, 0.65f };
-    constexpr float modelDampBias[HallRoomReverbModule::numModels]       { 0.0f, 0.0f, -0.15f };
 
     // With correct gain-staging this should rarely actually trigger --
     // kept as a backstop, not a routine level-setter, since resonant combs
@@ -115,18 +115,27 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayN
         activeModel = modelIndex;
     }
 
-    // Exactly JUCE's own roomSize -> feedback mapping, per model (Decay
-    // knob plays the role of their `parameters.roomSize`).
+    // Decay -> the low-frequency (DC) RT60 target in seconds, per model.
     const auto decay01 = juce::jlimit (0.0f, 1.0f, decayNormalised);
-    feedback = decay01 * modelRoomScale[activeModel] + modelRoomOffset[activeModel];
+    rt60Low = juce::jmap (decay01, modelRt60LowMin[activeModel], modelRt60LowMax[activeModel]);
 
-    // Darker (lower Tone) = more damping = highs decay faster than lows in
-    // the tail, same as real air absorption; kept well short of 1.0 so full
-    // dark still sounds like a darkened room, not a muffled thump. Plate's
-    // fixed negative bias keeps its extended-highs character even at
-    // matched Tone settings.
-    const auto darkness = 1.0f - juce::jlimit (0.0f, 1.0f, toneNormalised);
-    damp = juce::jlimit (0.02f, 0.9f, juce::jmap (darkness, 0.05f, 0.65f) + modelDampBias[activeModel]);
+    // Tone -> the high-frequency RT60 as a fraction of rt60Low (darker =
+    // smaller fraction = highs die much faster than lows, same as real air
+    // absorption). Plate's ratio bias keeps its extended-highs character
+    // even at matched Tone settings.
+    const auto toneClamped = juce::jlimit (0.0f, 1.0f, toneNormalised);
+    const auto ratio = juce::jlimit (0.02f, 0.98f,
+        juce::jmap (toneClamped, 0.05f, 0.95f) + modelRatioBias[activeModel]);
+    rt60High = rt60Low * ratio;
+
+    updateDecayTimes();
+}
+
+void HallRoomReverbModule::updateDecayTimes()
+{
+    auto& tank = tanks[activeModel];
+    for (auto& c : tank.combL) c.setDecayTimes (rt60Low, rt60High, sampleRate);
+    for (auto& c : tank.combR) c.setDecayTimes (rt60Low, rt60High, sampleRate);
 }
 
 void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
@@ -185,8 +194,8 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
         const auto input = (dryL + dryR) * 0.5f * inputGain;
 
         float outL = 0.0f, outR = 0.0f;
-        for (auto& c : tank.combL) outL += c.process (input, damp, feedback);
-        for (auto& c : tank.combR) outR += c.process (input, damp, feedback);
+        for (auto& c : tank.combL) outL += c.process (input);
+        for (auto& c : tank.combR) outR += c.process (input);
         for (auto& a : tank.allpassL) outL = a.process (outL);
         for (auto& a : tank.allpassR) outR = a.process (outR);
 

@@ -59,16 +59,41 @@ void EchoModule::setParameters (float timeMs, float sustainPercent, float volume
     mode = modeIn;
 
     const auto sustain01 = juce::jlimit (0.0f, 1.0f, sustainPercent * 0.01f);
-    // Echo mode reaches genuine self-oscillation at max Sustain, same as the
-    // real EP-3 -- pushed slightly past unity rather than capped safely
-    // below it, matching the real unit's actual ceiling. Sound-on-Sound
-    // disables the erase head on the real machine, so layers persist far
-    // longer than any Echo-mode repeat regardless of Sustain; still scaled
-    // by Sustain here so the knob stays useful rather than becoming a
-    // no-op in that mode.
-    const auto feedbackTarget = mode == Mode::soundOnSound
-        ? juce::jmap (sustain01, 0.90f, 0.998f)
-        : juce::jmap (sustain01, 0.0f, 1.03f);
+    float feedbackTarget;
+    if (mode == Mode::soundOnSound)
+    {
+        // Sound-on-Sound disables the erase head on the real machine, so
+        // layers persist far longer than any Echo-mode repeat regardless
+        // of Sustain; still scaled by Sustain here so the knob stays
+        // useful rather than becoming a no-op in that mode.
+        feedbackTarget = juce::jmap (sustain01, 0.90f, 0.998f);
+    }
+    else
+    {
+        // Below the crossover, Sustain targets an explicit number of
+        // audible repeats N (1 to 40) rather than an arbitrary feedback
+        // curve: after N repeats the tail should be down about -40dB
+        // (g^N = 10^(-40/20) = 0.01), so g = 10^(-2/N) -- a knob position
+        // maps to "how many times do you want to hear it," which is what
+        // Sustain actually controls perceptually, rather than a raw
+        // coefficient. Above the crossover, Sustain continues smoothly
+        // into genuine self-oscillation, pushed slightly past unity same
+        // as the real EP-3's actual ceiling rather than capped safely
+        // below it.
+        constexpr float crossover = 0.9f;
+        constexpr float maxRepeats = 40.0f;
+        const auto feedbackAtCrossover = std::pow (10.0f, -2.0f / maxRepeats);
+        if (sustain01 < crossover)
+        {
+            const auto repeatCount = juce::jmap (sustain01 / crossover, 1.0f, maxRepeats);
+            feedbackTarget = std::pow (10.0f, -2.0f / repeatCount);
+        }
+        else
+        {
+            const auto oscillationProgress = (sustain01 - crossover) / (1.0f - crossover);
+            feedbackTarget = juce::jmap (oscillationProgress, feedbackAtCrossover, 1.03f);
+        }
+    }
     feedbackValue.setTargetValue (feedbackTarget);
 
     const auto volume01 = juce::jlimit (0.0f, 1.0f, volumePercent * 0.01f);
