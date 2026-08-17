@@ -171,7 +171,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // retired — SpringModule is no longer part of the chain.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("reverbOn"), "Reverb On", false));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("reverbModel"), "Reverb Model",
-        juce::StringArray { "Room", "Hall", "Plate", "Shimmer" }, 1));
+        juce::StringArray { "Room", "Hall", "Plate" }, 1));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbPreDelay"), "Reverb Pre-Delay",
         Range (0.0f, 1.0f, 0.001f), 0.0f));
     // Maps to the reverb tank's comb feedback (see HallRoomReverbModule) --

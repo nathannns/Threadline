@@ -2,32 +2,53 @@
 
 namespace
 {
-    // Classic Freeverb (Jezar) tank tuning, in samples at 44.1kHz -- chosen
-    // to avoid coincident resonances between the 8 parallel combs. Scaled
-    // per Model (size) and sample rate in prepareTank().
-    constexpr int combTuningL[HallRoomReverbModule::numCombs] { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
-    constexpr int allpassTuningL[HallRoomReverbModule::numAllpasses] { 556, 441, 341, 225 };
-    constexpr int stereoSpread = 23;
+    // FDN line tuning, in samples at 44.1kHz -- chosen to avoid coincident
+    // resonances between the 8 lines. Scaled per Model (size) and sample
+    // rate in prepareTank().
+    constexpr int lineTuning[HallRoomReverbModule::numLines] { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
 
-    // Model 0 = Room, 1 = Hall, 2 = Plate, 3 = Shimmer (matches
-    // getModelName()). Size scales the comb/allpass line lengths (bigger =
-    // sparser early build-up, bigger sense of space); the feedback range
-    // sets each space's natural decay ceiling before the Decay knob is
-    // applied. Plate runs a higher allpass feedback (denser diffusion) and
-    // a brighter fixed damping bias, matching the real RV-6's "metallic,
-    // extended high-frequency range" description. Shimmer reuses Hall's
-    // tank -- its character comes from the external pitch-shift feedback
-    // loop in process(), not from the tank tuning itself.
-    constexpr float modelSizeScale[HallRoomReverbModule::numModels]      { 0.55f, 1.3f, 0.4f, 1.3f };
-    constexpr float modelFeedbackMin[HallRoomReverbModule::numModels]    { 0.60f, 0.72f, 0.68f, 0.70f };
-    constexpr float modelFeedbackMax[HallRoomReverbModule::numModels]    { 0.90f, 0.985f, 0.95f, 0.98f };
-    constexpr float modelAllpassFeedback[HallRoomReverbModule::numModels] { 0.5f, 0.5f, 0.65f, 0.5f };
-    constexpr float modelDamp1Bias[HallRoomReverbModule::numModels]      { 0.0f, 0.0f, -0.15f, 0.0f };
+    // Model 0 = Room, 1 = Hall, 2 = Plate (matches getModelName()). Size
+    // scales the FDN line lengths (bigger = sparser early build-up in the
+    // late tail, bigger sense of space); Plate is deliberately given a
+    // bigger scale AND a higher decay ceiling than Hall -- see file header.
+    constexpr float modelSizeScale[HallRoomReverbModule::numModels]   { 0.55f, 1.3f, 1.6f };
+    constexpr float modelFeedbackMin[HallRoomReverbModule::numModels] { 0.60f, 0.72f, 0.75f };
+    constexpr float modelFeedbackMax[HallRoomReverbModule::numModels] { 0.90f, 0.985f, 0.99f };
+    // Plate's fixed brightness bias -- "extended high-frequency range" is a
+    // trait of the algorithm itself, not something Tone should have to
+    // compensate for.
+    constexpr float modelDamp1Bias[HallRoomReverbModule::numModels]   { 0.0f, 0.0f, -0.15f };
 
-    // A comb sum can in principle build gain at coincident resonances even
-    // though each individual comb is stable (feedback < 1) -- this keeps the
-    // tank's output bounded by construction regardless of parameter
-    // combination, the same tanh-rail technique used in EchoModule.
+    // Early-reflection tap patterns (ms, gain), scaled down by erGainScale
+    // so they sit comfortably under the safety rail's knee in normal use --
+    // the tanh clamp should rarely actually engage, or it would flatten the
+    // level differences these tables are designed to create. Room: modest
+    // density, moderate spread. Hall: sparser and more spread out, with a
+    // clearer gap before the reflections thicken -- reads as a bigger
+    // physical distance to the walls. Plate: near-instantaneous and very
+    // dense with almost no gap -- a real plate's whole surface resonates
+    // almost simultaneously, which is what makes it read as bigger/more
+    // enveloping than Hall despite the shorter individual tap delays.
+    constexpr float erGainScale = 0.18f;
+    constexpr float roomTapMs[8]   { 3.0f, 7.0f, 12.0f, 18.0f, 25.0f, 33.0f, 42.0f, 52.0f };
+    constexpr float roomTapGain[8] { 0.90f, 0.75f, 0.62f, 0.50f, 0.40f, 0.32f, 0.25f, 0.20f };
+    constexpr float hallTapMs[8]   { 12.0f, 24.0f, 38.0f, 54.0f, 71.0f, 90.0f, 110.0f, 132.0f };
+    constexpr float hallTapGain[8] { 0.55f, 0.50f, 0.44f, 0.38f, 0.32f, 0.27f, 0.22f, 0.18f };
+    constexpr float plateTapMs[10]   { 0.6f, 1.4f, 2.3f, 3.3f, 4.4f, 5.6f, 6.9f, 8.3f, 9.8f, 11.4f };
+    constexpr float plateTapGain[10] { 0.95f, 0.92f, 0.88f, 0.85f, 0.82f, 0.78f, 0.75f, 0.72f, 0.68f, 0.65f };
+    constexpr float rStereoStretch = 1.03f; // decorrelates ER between channels even for a mono dry signal
+
+    // Two rows of an 8-point Hadamard matrix -- mutually orthogonal +-1
+    // patterns used to extract a decorrelated stereo pair from the FDN's 8
+    // shared lines (rather than duplicating the whole network per channel).
+    constexpr float outSignsL[HallRoomReverbModule::numLines] { 1, -1, 1, -1, 1, -1, 1, -1 };
+    constexpr float outSignsR[HallRoomReverbModule::numLines] { 1, 1, -1, -1, 1, 1, -1, -1 };
+    const float outputScale = 1.0f / std::sqrt (static_cast<float> (HallRoomReverbModule::numLines));
+
+    // A Householder-mixed FDN is already energy-preserving/lossless before
+    // the loop-gain scalar is applied, so unlike the old independent-comb
+    // design this rarely needs the clamp in normal use -- it's here for
+    // pathological parameter combinations, not routine operation.
     float smoothRail (float value, float knee, float ceiling)
     {
         const auto magnitude = std::abs (value);
@@ -42,21 +63,29 @@ void HallRoomReverbModule::prepareTank (Tank& tank, int modelIndex)
 {
     const auto srScale = static_cast<float> (sampleRate / 44100.0);
     const auto scale = srScale * modelSizeScale[modelIndex];
-    const auto spread = juce::roundToInt (static_cast<float> (stereoSpread) * scale);
-    const auto allpassFeedback = modelAllpassFeedback[modelIndex];
 
-    for (int i = 0; i < numCombs; ++i)
+    for (int i = 0; i < numLines; ++i)
+        tank.lines[i].setSize (juce::roundToInt (static_cast<float> (lineTuning[i]) * scale));
+
+    const float* tapMs = roomTapMs; const float* tapGains = roomTapGain; int tapCount = 8;
+    if (modelIndex == 1) { tapMs = hallTapMs; tapGains = hallTapGain; tapCount = 8; }
+    else if (modelIndex == 2) { tapMs = plateTapMs; tapGains = plateTapGain; tapCount = 10; }
+
+    auto setupEr = [this, tapMs, tapGains, tapCount] (EarlyReflections& er, float stretch)
     {
-        tank.combsL[i].setSize (juce::roundToInt (static_cast<float> (combTuningL[i]) * scale));
-        tank.combsR[i].setSize (juce::roundToInt (static_cast<float> (combTuningL[i]) * scale) + spread);
-    }
-    for (int i = 0; i < numAllpasses; ++i)
-    {
-        tank.allpassL[i].setSize (juce::roundToInt (static_cast<float> (allpassTuningL[i]) * scale));
-        tank.allpassL[i].feedback = allpassFeedback;
-        tank.allpassR[i].setSize (juce::roundToInt (static_cast<float> (allpassTuningL[i]) * scale) + spread);
-        tank.allpassR[i].feedback = allpassFeedback;
-    }
+        er.numActiveTaps = tapCount;
+        auto maxSamples = 0;
+        for (int t = 0; t < tapCount; ++t)
+        {
+            er.tapDelaySamples[t] = juce::roundToInt (tapMs[t] * stretch * 0.001f * static_cast<float> (sampleRate));
+            er.tapGain[t] = tapGains[t] * erGainScale;
+            maxSamples = juce::jmax (maxSamples, er.tapDelaySamples[t]);
+        }
+        er.setBufferSize (maxSamples + 16);
+    };
+    setupEr (tank.erL, 1.0f);
+    setupEr (tank.erR, rStereoStretch);
+
     tank.reset();
 }
 
@@ -78,13 +107,6 @@ void HallRoomReverbModule::prepare (const juce::dsp::ProcessSpec& spec)
         prepareTank (tanks[model], model);
     activeModel = 0;
 
-    // ~70ms grains: long enough to sound smooth/ambient rather than choppy,
-    // short enough to track pitch changes reasonably promptly.
-    const auto grainSamples = static_cast<float> (sampleRate) * 0.07f;
-    const auto shifterBufferSize = juce::roundToInt (grainSamples) + 16;
-    shimmerShifterL.prepare (shifterBufferSize, grainSamples);
-    shimmerShifterR.prepare (shifterBufferSize, grainSamples);
-
     wetMix.reset (spec.sampleRate, 0.03);
     reset();
 }
@@ -92,9 +114,6 @@ void HallRoomReverbModule::prepare (const juce::dsp::ProcessSpec& spec)
 void HallRoomReverbModule::reset()
 {
     for (auto& tank : tanks) tank.reset();
-    shimmerShifterL.reset();
-    shimmerShifterR.reset();
-    previousWetL = previousWetR = 0.0f;
     rumbleFilter.reset();
     preDelayLine.reset();
     modPhaseLeft = 0.0f;
@@ -116,33 +135,24 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayN
     if (modelIndex != activeModel)
     {
         tanks[modelIndex].reset(); // no stale energy from the previous space
-        shimmerShifterL.reset();
-        shimmerShifterR.reset();
-        previousWetL = previousWetR = 0.0f;
         activeModel = modelIndex;
     }
 
     decayNormalised = juce::jlimit (0.0f, 1.0f, decayNormalised);
-    const auto feedback = juce::jmap (decayNormalised, modelFeedbackMin[activeModel], modelFeedbackMax[activeModel]);
+    loopFeedback = juce::jmap (decayNormalised, modelFeedbackMin[activeModel], modelFeedbackMax[activeModel]);
 
     // Darker (lower Tone) = more damping = highs decay faster than lows in
     // the tail, same as real air absorption; kept well short of 1.0 so full
-    // dark still sounds like a darkened room, not a muffled thump. Plate's
-    // fixed negative bias keeps its extended-highs character even at
-    // matched Tone settings, per the real RV-6's Plate description.
+    // dark still sounds like a darkened room, not a muffled thump.
     const auto darkness = 1.0f - juce::jlimit (0.0f, 1.0f, toneNormalised);
     const auto damp1 = juce::jlimit (0.02f, 0.9f,
         juce::jmap (darkness, 0.05f, 0.65f) + modelDamp1Bias[activeModel]);
     const auto damp2 = 1.0f - damp1;
 
-    for (auto* combs : { tanks[activeModel].combsL, tanks[activeModel].combsR })
+    for (auto& line : tanks[activeModel].lines)
     {
-        for (int i = 0; i < numCombs; ++i)
-        {
-            combs[i].feedback = feedback;
-            combs[i].damp1 = damp1;
-            combs[i].damp2 = damp2;
-        }
+        line.damp1 = damp1;
+        line.damp2 = damp2;
     }
 }
 
@@ -189,40 +199,48 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
         if (modPhaseRight >= juce::MathConstants<float>::twoPi) modPhaseRight -= juce::MathConstants<float>::twoPi;
     }
 
-    // The tank itself: 8 parallel combs summed, then 4 series allpasses,
-    // run per-channel so any existing stereo width upstream (e.g. the dual
-    // cab IR blend) carries through rather than being collapsed to mono.
-    // Shimmer additionally pitch-shifts its own previous output up an
-    // octave and feeds a portion back into this sample's tank input, so
-    // the tail cascades upward on top of the normal reverberant decay.
-    constexpr float inputGain = 0.03f;
-    constexpr float shimmerFeedback = 0.5f;
+    // The tank: an 8-line Householder-mixed FDN for the late diffuse tail,
+    // plus a per-channel multi-tap early-reflection generator running in
+    // parallel -- see file header for why both stages matter.
+    constexpr float inputGain = 0.06f;
     auto& tank = tanks[activeModel];
     for (int sample = 0; sample < samples; ++sample)
     {
-        auto inputL = wetBuffer.getSample (0, sample) * inputGain;
-        auto inputR = (channels > 1 ? wetBuffer.getSample (1, sample) : wetBuffer.getSample (0, sample)) * inputGain;
+        const auto dryL = wetBuffer.getSample (0, sample);
+        const auto dryR = channels > 1 ? wetBuffer.getSample (1, sample) : dryL;
+        const auto inputL = dryL * inputGain;
+        const auto inputR = dryR * inputGain;
 
-        if (activeModel == shimmerModel)
+        float yd[numLines];
+        float sum = 0.0f;
+        for (int i = 0; i < numLines; ++i)
         {
-            inputL += shimmerShifterL.process (previousWetL) * shimmerFeedback;
-            inputR += shimmerShifterR.process (previousWetR) * shimmerFeedback;
+            yd[i] = tank.lines[i].readDamped();
+            sum += yd[i];
         }
+        const auto reflected = sum * (2.0f / static_cast<float> (numLines));
 
-        float wetL = 0.0f, wetR = 0.0f;
-        for (auto& c : tank.combsL) wetL += c.process (inputL);
-        for (auto& c : tank.combsR) wetR += c.process (inputR);
-        for (auto& a : tank.allpassL) wetL = a.process (wetL);
-        for (auto& a : tank.allpassR) wetR = a.process (wetR);
+        float tailL = 0.0f, tailR = 0.0f;
+        for (int i = 0; i < numLines; ++i)
+        {
+            tailL += yd[i] * outSignsL[i];
+            tailR += yd[i] * outSignsR[i];
 
-        wetL = smoothRail (wetL, 1.2f, 3.5f);
-        wetR = smoothRail (wetR, 1.2f, 3.5f);
+            const auto z = yd[i] - reflected; // Householder-reflected (energy-preserving) mix
+            const auto injected = (i % 2 == 0) ? inputL : inputR;
+            tank.lines[i].writeBack (injected + z * loopFeedback);
+        }
+        tailL *= outputScale;
+        tailR *= outputScale;
+
+        const auto erOutL = tank.erL.process (dryL);
+        const auto erOutR = tank.erR.process (dryR);
+
+        const auto wetL = smoothRail (tailL + erOutL, 1.2f, 3.5f);
+        const auto wetR = smoothRail (tailR + erOutR, 1.2f, 3.5f);
         wetBuffer.setSample (0, sample, wetL);
         if (channels > 1)
             wetBuffer.setSample (1, sample, wetR);
-
-        previousWetL = wetL;
-        previousWetR = wetR;
     }
 
     juce::dsp::AudioBlock<float> wetBlock (wetBuffer);

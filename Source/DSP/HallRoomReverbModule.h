@@ -1,37 +1,41 @@
 #pragma once
 #include <JuceHeader.h>
 
-// Algorithmic hall/room reverb -- a parallel-comb + series-allpass tank
-// (the classic Schroeder/Moorer "Freeverb" topology: 8 comb filters summed,
-// then 4 series allpass filters for diffusion), tuned to emulate the Boss
-// RV-6's Room / Hall / Plate / Shimmer modes rather than convolving against
-// a captured space. The RV-6 (simpler than the RV-200 -- 3 knobs plus an
-// 8-position mode switch, no deep menu-diving) describes these as: Room =
-// warm, Hall = clear and spacious, Plate = metallic with extended highs,
-// Shimmer = pitch-shifted "fantasy-like" overtones. Modeled here as four
-// pre-sized/pre-tuned tanks rather than one continuously-sized model,
-// matching this module's existing control surface.
+// Algorithmic Room/Hall/Plate reverb -- an 8-line Feedback Delay Network
+// (FDN) with a Householder mixing matrix for the late, diffuse tail, plus a
+// separate per-channel multi-tap early-reflection (ER) generator for the
+// direct, discrete-echo onset that actually gives a space its sense of size
+// and distance -- the previous version had no ER stage at all, just 8
+// mutually-independent comb filters summed at the output (classic 1996
+// Freeverb topology), which is why it read as thin/metallic rather than
+// spacious: independent combs don't exchange energy with each other, so
+// the diffuse buildup relies entirely on a following allpass chain, which
+// is comparatively weak. A Householder matrix mixes every line's output
+// into every other line's input each sample (all entries nonzero), which
+// is specifically what maximizes echo density in FDN reverb design -- this
+// is the standard architecture behind essentially every serious
+// algorithmic reverb since Stautner & Puckette (1982), not just an
+// incremental tweak.
 //
-// All four tanks are pre-allocated in prepare() so switching Model is just
-// an index swap on the audio thread -- no reload, no async, no click (the
-// newly-selected tank is reset first so no stale energy from a previous
-// Model plays back). Plate gets a brighter fixed damping bias and higher
-// allpass diffusion than Room/Hall/Shimmer, matching its "extended
-// high-frequency range" character -- a fixed trait of the algorithm itself,
-// not something the Tone knob should have to dial in by hand.
+// Three spaces -- Room (small/warm), Hall (larger/spacious), Plate
+// (metallic, extended highs) -- modeled on the Boss RV-6's mode
+// descriptions, as pre-allocated/pre-tuned tanks so switching Model is a
+// same-thread index swap with no reload or click. Plate is deliberately
+// tuned "bigger" than Hall: a longer FDN line-length scale, a higher decay
+// ceiling, and an early-reflection pattern that's nearly instantaneous and
+// extremely dense (no audible gap before the wash arrives) rather than
+// Hall's sparser, more spread-out taps -- a real plate's whole surface
+// resonates almost simultaneously, which reads as bigger/more enveloping
+// than a room-shaped space even though the physical device is smaller.
 //
-// Shimmer wraps the tank in an extra external feedback loop: each sample,
-// the tank's own (already-diffused) previous output is pitch-shifted up an
-// octave by a small two-tap granular shifter and fed back into the tank's
-// input, so the tail cascades upward in pitch on top of the normal
-// reverberant decay -- the same idea real shimmer reverbs use. Tone maps to
-// each comb's internal damping coefficient (a one-pole lowpass in the
-// feedback path, so highs decay faster than lows in the tail -- real
-// air-absorption behaviour, not a post-filter). Decay maps to comb feedback
-// within a per-model range. A tanh safety rail bounds the tank's output
-// regardless of parameter combination, since summed resonant combs (and the
-// shimmer feedback loop layered on top) can in principle build up gain at
-// coincident frequencies.
+// Tone maps to each line's internal damping coefficient (a one-pole
+// lowpass in the feedback path, so highs decay faster than lows in the
+// tail -- real air-absorption behaviour). Decay maps to the FDN's loop
+// gain within a per-space ceiling. A tanh safety rail bounds the final
+// output regardless of parameter combination; early-reflection gains are
+// kept comfortably below its knee in normal use so the clamp stays a true
+// safety net rather than something that flattens the intended level
+// differences between spaces.
 class HallRoomReverbModule
 {
 public:
@@ -45,23 +49,25 @@ public:
                         float widthPercent, bool enabled, int modelIndex);
     void process (juce::AudioBuffer<float>& buffer);
 
-    static constexpr int numModels = 4;
+    static constexpr int numModels = 3;
     static const char* getModelName (int index)
     {
-        static const char* names[numModels] { "Room", "Hall", "Plate", "Shimmer" };
+        static const char* names[numModels] { "Room", "Hall", "Plate" };
         return names[juce::jlimit (0, numModels - 1, index)];
     }
 
-    static constexpr int numCombs = 8;
-    static constexpr int numAllpasses = 4;
-    static constexpr int shimmerModel = 3;
+    static constexpr int numLines = 8;
+    static constexpr int maxTaps = 10;
 
 private:
-    struct Comb
+    // One FDN delay line. readDamped() and writeBack() are split (rather
+    // than one combined process() call, as the old independent-comb design
+    // used) because the Householder mix needs every line's damped output
+    // before any line can be written back to.
+    struct Line
     {
         std::vector<float> buffer;
         int writeIndex = 0;
-        float feedback = 0.5f;
         float damp1 = 0.2f, damp2 = 0.8f;
         float filterStore = 0.0f;
 
@@ -77,112 +83,69 @@ private:
             filterStore = 0.0f;
         }
 
-        float process (float input)
+        float readDamped()
         {
-            const auto output = buffer[static_cast<size_t> (writeIndex)];
-            filterStore = output * damp2 + filterStore * damp1;
-            buffer[static_cast<size_t> (writeIndex)] = input + filterStore * feedback;
+            const auto raw = buffer[static_cast<size_t> (writeIndex)];
+            filterStore = raw * damp2 + filterStore * damp1;
+            return filterStore;
+        }
+
+        void writeBack (float value)
+        {
+            buffer[static_cast<size_t> (writeIndex)] = value;
             if (++writeIndex >= static_cast<int> (buffer.size())) writeIndex = 0;
-            return output;
         }
     };
 
-    struct Allpass
+    // A fixed-tap delay line simulating the discrete early echoes off
+    // nearby boundaries -- the primary perceptual cue for a space's size
+    // and distance, independent of the late diffuse tail.
+    struct EarlyReflections
     {
         std::vector<float> buffer;
         int writeIndex = 0;
-        float feedback = 0.5f; // per-model: higher for Plate's denser diffusion
+        int numActiveTaps = 0;
+        int tapDelaySamples[maxTaps] {};
+        float tapGain[maxTaps] {};
 
-        void setSize (int size)
+        void setBufferSize (int size)
         {
-            buffer.assign (static_cast<size_t> (juce::jmax (4, size)), 0.0f);
+            buffer.assign (static_cast<size_t> (juce::jmax (8, size)), 0.0f);
             writeIndex = 0;
-        }
-
-        void reset() { std::fill (buffer.begin(), buffer.end(), 0.0f); }
-
-        float process (float input)
-        {
-            const auto bufOut = buffer[static_cast<size_t> (writeIndex)];
-            const auto output = -input + bufOut;
-            buffer[static_cast<size_t> (writeIndex)] = input + bufOut * feedback;
-            if (++writeIndex >= static_cast<int> (buffer.size())) writeIndex = 0;
-            return output;
-        }
-    };
-
-    struct Tank
-    {
-        Comb combsL[numCombs], combsR[numCombs];
-        Allpass allpassL[numAllpasses], allpassR[numAllpasses];
-
-        void reset()
-        {
-            for (auto& c : combsL) c.reset();
-            for (auto& c : combsR) c.reset();
-            for (auto& a : allpassL) a.reset();
-            for (auto& a : allpassR) a.reset();
-        }
-    };
-
-    // A small two-tap granular pitch shifter, fixed an octave up -- used
-    // only by the Shimmer model's feedback loop. Two read taps a half-grain
-    // apart, each sped up 2x and equal-power (sin^2/cos^2) crossfaded, so
-    // one tap's periodic reset (a jump back in the buffer) is masked by the
-    // other tap being near its window's peak.
-    struct PitchShifter
-    {
-        std::vector<float> buffer;
-        int writeIndex = 0;
-        float delayA = 0.0f, delayB = 0.0f;
-        float grainSamples = 3000.0f;
-        static constexpr float pitchRatio = 2.0f;
-
-        void prepare (int bufferSize, float grainSamplesIn)
-        {
-            buffer.assign (static_cast<size_t> (juce::jmax (8, bufferSize)), 0.0f);
-            grainSamples = juce::jmax (64.0f, grainSamplesIn);
-            reset();
         }
 
         void reset()
         {
             std::fill (buffer.begin(), buffer.end(), 0.0f);
             writeIndex = 0;
-            delayA = 0.0f;
-            delayB = grainSamples * 0.5f;
-        }
-
-        static float readInterpolated (const std::vector<float>& buf, int writeIdx, float delay)
-        {
-            const auto size = static_cast<float> (buf.size());
-            auto position = static_cast<float> (writeIdx) - delay;
-            while (position < 0.0f) position += size;
-            while (position >= size) position -= size;
-            const auto index0 = static_cast<int> (position);
-            const auto index1 = (index0 + 1) % static_cast<int> (size);
-            const auto fraction = position - static_cast<float> (index0);
-            return buf[static_cast<size_t> (index0)]
-                 + (buf[static_cast<size_t> (index1)] - buf[static_cast<size_t> (index0)]) * fraction;
         }
 
         float process (float input)
         {
             buffer[static_cast<size_t> (writeIndex)] = input;
+            const auto size = static_cast<int> (buffer.size());
+            float sum = 0.0f;
+            for (int t = 0; t < numActiveTaps; ++t)
+            {
+                auto readPos = writeIndex - tapDelaySamples[t];
+                while (readPos < 0) readPos += size;
+                sum += buffer[static_cast<size_t> (readPos)] * tapGain[t];
+            }
+            if (++writeIndex >= size) writeIndex = 0;
+            return sum;
+        }
+    };
 
-            delayA -= (pitchRatio - 1.0f);
-            delayB -= (pitchRatio - 1.0f);
-            if (delayA <= 0.0f) delayA += grainSamples;
-            if (delayB <= 0.0f) delayB += grainSamples;
+    struct Tank
+    {
+        Line lines[numLines];
+        EarlyReflections erL, erR;
 
-            const auto readA = readInterpolated (buffer, writeIndex, delayA);
-            const auto readB = readInterpolated (buffer, writeIndex, delayB);
-            const auto windowA = std::sin (juce::MathConstants<float>::pi * (delayA / grainSamples));
-            const auto windowB = std::sin (juce::MathConstants<float>::pi * (delayB / grainSamples));
-            const auto output = readA * windowA * windowA + readB * windowB * windowB;
-
-            if (++writeIndex >= static_cast<int> (buffer.size())) writeIndex = 0;
-            return output;
+        void reset()
+        {
+            for (auto& l : lines) l.reset();
+            erL.reset();
+            erR.reset();
         }
     };
 
@@ -190,9 +153,7 @@ private:
 
     Tank tanks[numModels];
     int activeModel = 0;
-
-    PitchShifter shimmerShifterL, shimmerShifterR;
-    float previousWetL = 0.0f, previousWetR = 0.0f;
+    float loopFeedback = 0.5f;
 
     // Fixed rumble cut on the wet tail, independent of the Tone knob --
     // keeps the tail from building up mud regardless of how bright Tone

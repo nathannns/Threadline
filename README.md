@@ -38,19 +38,26 @@ on/off toggle regardless) via the Overdrive Order switch.
   tape wow/flutter, and feedback-linked saturation are fixed characteristics
   here rather than separate Tone/Wobble/Drive knobs it doesn't have. Sustain
   reaches genuine self-oscillation at maximum, same as real hardware.
-- `HallRoomReverbModule` — algorithmic (not convolution) reverb: a classic
-  Freeverb-style parallel-comb + series-allpass tank, tuned to 4 spaces
-  modeled on the Boss RV-6's modes: **Room** (warm, small/dense), **Hall**
-  (clear, spacious), **Plate** (metallic, extended highs — higher allpass
-  diffusion plus a fixed brightness bias, not just a Tone setting), and
-  **Shimmer** (an extra external feedback loop pitch-shifts the tank's own
-  previous output up an octave and feeds it back in, cascading the tail
-  upward on top of the normal decay). Tone controls each comb's internal
-  damping (highs decay faster than lows in the tail, real air-absorption
-  behaviour); Decay controls comb feedback within a per-space ceiling, live
-  and continuous. The original Lexicon-480L-captured IRs this module used to
-  convolve against are still in `Resources/ImpulseResponses/HallRoom/` but
-  are no longer loaded.
+- `HallRoomReverbModule` — algorithmic (not convolution) reverb: an 8-line
+  Feedback Delay Network (FDN) with a Householder mixing matrix for the late,
+  diffuse tail, plus a separate per-channel multi-tap early-reflection
+  generator for the discrete-echo onset that actually cues a space's size
+  and distance (the first version had no early-reflection stage at all,
+  just independent comb filters summed at the output — which is why it
+  sounded thin/metallic rather than spacious). 3 spaces modeled on the Boss
+  RV-6's modes: **Room** (warm, small/dense), **Hall** (clear, spacious),
+  **Plate** (metallic, extended highs, and deliberately tuned *bigger* than
+  Hall — longer FDN lines, a higher decay ceiling, and near-instantaneous/
+  ultra-dense early reflections rather than Hall's sparser, more spread-out
+  taps, the way a real plate's whole surface resonates almost
+  simultaneously). Tone controls each line's internal damping (highs decay
+  faster than lows in the tail, real air-absorption behaviour); Decay
+  controls the FDN's loop gain within a per-space ceiling, live and
+  continuous. (A Shimmer mode — pitch-shifted feedback — was tried and
+  pulled after it produced a runaway-feedback squeal; may come back once
+  the feedback loop gain is worked out properly.) The original
+  Lexicon-480L-captured IRs this module used to convolve against are still
+  in `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
   preset). Ships with 6 factory presets covering clean, edge-of-breakup,
