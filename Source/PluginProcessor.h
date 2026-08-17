@@ -58,8 +58,9 @@ private:
     bool pBool (const char* paramId) const { return p (paramId) > 0.5f; }
 
     // Chain order: NoiseGate -> Input Gain -> Input Meter -> Compressor ->
-    // Klon -> TS9 -> Amp -> Cab (IR) -> Tremolo -> Chorus -> Echo (Delay) ->
-    // Reverb (Hall/Room) -> 9-Band EQ -> Output Gain -> Output Meter.
+    // Klon -> TS9 -> Amp -> Cab (IR) -> Tremolo -> Chorus (July) ->
+    // Echo (Plexy) -> Reverb (Hall/Room) -> 9-Band EQ -> Output Gain ->
+    // Output Meter.
     NoiseGateModule noiseGate;
     CompressorModule compressor;
     KlonModule klon;
@@ -80,9 +81,6 @@ private:
     double currentSampleRate = 44100.0;
     int lastCabAIRSelection = -1, lastCabBIRSelection = -1;
     bool tremoloWasActive = false, chorusWasActive = false, echoWasActive = false;
-    double cachedTempoBpm = -1.0;
-    int cachedEchoDivision = -1;
-    float cachedSyncedEchoMs = 375.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ThreadlineAudioProcessor)
 };

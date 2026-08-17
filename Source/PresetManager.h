@@ -198,10 +198,10 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 4.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 42.0f },
-            // Ping-Pong: the modern bonus mode, not an RE-201 characteristic.
-            { "echoOn", 1.0f }, { "echoSync", 0.0f }, { "echoPattern", 5.0f },
-            { "echoTime", 330.0f }, { "echoRepeats", 22.0f }, { "echoTone", 4800.0f },
-            { "echoWobble", 16.0f }, { "echoDrive", 22.0f }, { "echoMix", 13.0f },
+            // Plexy in Echo mode: a handful of clean-ish slapback repeats
+            // behind the lead, not self-oscillating.
+            { "echoOn", 1.0f }, { "echoMode", 0.0f },
+            { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.66f },
             { "reverbMix", 12.0f }, { "reverbWidth", 62.0f }
         });
@@ -231,9 +231,10 @@ private:
             { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
             { "chorusRate", 0.22f }, { "chorusDepth", 28.0f }, { "chorusLag", 35.0f },
             { "chorusDCV", 1.0f }, // Chorus
-            { "echoOn", 1.0f }, { "echoSync", 1.0f }, { "echoPattern", 4.0f },
-            { "echoDivision", 3.0f }, { "echoRepeats", 40.0f }, { "echoTone", 5200.0f },
-            { "echoWobble", 34.0f }, { "echoDrive", 20.0f }, { "echoMix", 23.0f },
+            // Sound-on-Sound: layered, long-sustaining repeats that wash
+            // into the reverb tail rather than distinct slapback.
+            { "echoOn", 1.0f }, { "echoMode", 1.0f },
+            { "echoTime", 450.0f }, { "echoSustain", 55.0f }, { "echoVolume", 26.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbPreDelay", 0.18f },
             { "reverbDecay", 0.82f }, { "reverbTone", 0.50f }, { "reverbMix", 29.0f },
             { "reverbWidth", 92.0f }

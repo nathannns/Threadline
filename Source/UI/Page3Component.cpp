@@ -51,21 +51,30 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     }
     dcvButtons[1].setToggleState (true, juce::dontSendNotification);
 
-    buildSection (echoSection, *this, processor.apvts, "Delay", "echoOn", {
-        { "echoTime", "Time" }, { "echoRepeats", "Repeats" }, { "echoTone", "Tone" },
-        { "echoWobble", "Wobble" }, { "echoDrive", "Drive" }, { "echoMix", "Mix" }
+    // Plexy's exact EP-3 control surface: Time (the real slider, as a knob
+    // here), Sustain (feedback), Volume (echo level), and an Echo /
+    // Sound-on-Sound mode switch -- no separate Tone/Wobble/Drive knobs.
+    buildSection (echoSection, *this, processor.apvts, "Plexy", "echoOn", {
+        { "echoTime", "Time" }, { "echoSustain", "Sustain" }, { "echoVolume", "Volume" }
     }, false, SectionPlate::Delay);
-    echoPatternBox.addItemList ({ "STRAIGHT", "BOUNCE", "GALLOP", "CLUSTER", "WASH", "PING-PONG" }, 1);
-    echoDivisionBox.addItemList ({ "1/4", "1/4 D", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" }, 1);
-    addAndMakeVisible (echoPatternBox);
-    addAndMakeVisible (echoDivisionBox);
-    addAndMakeVisible (echoSyncButton);
-    echoPatternAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        processor.apvts, "echoPattern", echoPatternBox);
-    echoDivisionAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        processor.apvts, "echoDivision", echoDivisionBox);
-    echoSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, "echoSync", echoSyncButton);
+    constexpr int echoModeRadioGroup = 9006;
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& button = echoModeButtons[i];
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (echoModeRadioGroup, juce::dontSendNotification);
+        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
+        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+        addAndMakeVisible (button);
+        button.onClick = [this, i]
+        {
+            if (auto* parameter = processor.apvts.getParameter ("echoMode"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
+        };
+    }
+    echoModeButtons[0].setToggleState (true, juce::dontSendNotification);
 
     // Reverb: 3 Lexicon 480L hall/room convolutions (the old Rockalizer
     // spring-tank models are retired). Decay re-envelopes the loaded IR's
@@ -92,6 +101,11 @@ void Page3Component::timerCallback()
     for (int i = 0; i < 3; ++i)
         if (dcvButtons[i].getToggleState() != (i == dcv))
             dcvButtons[i].setToggleState (i == dcv, juce::dontSendNotification);
+
+    const auto echoMode = juce::roundToInt (processor.apvts.getRawParameterValue ("echoMode")->load());
+    for (int i = 0; i < 2; ++i)
+        if (echoModeButtons[i].getToggleState() != (i == echoMode))
+            echoModeButtons[i].setToggleState (i == echoMode, juce::dontSendNotification);
 }
 
 void Page3Component::paint (juce::Graphics& g)
@@ -148,29 +162,26 @@ void Page3Component::resized()
     }
     area.removeFromTop (gap);
 
-    // Delay: same treatment — pattern/division/sync move to the right of the
-    // knob row instead of widening the header.
+    // Plexy: same treatment — the Echo/Sound-on-Sound mode switch moves to
+    // the right of the knob row instead of widening the header.
     layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight));
     {
         auto echoBounds = echoSection.bounds;
         const auto controlWidth = juce::jlimit (150, 200, echoBounds.getWidth() / 6);
         const auto controlsLeft = echoBounds.getRight() - 14 - controlWidth;
         constexpr int rowHeight = 24;
-        const auto rowY1 = echoBounds.getY() + 11;
-        const auto rowY2 = echoBounds.getBottom() - rowHeight - 9;
+        const auto rowY = echoBounds.getCentreY() - rowHeight / 2;
 
-        echoPatternBox.setBounds (controlsLeft, rowY1, controlWidth, rowHeight);
-        constexpr int syncWidth = 46;
-        const auto divWidth = controlWidth - syncWidth - 4;
-        echoDivisionBox.setBounds (controlsLeft, rowY2, divWidth, rowHeight);
-        echoSyncButton.setBounds (controlsLeft + divWidth + 4, rowY2, syncWidth, rowHeight);
+        const auto modeWidth = (controlWidth - 4) / 2;
+        echoModeButtons[0].setBounds (controlsLeft, rowY, modeWidth, rowHeight);
+        echoModeButtons[1].setBounds (controlsLeft + modeWidth + 4, rowY, controlWidth - modeWidth - 4, rowHeight);
 
-        if (echoSection.knobs.size() == 6)
+        if (echoSection.knobs.size() == 3)
         {
             const auto knobsLeft = echoBounds.getX() + juce::jlimit (112, 210, echoBounds.getWidth() / 5) + 18;
             const auto knobsRight = controlsLeft - 18;
             const auto knobsWidth = knobsRight - knobsLeft;
-            const float positions[] { 0.07f, 0.238f, 0.406f, 0.574f, 0.742f, 0.91f };
+            const float positions[] { 0.14f, 0.5f, 0.86f };
             for (size_t i = 0; i < echoSection.knobs.size(); ++i)
             {
                 auto& slider = echoSection.knobs[i]->slider;

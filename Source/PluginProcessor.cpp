@@ -148,30 +148,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusDCV"), "July D-C-V",
         juce::StringArray { "Dry", "Chorus", "Vibrato" }, 1));
 
-    // --- Echo (Delay) ---
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Delay On", false));
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoSync"), "Delay Sync", false));
-    // Names kept as the friendlier originals; underneath, each pattern's tap
-    // ratios now match the Roland RE-201 Space Echo's actual fixed, equally-
-    // spaced 3-head tape geometry (delay ratio exactly 1:2:3 off head 1's
-    // time) instead of the previous made-up ratios. Ping-Pong is a new,
-    // explicitly modern bonus mode — the real RE-201 is mono.
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoPattern"), "Delay Pattern",
-        juce::StringArray { "Straight", "Bounce", "Gallop", "Cluster", "Wash", "Ping-Pong" }, 0));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoDivision"), "Delay Division",
-        juce::StringArray { "1/4", "1/4 D", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" }, 2));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Delay Time",
-        Range (40.0f, 1200.0f, 1.0f, 0.35f), 375.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoRepeats"), "Delay Repeats",
+    // --- Plexy (Delay) --- our name for the effect (Echoplex is Maestro/
+    // Dunlop's trademark); the control surface matches the real EP-3's
+    // exactly: Time (a slider on the real unit), Sustain, Volume, and an
+    // Echo / Sound-on-Sound mode switch. No separate Tone/Wobble/Drive/Sync
+    // knobs — the real unit doesn't have them (see EchoModule for how those
+    // characteristics are modeled as fixed, always-on behaviour instead).
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Plexy On", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Plexy Time",
+        Range (60.0f, 800.0f, 1.0f, 0.5f), 300.0f));
+    // Reaches genuine self-oscillation at maximum, same as the real unit —
+    // see EchoModule::setParameters.
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoSustain"), "Plexy Sustain",
         Range (0.0f, 100.0f, 0.1f), 30.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTone"), "Delay Tone",
-        Range (1200.0f, 14000.0f, 1.0f, 0.35f), 6500.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoWobble"), "Delay Wobble",
-        Range (0.0f, 100.0f, 0.1f), 30.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoDrive"), "Delay Drive",
-        Range (0.0f, 100.0f, 0.1f), 30.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoMix"), "Delay Mix",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoVolume"), "Plexy Volume",
         Range (0.0f, 100.0f, 0.1f), 25.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoMode"), "Plexy Mode",
+        juce::StringArray { "Echo", "Sound-on-Sound" }, 0));
 
     // --- Reverb: 3 Lexicon 480L hall/room convolutions (HallRoomReverbModule).
     // The old Rockalizer spring-tank models (Space/9100/Echomixer) have been
@@ -451,37 +444,19 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    // --- Echo (Delay) ---
+    // --- Plexy (Delay) ---
     const auto echoActive = pBool ("echoOn");
-    auto echoTime = p ("echoTime");
-    if (echoActive && pBool ("echoSync"))
-    {
-        auto bpm = 120.0;
-        if (auto* playHead = getPlayHead())
-            if (auto position = playHead->getPosition())
-                if (auto hostBpm = position->getBpm()) bpm = *hostBpm;
-        constexpr float beats[] { 1.0f, 1.5f, 0.5f, 0.75f, 1.0f / 3.0f,
-                                  0.25f, 0.375f, 1.0f / 6.0f };
-        const auto division = juce::jlimit (0, 7, (int) p ("echoDivision"));
-        if (std::abs (bpm - cachedTempoBpm) > 0.0001 || division != cachedEchoDivision)
-        {
-            cachedTempoBpm = bpm;
-            cachedEchoDivision = division;
-            cachedSyncedEchoMs = static_cast<float> (60000.0 / bpm) * beats[division];
-        }
-        echoTime = cachedSyncedEchoMs;
-    }
+    const auto echoMode = ((int) p ("echoMode")) == 1
+        ? EchoModule::Mode::soundOnSound : EchoModule::Mode::echo;
     if (echoActive)
     {
-        echo.setParameters (echoTime, p ("echoRepeats"), p ("echoTone"), p ("echoWobble"),
-                            p ("echoDrive"), p ("echoMix"), true, (int) p ("echoPattern"));
+        echo.setParameters (p ("echoTime"), p ("echoSustain"), p ("echoVolume"), true, echoMode);
         echo.process (buffer);
         echoWasActive = true;
     }
     else if (echoWasActive)
     {
-        echo.setParameters (echoTime, p ("echoRepeats"), p ("echoTone"), p ("echoWobble"),
-                            p ("echoDrive"), p ("echoMix"), false, (int) p ("echoPattern"));
+        echo.setParameters (p ("echoTime"), p ("echoSustain"), p ("echoVolume"), false, echoMode);
         echo.process (buffer);
         if (! echo.isWetTransitionActive())
         {
