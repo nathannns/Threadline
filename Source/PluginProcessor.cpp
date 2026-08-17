@@ -56,6 +56,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonLevel"), "Klon Level",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
 
+    // --- Overdrive stage order: Klon and TS9 (Breaker) can run in either
+    // order ahead of the Amp. Each stage keeps its own on/off toggle either
+    // way — this only decides which one the guitar signal hits first.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("odOrder"), "Overdrive Order",
+        juce::StringArray { "Klon -> Breaker", "Breaker -> Klon" }, 0));
+
     // --- TS9 ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("ts9On"), "TS9 On", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ts9Drive"), "TS9 Drive",
@@ -76,6 +82,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (-24.0f, 12.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ampOversampling"), "Amp Oversampling",
         juce::StringArray { "Off", "2x", "4x" }, 2));
+    // Vintage 5E3 keeps the single passive-feeling Tone knob above. Modern
+    // 3-Band swaps that for an independent Bass/Mid/Treble stack (see
+    // AmpModule::updateModernToneFilters) — same preamp/power-stage circuit
+    // underneath, different tone section, not a different amp model.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ampVoice"), "Amp Voice",
+        juce::StringArray { "Vintage 5E3", "Modern 3-Band" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampBass"), "Amp Bass",
+        Range (0.0f, 1.0f, 0.001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampMid"), "Amp Mid",
+        Range (0.0f, 1.0f, 0.001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampTreble"), "Amp Treble",
+        Range (0.0f, 1.0f, 0.001f), 0.5f));
 
     // --- Cab: two IR slots processed in parallel (like two mics on the same
     // cab), each independently on/off with its own IR + internal wet/dry
@@ -299,20 +317,31 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                                p ("compRelease"), p ("compMakeup"));
     compressor.process (buffer);
 
-    // --- Klon ---
+    // --- Klon + TS9 (Breaker): order ahead of the Amp is swappable via
+    // odOrder — each stage's own on/off toggle still applies regardless of
+    // which one the signal hits first.
     klon.setEnabled (pBool ("klonOn"));
     klon.setParameters (p ("klonGain"), p ("klonTreble"), p ("klonLevel"));
-    klon.process (buffer);
-
-    // --- TS9 ---
     ts9.setEnabled (pBool ("ts9On"));
     ts9.setVariant (static_cast<TS9Module::Variant> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
     ts9.setParameters (p ("ts9Drive"), p ("ts9Tone"), p ("ts9Level"));
-    ts9.process (buffer);
+
+    if ((int) p ("odOrder") == 0)
+    {
+        klon.process (buffer);
+        ts9.process (buffer);
+    }
+    else
+    {
+        ts9.process (buffer);
+        klon.process (buffer);
+    }
 
     // --- Amp ---
     auto& selectedAmp = amps[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))];
-    selectedAmp.setParameters (p ("ampDrive"), p ("ampTone"), p ("ampOutput"));
+    selectedAmp.setParameters (p ("ampDrive"), p ("ampTone"), p ("ampOutput"),
+        static_cast<AmpModule::Voice> (juce::jlimit (0, 1, (int) p ("ampVoice"))),
+        p ("ampBass"), p ("ampMid"), p ("ampTreble"));
     selectedAmp.process (buffer);
 
     // --- Cab (IR): two slots processed in parallel from the same dry

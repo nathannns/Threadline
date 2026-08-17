@@ -23,4 +23,8 @@ private:
     // exclusive; the timer keeps them in sync with the actual parameter
     // value (which can also change via preset load, not just a click here).
     juce::TextButton ts9VariantButtons[3] { juce::TextButton ("TS9"), juce::TextButton ("TS808"), juce::TextButton ("TS10") };
+
+    // Klon/Breaker order ahead of the Amp — same radio-group + timer-sync
+    // pattern as the variant switch above.
+    juce::TextButton odOrderButtons[2] { juce::TextButton ("Klon -> Breaker"), juce::TextButton ("Breaker -> Klon") };
 };

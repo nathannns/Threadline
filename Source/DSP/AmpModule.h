@@ -13,6 +13,16 @@
 class AmpModule
 {
 public:
+    // Vintage5E3 is the single-voice tweed circuit described above (one
+    // passive-feeling Tone knob, per 5E3 authenticity). Modern3Band swaps
+    // that single tone filter for an independent Bass/Mid/Treble stack
+    // (low-shelf + mid-peak + high-shelf) placed at the exact same point in
+    // the signal chain — everything upstream and downstream (preamp gain
+    // stages, phase inverter, sag, output-transformer saturation) is
+    // unchanged, so Modern3Band is the same amp "engine" wearing a
+    // different, more flexible tone section rather than a different circuit.
+    enum class Voice { vintage5E3 = 0, modern3Band = 1 };
+
     void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 2)
     {
         baseSampleRate = spec.sampleRate;
@@ -34,6 +44,9 @@ public:
             interstageCoupling[ch].prepare (osSpec);
             toneFilter[ch].prepare (osSpec);
             transformerLowPass[ch].prepare (osSpec);
+            bassShelf[ch].prepare (osSpec);
+            midPeak[ch].prepare (osSpec);
+            trebleShelf[ch].prepare (osSpec);
         }
         sagAttack = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.045));
         sagRelease = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.240));
@@ -47,6 +60,7 @@ public:
         outputGain.reset (baseSampleRate, 0.025);
         updateStaticFilters();
         updateToneFilter();
+        updateModernToneFilters();
         reset();
     }
 
@@ -58,6 +72,7 @@ public:
         {
             inputCoupling[ch].reset(); interstageCoupling[ch].reset();
             toneFilter[ch].reset(); transformerLowPass[ch].reset();
+            bassShelf[ch].reset(); midPeak[ch].reset(); trebleShelf[ch].reset();
         }
         sagEnvelope = 0.0f;
         biasMemory.fill (0.0f);
@@ -65,16 +80,28 @@ public:
         outputGain.setCurrentAndTargetValue (targetOutputGain);
     }
 
-    void setParameters (float drive01, float tone01, float outputDb)
+    void setParameters (float drive01, float tone01, float outputDb, Voice voiceIn,
+                        float bass01, float mid01, float treble01)
     {
         driveAmount = juce::jlimit (0.0f, 1.0f, drive01);
         targetOutputGain = juce::Decibels::decibelsToGain (outputDb);
         outputGain.setTargetValue (targetOutputGain);
+        voice = voiceIn;
         tone01 = juce::jlimit (0.0f, 1.0f, tone01);
         if (! juce::approximatelyEqual (tone01, lastTone01))
         {
             lastTone01 = tone01;
             updateToneFilter();
+        }
+        bass01 = juce::jlimit (0.0f, 1.0f, bass01);
+        mid01 = juce::jlimit (0.0f, 1.0f, mid01);
+        treble01 = juce::jlimit (0.0f, 1.0f, treble01);
+        if (! juce::approximatelyEqual (bass01, lastBass01)
+            || ! juce::approximatelyEqual (mid01, lastMid01)
+            || ! juce::approximatelyEqual (treble01, lastTreble01))
+        {
+            lastBass01 = bass01; lastMid01 = mid01; lastTreble01 = treble01;
+            updateModernToneFilters();
         }
     }
 
@@ -111,7 +138,17 @@ public:
                 constexpr float bias2 = -0.10f;
                 auto stage2Input = triode1 - 0.13f * biasMemory[(size_t) ch];
                 auto triode2 = std::tanh (stage2Input * stage2Gain + bias2) - std::tanh (bias2);
-                auto toned = toneFilter[ch].processSample (triode2);
+                float toned;
+                if (voice == Voice::vintage5E3)
+                {
+                    toned = toneFilter[ch].processSample (triode2);
+                }
+                else
+                {
+                    auto shaped = bassShelf[ch].processSample (triode2);
+                    shaped = midPeak[ch].processSample (shaped);
+                    toned = trebleShelf[ch].processSample (shaped);
+                }
                 auto cathodyne = toned >= 0.0f ? std::tanh (toned * 1.18f)
                                                : 0.94f * std::tanh (toned * 1.32f);
                 phaseInverterOut[(size_t) ch] = cathodyne;
@@ -191,15 +228,49 @@ private:
             *filter.coefficients = *coefficients;
     }
 
+    // Bass/Mid/Treble for Voice::modern3Band. Not an attempt at the exact
+    // passive Fender/Marshall tone-stack transfer function (that's a single
+    // 3-pole network where the three pots interact non-monotonically) — this
+    // is the simpler, independently-adjustable shelf/peak approximation most
+    // digital modelers use for a "modern full-EQ" voice: a low shelf, a mid
+    // peak, and a high shelf in series, each pot mapped to +-12dB around a
+    // flat (0dB) centre so 0.5 on every knob matches the Vintage voice's
+    // roughly neutral starting point.
+    void updateModernToneFilters()
+    {
+        if (processingSampleRate <= 0.0)
+            return;
+        const auto bassDb   = (lastBass01   - 0.5f) * 24.0f;
+        const auto midDb    = (lastMid01    - 0.5f) * 24.0f;
+        const auto trebleDb = (lastTreble01 - 0.5f) * 24.0f;
+
+        auto bassCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (
+            processingSampleRate, 130.0f, 0.707f, juce::Decibels::decibelsToGain (bassDb));
+        auto midCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
+            processingSampleRate, 650.0f, 0.8f, juce::Decibels::decibelsToGain (midDb));
+        auto trebleCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
+            processingSampleRate, 3200.0f, 0.707f, juce::Decibels::decibelsToGain (trebleDb));
+
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            *bassShelf[ch].coefficients = *bassCoeffs;
+            *midPeak[ch].coefficients = *midCoeffs;
+            *trebleShelf[ch].coefficients = *trebleCoeffs;
+        }
+    }
+
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::dsp::IIR::Filter<float> inputCoupling[2], interstageCoupling[2];
     juce::dsp::IIR::Filter<float> toneFilter[2], transformerLowPass[2];
+    juce::dsp::IIR::Filter<float> bassShelf[2], midPeak[2], trebleShelf[2];
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> biasMemory {};
     std::array<float, 2> sagDetectorLP {};
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;
+    Voice voice = Voice::vintage5E3;
     float driveAmount = 0.4f, lastTone01 = 0.6f;
+    float lastBass01 = 0.5f, lastMid01 = 0.5f, lastTreble01 = 0.5f;
     float targetOutputGain = 1.0f, sagEnvelope = 0.0f;
     float sagAttack = 0.999f, sagRelease = 0.999f;
     float sagDetectorLPCoefficient = 0.01f;

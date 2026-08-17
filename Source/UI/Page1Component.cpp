@@ -34,17 +34,43 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
     }
     ts9VariantButtons[0].setToggleState (true, juce::dontSendNotification);
 
+    constexpr int odOrderRadioGroup = 9002;
+    const char* odOrderLabels[2] { "Klon First", "Breaker First" };
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& button = odOrderButtons[i];
+        button.setButtonText (odOrderLabels[i]);
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (odOrderRadioGroup, juce::dontSendNotification);
+        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
+        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+        addAndMakeVisible (button);
+        button.onClick = [this, i]
+        {
+            if (auto* parameter = processor.apvts.getParameter ("odOrder"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
+        };
+    }
+    odOrderButtons[0].setToggleState (true, juce::dontSendNotification);
+
     startTimerHz (10);
 }
 
 void Page1Component::timerCallback()
 {
-    // Keeps the 3 buttons in sync with the actual parameter — it can also
+    // Keeps the buttons in sync with the actual parameter — it can also
     // change via preset load or automation, not just a click on one of them.
-    const auto current = (int) std::round (processor.apvts.getRawParameterValue ("ts9Variant")->load());
+    const auto currentVariant = (int) std::round (processor.apvts.getRawParameterValue ("ts9Variant")->load());
     for (int i = 0; i < 3; ++i)
-        if (ts9VariantButtons[i].getToggleState() != (i == current))
-            ts9VariantButtons[i].setToggleState (i == current, juce::dontSendNotification);
+        if (ts9VariantButtons[i].getToggleState() != (i == currentVariant))
+            ts9VariantButtons[i].setToggleState (i == currentVariant, juce::dontSendNotification);
+
+    const auto currentOrder = (int) std::round (processor.apvts.getRawParameterValue ("odOrder")->load());
+    for (int i = 0; i < 2; ++i)
+        if (odOrderButtons[i].getToggleState() != (i == currentOrder))
+            odOrderButtons[i].setToggleState (i == currentOrder, juce::dontSendNotification);
 }
 
 void Page1Component::paint (juce::Graphics& g)
@@ -68,9 +94,22 @@ void Page1Component::resized()
         knob->slider.setBounds (current.reduced (current.getWidth() / 10, current.getHeight() / 12));
     }
     area.removeFromTop (gap);
-    layoutHorizontalRackSection (klonSection, area.removeFromTop (cardHeight));
+    layoutHorizontalRackSection (klonSection, area.removeFromTop (cardHeight), 300);
     area.removeFromTop (gap);
     layoutHorizontalRackSection (ts9Section, area, 294);
+
+    const auto klonBounds = klonSection.bounds;
+    // Order toggle sits in the same reserved title-row space the Breaker
+    // variant switch below uses, just with 2 rows instead of 3.
+    auto orderArea = juce::Rectangle<int> (klonBounds.getX() + 210,
+                                           klonBounds.getY() + 10, 126,
+                                           klonBounds.getHeight() - 20);
+    const auto orderRowHeight = juce::jmax (20, (orderArea.getHeight() - 4) / 2);
+    for (int i = 0; i < 2; ++i)
+    {
+        odOrderButtons[i].setBounds (orderArea.removeFromTop (orderRowHeight).reduced (2, 1));
+        orderArea.removeFromTop (2);
+    }
 
     const auto breakerBounds = ts9Section.bounds;
     // Stack the circuit variants immediately to the right of BREAKER. The

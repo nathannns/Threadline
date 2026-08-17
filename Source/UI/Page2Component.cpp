@@ -39,6 +39,41 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     ampOutputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, "ampOutput", ampOutputKnob);
 
+    constexpr int ampVoiceRadioGroup = 9003;
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& button = ampVoiceButtons[i];
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (ampVoiceRadioGroup, juce::dontSendNotification);
+        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
+        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+        addAndMakeVisible (button);
+        button.onClick = [this, i]
+        {
+            if (auto* parameter = processor.apvts.getParameter ("ampVoice"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
+        };
+    }
+    ampVoiceButtons[0].setToggleState (true, juce::dontSendNotification);
+
+    setupAmpKnob (ampBassLabel, ampBassKnob, "Bass");
+    setupAmpKnob (ampMidLabel, ampMidKnob, "Mid");
+    setupAmpKnob (ampTrebleLabel, ampTrebleKnob, "Treble");
+    addAndMakeVisible (ampBassKnob);
+    addAndMakeVisible (ampMidKnob);
+    addAndMakeVisible (ampTrebleKnob);
+    addAndMakeVisible (ampBassLabel);
+    addAndMakeVisible (ampMidLabel);
+    addAndMakeVisible (ampTrebleLabel);
+    ampBassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.apvts, "ampBass", ampBassKnob);
+    ampMidAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.apvts, "ampMid", ampMidKnob);
+    ampTrebleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.apvts, "ampTreble", ampTrebleKnob);
+
     // Two IR slots, processed in parallel and blended — like two mics on
     // the same cab rather than two cabs chained one after another.
     setupCabSlot (cabASection, *this, processor.apvts, "Cab A", "cabAOn", "cabAMix", SectionPlate::Cab);
@@ -76,6 +111,18 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     addAndMakeVisible (blendLabel);
     blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, "cabBlend", blendKnob);
+
+    startTimerHz (10);
+}
+
+void Page2Component::timerCallback()
+{
+    // Keeps the Voice buttons in sync with the actual parameter — it can
+    // also change via preset load or automation, not just a click here.
+    const auto current = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load());
+    for (int i = 0; i < 2; ++i)
+        if (ampVoiceButtons[i].getToggleState() != (i == current))
+            ampVoiceButtons[i].setToggleState (i == current, juce::dontSendNotification);
 }
 
 void Page2Component::paint (juce::Graphics& g)
@@ -109,8 +156,13 @@ void Page2Component::resized()
     full.removeFromLeft (columnGap);
     ampKnobFrameBounds = full;
 
-    auto knobRow = ampKnobFrameBounds.reduced (juce::jmax (6, ampKnobFrameBounds.getWidth() / 28), 8);
-    knobRow.removeFromTop (juce::jmin (18, knobRow.getHeight() / 8));
+    auto knobArea = ampKnobFrameBounds.reduced (juce::jmax (6, ampKnobFrameBounds.getWidth() / 28), 8);
+    knobArea.removeFromTop (juce::jmin (18, knobArea.getHeight() / 8));
+
+    // Row 1: Drive / Tone / Output — the Vintage 5E3 voice's own 3 knobs,
+    // always present since Tone still does something even in Modern voice
+    // (it feeds the same tone-filter point when Vintage is selected).
+    auto knobRow = knobArea.removeFromTop (juce::roundToInt (knobArea.getHeight() * 0.56f));
     auto knobWidth = knobRow.getWidth() / 3;
     const auto knobInset = juce::jmax (2, knobWidth / 14);
     ampDriveKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
@@ -119,6 +171,26 @@ void Page2Component::resized()
     ampDriveKnob.toFront (false);
     ampToneKnob.toFront (false);
     ampOutputKnob.toFront (false);
+
+    // Voice toggle, then row 2: Bass / Mid / Treble — only audible when
+    // Modern 3-Band voice is selected, but always visible/adjustable, same
+    // as the Breaker variant buttons on Page1.
+    knobArea.removeFromTop (juce::jmin (10, knobArea.getHeight() / 6));
+    auto voiceRow = knobArea.removeFromTop (juce::jmin (22, knobArea.getHeight() / 3));
+    const auto voiceButtonWidth = voiceRow.getWidth() / 2;
+    ampVoiceButtons[0].setBounds (voiceRow.removeFromLeft (voiceButtonWidth).reduced (3, 1));
+    ampVoiceButtons[1].setBounds (voiceRow.reduced (3, 1));
+
+    knobArea.removeFromTop (juce::jmin (16, knobArea.getHeight() / 6));
+    auto knobRow2 = knobArea;
+    auto knobWidth2 = knobRow2.getWidth() / 3;
+    const auto knobInset2 = juce::jmax (2, knobWidth2 / 14);
+    ampBassKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
+    ampMidKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
+    ampTrebleKnob.setBounds (knobRow2.reduced (knobInset2, 0));
+    ampBassKnob.toFront (false);
+    ampMidKnob.toFront (false);
+    ampTrebleKnob.toFront (false);
 
     // Cab A | blend knob | Cab B, left to right.
     constexpr int blendWidth = 84;

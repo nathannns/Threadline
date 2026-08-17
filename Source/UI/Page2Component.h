@@ -5,7 +5,7 @@
 
 // Page 2 — Amp (big centered tweed photo) + Cab/IR (two parallel-blended
 // slots, side by side).
-class Page2Component : public juce::Component
+class Page2Component : public juce::Component, private juce::Timer
 {
 public:
     explicit Page2Component (ThreadlineAudioProcessor& processor);
@@ -14,6 +14,8 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
+
     ThreadlineAudioProcessor& processor;
     juce::Image ampImage;
     juce::Rectangle<int> ampImageFrameBounds;
@@ -29,6 +31,16 @@ private:
     PhotoKnob ampOutputKnob { PhotoKnob::Style::Vintage };
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampDriveAttachment, ampToneAttachment, ampOutputAttachment;
     juce::Rectangle<int> ampKnobFrameBounds;
+
+    // Voice: Vintage 5E3 (single Tone knob above) vs. Modern 3-Band (an
+    // independent Bass/Mid/Treble stack — see AmpModule::Voice). Bass/Mid/
+    // Treble stay visible either way, same as the Breaker variant buttons on
+    // Page1 stay visible regardless of on/off state — they just only affect
+    // the sound when Modern voice is selected.
+    juce::TextButton ampVoiceButtons[2] { juce::TextButton ("Vintage 5E3"), juce::TextButton ("Modern 3-Band") };
+    juce::Label ampBassLabel, ampMidLabel, ampTrebleLabel;
+    PhotoKnob ampBassKnob, ampMidKnob, ampTrebleKnob;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampBassAttachment, ampMidAttachment, ampTrebleAttachment;
 
     // Two IR slots processed in parallel and blended (like two mics on one
     // cab) — each independently on/off with its own IR choice and mix.
