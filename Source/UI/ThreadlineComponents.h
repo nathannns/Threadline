@@ -44,7 +44,7 @@ private:
 class PhotoKnob : public juce::Slider
 {
 public:
-    enum class Style { Vintage, Modern, EQ };
+    enum class Style { Vintage, Modern, EQ, Compressor, Klon, Breaker, Tremolo, Chorus, Delay, Reverb, Gold };
 
     PhotoKnob() : PhotoKnob (Style::Modern) {}
     explicit PhotoKnob (Style initialStyle) : style (initialStyle)
@@ -77,9 +77,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto& image = style == Style::Vintage ? getVintageImage()
-                    : style == Style::EQ ? getEQImage()
-                                          : getModernImage();
+        auto& image = getImageForStyle (style);
         if (! image.isValid())
             return;
 
@@ -94,7 +92,9 @@ public:
         // The source PNGs contain transparent pixels around and within the
         // photographed hardware. A solid backing keeps light rack artwork
         // from showing through the compressor and other effect knobs.
-        if (style == Style::Modern || style == Style::EQ)
+        // Vintage's chicken-head image is the one exception -- its own body
+        // is already fully opaque, so it doesn't need one.
+        if (style != Style::Vintage)
         {
             g.setColour (juce::Colour (0xff211a16));
             g.fillEllipse (knobBounds.reduced (side * 0.08f));
@@ -141,6 +141,73 @@ public:
     {
         static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_eq_png, BinaryData::knob_eq_pngSize);
         return image;
+    }
+
+    static const juce::Image& getCompressorImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_compressor_png, BinaryData::knob_compressor_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getKlonImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_klon_png, BinaryData::knob_klon_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getBreakerImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_breaker_png, BinaryData::knob_breaker_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getTremoloImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_tremolo_png, BinaryData::knob_tremolo_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getChorusImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_chorus_png, BinaryData::knob_chorus_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getDelayImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_delay_png, BinaryData::knob_delay_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getReverbImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_reverb_png, BinaryData::knob_reverb_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getGoldImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_gold_png, BinaryData::knob_gold_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getImageForStyle (Style style)
+    {
+        switch (style)
+        {
+            case Style::Vintage:    return getVintageImage();
+            case Style::EQ:         return getEQImage();
+            case Style::Compressor: return getCompressorImage();
+            case Style::Klon:       return getKlonImage();
+            case Style::Breaker:    return getBreakerImage();
+            case Style::Tremolo:    return getTremoloImage();
+            case Style::Chorus:     return getChorusImage();
+            case Style::Delay:      return getDelayImage();
+            case Style::Reverb:     return getReverbImage();
+            case Style::Gold:       return getGoldImage();
+            case Style::Modern:
+            default:                return getModernImage();
+        }
     }
 
 private:

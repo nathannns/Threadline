@@ -25,6 +25,14 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/knob_pointer.png
     Resources/Images/knob_effects.png
     Resources/Images/knob_eq.png
+    Resources/Images/knob_compressor.png
+    Resources/Images/knob_klon.png
+    Resources/Images/knob_breaker.png
+    Resources/Images/knob_tremolo.png
+    Resources/Images/knob_chorus.png
+    Resources/Images/knob_delay.png
+    Resources/Images/knob_reverb.png
+    Resources/Images/knob_gold.png
     Resources/Images/eq_slider_cap.png
     Resources/Images/led_effect_off.png
     Resources/Images/led_effect_on.png

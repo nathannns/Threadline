@@ -153,7 +153,10 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     // The footer uses one wordmark above each knob; the gate parameter's
     // attached "Amount" caption would overlap its toggle and steal clicks.
     if (! gateSection.knobs.empty())
+    {
         gateSection.knobs[0]->label.setVisible (false);
+        gateSection.knobs[0]->slider.setStyle (PhotoKnob::Style::Gold);
+    }
     gateSection.titleLabel.setVisible (false);
     gateSection.toggle.setButtonText ("GATE");
     gateSection.toggle.setWordmarkStyle (true);
@@ -161,6 +164,8 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
 
     setupUtilityKnob (inputLabel, inputGainKnob, "Input");
     setupUtilityKnob (outputLabel, outputGainKnob, "Output");
+    inputGainKnob.setStyle (PhotoKnob::Style::Gold);
+    outputGainKnob.setStyle (PhotoKnob::Style::Gold);
     addAndMakeVisible (inputLabel);
     addAndMakeVisible (outputLabel);
     addAndMakeVisible (inputGainKnob);

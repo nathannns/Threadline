@@ -1,5 +1,18 @@
 #include "Page3Component.h"
 
+namespace
+{
+    // buildSection() always creates plain default-style PhotoKnobs -- this
+    // applies each section's matching photo (see ThreadlineComponents.h)
+    // after the fact rather than threading a style parameter through the
+    // shared helper.
+    void applyKnobStyle (SectionUI& section, PhotoKnob::Style style)
+    {
+        for (auto& knob : section.knobs)
+            knob->slider.setStyle (style);
+    }
+}
+
 Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
 {
     // Reads the actual saved parameter value rather than assuming index 0
@@ -16,12 +29,14 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     buildSection (tremSection, *this, processor.apvts, "Tremolo", "tremOn", {
         { "tremAmount", "Amount" }
     }, false, SectionPlate::Tremolo);
+    applyKnobStyle (tremSection, PhotoKnob::Style::Tremolo);
 
     // July's exact control surface: Rate, Depth, Lag (LFO center delay
     // time), a Sine/Triangle waveform switch, and D-C-V (Dry-Chorus-Vibrato).
     buildSection (chorusSection, *this, processor.apvts, "July", "chorusOn", {
         { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusLag", "Lag" }
     }, false, SectionPlate::Chorus);
+    applyKnobStyle (chorusSection, PhotoKnob::Style::Chorus);
     constexpr int waveformRadioGroup = 9004;
     for (int i = 0; i < 2; ++i)
     {
@@ -70,6 +85,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     buildSection (echoSection, *this, processor.apvts, "Delay", "echoOn", {
         { "echoTime", "Time" }, { "echoSustain", "Sustain" }, { "echoVolume", "Volume" }
     }, false, SectionPlate::Delay);
+    applyKnobStyle (echoSection, PhotoKnob::Style::Delay);
     constexpr int echoModeRadioGroup = 9006;
     for (int i = 0; i < 2; ++i)
     {
@@ -93,6 +109,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
              { "carbonTime", "Time" }, { "carbonRegen", "Regen" }, { "carbonMix", "Mix" } })
     {
         auto knob = std::make_unique<KnobUI>();
+        knob->slider.setStyle (PhotoKnob::Style::Delay);
         knob->label.setText (labelText, juce::dontSendNotification);
         knob->label.setJustificationType (juce::Justification::centred);
         knob->label.setFont (juce::FontOptions (12.0f));
@@ -165,6 +182,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
         { "reverbPreDelay", "Pre-Delay" }, { "reverbDecay", "Decay" }, { "reverbTone", "Tone" },
         { "reverbMix", "Mix" }, { "reverbWidth", "Width" }
     }, false, SectionPlate::Reverb);
+    applyKnobStyle (reverbSection, PhotoKnob::Style::Reverb);
     reverbModelBox.addItemList ({ "Room", "Hall", "Plate" }, 1);
     addAndMakeVisible (reverbModelBox);
     reverbModelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (

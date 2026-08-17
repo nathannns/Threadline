@@ -237,6 +237,25 @@ the flat white, then a touch of alpha blur to soften the cut edge) before
 being registered as `knob_eq.png`, otherwise the knob would have rendered
 with a stray white box behind it against the gold rack plate.
 
+Every other effect section now has its own photographed knob too, the same
+way: `PhotoKnob::Style::{Compressor,Klon,Breaker,Tremolo,Chorus,Delay,
+Reverb}` for that section's card (including the Breaker page's 3-position
+variant selector, and both of Delay's engines -- Plexer's `echoSection`
+knobs and Copier's hand-built `carbonKnobs`), and `Style::Gold` as the
+catch-all for what's left on the plain "Modern" knob before (Gate/Input/
+Output in the persistent footer, both Cab slots' Mix knobs, and the A/B
+blend knob). `buildSection()` always creates plain-style knobs, so each
+page applies its section's style in a loop right after building it rather
+than threading a style parameter through that shared helper. One of the
+eight source photos (Reverb) needed the same white-background flood-fill
+treatment as the EQ knob; the rest already had real alpha transparency.
+The Compressor photo is chicken-head shaped like the Vintage style's own
+image (handle extending past the circular body) rather than a plain disc,
+but measuring its actual rotational centre landed within a rounding error
+of the canvas's geometric middle, so it didn't need Vintage's custom pivot
+offset -- the standard centre pivot already used for every non-Vintage
+style works for it too.
+
 ## Build
 
 You said you've already got JUCE, CMake, and Ninja — but this pins JUCE to

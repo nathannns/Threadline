@@ -16,6 +16,8 @@ namespace
                         const juce::String& title, const char* onId, const char* mixId, int plateIndex)
     {
         buildSection (section, parent, apvts, title, onId, { { mixId, "Mix" } }, false, plateIndex);
+        for (auto& knob : section.knobs)
+            knob->slider.setStyle (PhotoKnob::Style::Gold);
     }
 }
 
@@ -118,6 +120,7 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     blendLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     blendLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
     blendLabel.attachToComponent (&blendKnob, false);
+    blendKnob.setStyle (PhotoKnob::Style::Gold);
     addAndMakeVisible (blendKnob);
     addAndMakeVisible (blendLabel);
     blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (

@@ -1,20 +1,37 @@
 #include "Page1Component.h"
 
+namespace
+{
+    // buildSection() always creates plain default-style PhotoKnobs -- this
+    // applies each section's matching photo (see ThreadlineComponents.h)
+    // after the fact rather than threading a style parameter through the
+    // shared helper.
+    void applyKnobStyle (SectionUI& section, PhotoKnob::Style style)
+    {
+        for (auto& knob : section.knobs)
+            knob->slider.setStyle (style);
+    }
+}
+
 Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
 {
     buildSection (compSection, *this, processor.apvts, "Compressor", "compOn", {
         { "compThreshold", "Comp" }, { "compRatio", "Attack" },
         { "compAttack", "Tilt" }, { "compRelease", "Mid" }, { "compMakeup", "Level" }
     }, false, SectionPlate::Compressor);
+    applyKnobStyle (compSection, PhotoKnob::Style::Compressor);
 
     buildSection (klonSection, *this, processor.apvts, "Klon", "klonOn", {
         { "klonGain", "Gain" }, { "klonTreble", "Treble" }, { "klonLevel", "Level" }
     }, false, SectionPlate::Klon);
+    applyKnobStyle (klonSection, PhotoKnob::Style::Klon);
 
     buildSection (ts9Section, *this, processor.apvts, "Breaker", "ts9On", {
         { "ts9Drive", "Drive" }, { "ts9Tone", "Tone" }, { "ts9Level", "Level" }
     }, false, SectionPlate::TS9);
+    applyKnobStyle (ts9Section, PhotoKnob::Style::Breaker);
 
+    ts9VariantKnob.setStyle (PhotoKnob::Style::Breaker);
     ts9VariantKnob.setRange (0.0, 2.0, 1.0);
     // Fixed layout: TS9 (value 0) bottom-left, TS808 (value 1) top, TS10
     // (value 2) bottom-right — the standard "7 o'clock to 5 o'clock through
