@@ -15,24 +15,15 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
         { "ts9Drive", "Drive" }, { "ts9Tone", "Tone" }, { "ts9Level", "Level" }
     }, false, SectionPlate::TS9);
 
-    constexpr int ts9VariantRadioGroup = 9001;
-    for (int i = 0; i < 3; ++i)
-    {
-        auto& button = ts9VariantButtons[i];
-        button.setClickingTogglesState (true);
-        button.setRadioGroupId (ts9VariantRadioGroup, juce::dontSendNotification);
-        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
-        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
-        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
-        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
-        addAndMakeVisible (button);
-        button.onClick = [this, i]
-        {
-            if (auto* parameter = processor.apvts.getParameter ("ts9Variant"))
-                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
-        };
-    }
-    ts9VariantButtons[0].setToggleState (true, juce::dontSendNotification);
+    ts9VariantKnob.setRange (0.0, 2.0, 1.0);
+    ts9VariantKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    addAndMakeVisible (ts9VariantKnob);
+    ts9VariantLabel.setJustificationType (juce::Justification::centred);
+    ts9VariantLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    ts9VariantLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    addAndMakeVisible (ts9VariantLabel);
+    ts9VariantAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.apvts, "ts9Variant", ts9VariantKnob);
 
     constexpr int odOrderRadioGroup = 9002;
     const char* odOrderLabels[2] { "Klon First", "Breaker First" };
@@ -60,12 +51,14 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
 
 void Page1Component::timerCallback()
 {
-    // Keeps the buttons in sync with the actual parameter — it can also
-    // change via preset load or automation, not just a click on one of them.
-    const auto currentVariant = (int) std::round (processor.apvts.getRawParameterValue ("ts9Variant")->load());
-    for (int i = 0; i < 3; ++i)
-        if (ts9VariantButtons[i].getToggleState() != (i == currentVariant))
-            ts9VariantButtons[i].setToggleState (i == currentVariant, juce::dontSendNotification);
+    // The knob's own rotation already reflects the parameter (it can only
+    // ever be at one of the 3 detented positions), but a plain rotary knob
+    // doesn't spell out which position that is the way the old labelled
+    // buttons did — this label fills that in.
+    static const char* variantNames[3] { "TS9", "TS808", "TS10" };
+    const auto currentVariant = juce::jlimit (0, 2,
+        (int) std::round (processor.apvts.getRawParameterValue ("ts9Variant")->load()));
+    ts9VariantLabel.setText (variantNames[currentVariant], juce::dontSendNotification);
 
     const auto currentOrder = (int) std::round (processor.apvts.getRawParameterValue ("odOrder")->load());
     for (int i = 0; i < 2; ++i)
@@ -112,16 +105,12 @@ void Page1Component::resized()
     }
 
     const auto breakerBounds = ts9Section.bounds;
-    // Stack the circuit variants immediately to the right of BREAKER. The
-    // array remains parameter-index ordered (TS9, TS808, TS10), while the
-    // requested visual order is TS9, TS10, TS808.
-    auto variants = juce::Rectangle<int> (breakerBounds.getX() + 210,
-                                          breakerBounds.getY() + 10, 126,
-                                          breakerBounds.getHeight() - 20);
-    const auto rowHeight = juce::jmax (20, (variants.getHeight() - 6) / 3);
-    for (const auto index : { 0, 2, 1 })
-    {
-        ts9VariantButtons[index].setBounds (variants.removeFromTop (rowHeight).reduced (2, 1));
-        variants.removeFromTop (2);
-    }
+    // Fixed-position rotary selector, immediately to the right of BREAKER,
+    // in the same reserved area the old 3-button stack used.
+    auto variantArea = juce::Rectangle<int> (breakerBounds.getX() + 210,
+                                             breakerBounds.getY() + 10, 126,
+                                             breakerBounds.getHeight() - 20);
+    ts9VariantLabel.setBounds (variantArea.removeFromTop (18));
+    const auto knobSide = juce::jmin (variantArea.getWidth(), variantArea.getHeight());
+    ts9VariantKnob.setBounds (juce::Rectangle<int> (knobSide, knobSide).withCentre (variantArea.getCentre()));
 }

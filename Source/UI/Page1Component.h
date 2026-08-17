@@ -18,11 +18,16 @@ private:
     ThreadlineAudioProcessor& processor;
     SectionUI compSection, klonSection, ts9Section;
 
-    // Breaker circuit variant switch — 3 buttons rather than a dropdown per
-    // request. JUCE's radio-group mechanism keeps them visually mutually
-    // exclusive; the timer keeps them in sync with the actual parameter
-    // value (which can also change via preset load, not just a click here).
-    juce::TextButton ts9VariantButtons[3] { juce::TextButton ("TS9"), juce::TextButton ("TS808"), juce::TextButton ("TS10") };
+    // Breaker circuit variant switch — a rotary knob with 3 fixed (detented)
+    // positions rather than a dropdown or button row. JUCE's Slider already
+    // snaps both the reported value AND the drawn rotation angle to the
+    // parameter's integer steps (0/1/2), so a plain PhotoKnob bound to the
+    // choice parameter behaves exactly like a real 3-position rotary
+    // selector switch with no custom drag/snapping code needed — same
+    // "trust JUCE's default behaviour" approach used for every other knob.
+    PhotoKnob ts9VariantKnob;
+    juce::Label ts9VariantLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ts9VariantAttachment;
 
     // Klon/Breaker order ahead of the Amp — same radio-group + timer-sync
     // pattern as the variant switch above.
