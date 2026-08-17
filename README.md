@@ -76,7 +76,17 @@ on/off toggle regardless) via the Overdrive Order switch.
     repeat, especially in Sound-on-Sound (whose near-permanent feedback was
     also pulled back from 0.998 to 0.99 — close enough to unity that,
     layered over real playing, it built up into an undifferentiated wash
-    faster than filtering alone could tame).
+    faster than filtering alone could tame). Sustain's dial-to-N mapping is
+    squared (not linear) before the `g = 10^(-2/N)` formula above, and
+    Volume's own curve rises slower than linear with no extra headroom
+    multiplier — a linear dial-to-N map put the knob's midpoint at ~5.4x
+    loop buildup already, and Volume was multiplying that already-hot
+    signal on top, so low-to-mid Sustain/Volume settings read as "wet from
+    barely touching the knob" and the whole dial had to be kept low to stay
+    controlled. Both knobs now stay genuinely gentle through the first half
+    of their travel and reserve the steep run-up toward self-oscillation
+    for the last quarter or so, closer to how a real regen/volume knob
+    feels.
   - `CarbonCopyModule` ("Copier" in the UI) — modeled on the MXR Carbon
     Copy's control surface: Time, Regen (feedback), Mix, and a Mod toggle.
     A fixed lowpass filter sits inside the feedback path itself (not a Tone

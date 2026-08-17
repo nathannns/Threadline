@@ -93,12 +93,24 @@ void EchoModule::setParameters (float timeMs, float sustainPercent, float volume
         // into genuine self-oscillation, pushed slightly past unity same
         // as the real EP-3's actual ceiling rather than capped safely
         // below it.
+        //
+        // N was mapped *linearly* against dial position, but the loop's
+        // steady-state buildup (1/(1-g)) is convex in N -- a linear
+        // dial-to-N map put the knob's midpoint (N~23) at ~5.4x buildup
+        // already, so anything past halfway was audibly "over" and the
+        // whole dial had to be kept low to stay controlled. Squaring the
+        // dial position before mapping to N keeps the first half of the
+        // knob's travel gentle (halfway is now N~12, ~3x buildup) and
+        // reserves the steep run-up toward self-oscillation for the last
+        // quarter or so of the dial, matching how a real regen knob feels.
         constexpr float crossover = 0.9f;
         constexpr float maxRepeats = 40.0f;
+        constexpr float repeatTaper = 2.2f;
         const auto feedbackAtCrossover = std::pow (10.0f, -2.0f / maxRepeats);
         if (sustain01 < crossover)
         {
-            const auto repeatCount = juce::jmap (sustain01 / crossover, 1.0f, maxRepeats);
+            const auto tapered = std::pow (sustain01 / crossover, repeatTaper);
+            const auto repeatCount = juce::jmap (tapered, 1.0f, maxRepeats);
             feedbackTarget = std::pow (10.0f, -2.0f / repeatCount);
         }
         else
@@ -124,7 +136,17 @@ void EchoModule::setParameters (float timeMs, float sustainPercent, float volume
     // a small amount, not a Volume-mapping problem so much as SoS's
     // underlying signal genuinely being much hotter to begin with.
     const auto modeVolumeScale = mode == Mode::soundOnSound ? 0.2f : 1.0f;
-    volumeValue.setTargetValue (std::pow (volume01, 0.85f) * 1.3f * modeVolumeScale);
+    // Volume multiplies whatever the feedback loop is already circulating
+    // (see readDelay/rawFeedback in process()), so it was never
+    // independent of Sustain -- the old curve (pow*0.85, i.e. rising
+    // *faster* than linear, on top of a full +30% headroom multiplier) meant
+    // a middling Volume setting was already adding a big chunk of an
+    // already-buildup-amplified signal on top of the dry, on top of Sustain
+    // being retuned the same way above. Raising the exponent above 1 and
+    // dropping the headroom multiplier keeps low-to-mid Volume settings
+    // genuinely subtle, so the two knobs' effects add up predictably
+    // instead of both needing to be kept near zero to avoid clipping.
+    volumeValue.setTargetValue (std::pow (volume01, 1.3f) * 0.9f * modeVolumeScale);
 
     wetMix.setTargetValue (enabled ? 1.0f : 0.0f);
 }
