@@ -46,8 +46,6 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
 
 void Page2Component::paint (juce::Graphics& g)
 {
-    paintThreadlineBackground (g, getLocalBounds());
-
     if (ampImage.isValid() && ! ampImageFrameBounds.isEmpty())
     {
         auto placement = juce::RectanglePlacement (juce::RectanglePlacement::centred

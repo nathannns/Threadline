@@ -150,11 +150,6 @@ public:
         const auto centreY = track.getY() + track.getHeight() * 0.5f; // 0 dB reference
         const auto capY = track.getBottom() - normalised * track.getHeight();
 
-        auto fillTop = juce::jmin (capY, centreY);
-        auto fillBottom = juce::jmax (capY, centreY);
-        g.setColour (juce::Colour (0xffd9a25a).withAlpha (0.85f)); // matches ThreadlineColours::accentBright
-        g.fillRoundedRectangle (track.withY (fillTop).withHeight (fillBottom - fillTop), trackWidth * 0.5f);
-
         g.setColour (juce::Colours::white.withAlpha (0.3f));
         g.drawLine (bounds.getX(), centreY, bounds.getRight(), centreY, 1.0f);
 

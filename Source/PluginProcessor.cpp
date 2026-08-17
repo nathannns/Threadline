@@ -64,6 +64,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 1.0f, 0.001f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ts9Level"), "TS9 Level",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ts9Variant"), "TS9 Variant",
+        juce::StringArray { "TS9", "TS808", "TS10" }, 0));
 
     // --- Amp (5E3) ---
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampDrive"), "Amp Drive",
@@ -263,6 +265,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     // --- TS9 ---
     ts9.setEnabled (pBool ("ts9On"));
+    ts9.setVariant (static_cast<TS9Module::Variant> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
     ts9.setParameters (p ("ts9Drive"), p ("ts9Tone"), p ("ts9Level"));
     ts9.process (buffer);
 

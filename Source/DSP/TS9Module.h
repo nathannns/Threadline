@@ -18,9 +18,31 @@
 //  3. A post-clip Tone control that's a genuine treble-cut lowpass sweep
 //     (what the real TS9's Tone pot actually is), not a swept mid-bump —
 //     turning Tone down darkens it, up brightens it, same as the pedal.
+//
+// setVariant() switches between the three well-known Tube Screamer-family
+// pedals by retuning the same topology above, per their widely-documented
+// differences: TS808 (the 1979 original, JRC4558D op-amp) is generally
+// described as warmer/smoother with a touch more bass reaching the clipper
+// than the TS9 reissue; TS9 is the mid-forward "honky" baseline; TS10 (the
+// later Classic Series pedal) is consistently noted for a wider Tone range
+// and noticeably more low end than either — its input network passes more
+// bass before clipping. This isn't a claim of exact measured component
+// values (those vary by production run/clone anyway), just a defensible
+// characterization of the three pedals' known family resemblance and
+// differences applied to the same physically-motivated clipper.
 class TS9Module
 {
 public:
+    enum class Variant { TS9, TS808, TS10 };
+
+    void setVariant (Variant newVariant)
+    {
+        if (newVariant == variant)
+            return;
+        variant = newVariant;
+        updatePreClipFilter();
+        updateToneFilter();
+    }
     void prepare (const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
@@ -73,9 +95,14 @@ public:
                 const auto preShaped = preClipHighpass[ch].processSample (data[i]);
                 auto x = preShaped * driveGain;
 
-                // Symmetric diode-physics knee with a tanh safety ceiling
-                // (bounds output across the drive range; asinh defines the
-                // actual knee shape, not the ceiling).
+                // Diode-physics knee with a tanh safety ceiling (bounds
+                // output across the drive range; asinh defines the actual
+                // knee shape, not the ceiling). TS9/TS10 use a matched
+                // symmetric pair; TS808 gets a mild positive/negative
+                // asymmetry, reflecting its "creamier/rounder" reputation
+                // versus the TS9's harder-edged symmetric clip.
+                const auto kneeScale = (variant == Variant::TS808 && x >= 0.0f) ? kneeScaleBase * 1.12f
+                                                                                 : kneeScaleBase;
                 const auto shaped = thermalVoltage * std::asinh (x / kneeScale);
                 auto clipped = ceilingLimit * std::tanh (shaped / ceilingLimit);
                 clipped /= std::max (0.4f, std::sqrt (driveGain) * 0.42f);
@@ -89,17 +116,25 @@ private:
     void updatePreClipFilter()
     {
         // Fixed corner — not swept by any control, matching the real
-        // TS808/9 input coupling network.
-        auto coeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, 720.0f, 0.707f);
+        // input coupling network. TS9 = baseline (most mid-forward); TS808
+        // lets a touch more bass through (warmer); TS10 lets the most bass
+        // through of the three (its widely-noted extra low end).
+        const auto corner = variant == Variant::TS808 ? 640.0f
+                           : variant == Variant::TS10  ? 480.0f
+                                                        : 720.0f;
+        auto coeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, corner, 0.707f);
         for (auto& f : preClipHighpass)
             *f.coefficients = *coeffs;
     }
 
     void updateToneFilter()
     {
-        // Treble-cut sweep: fully dark around 1.2kHz, fully bright above
-        // hearing-relevant range — the real Tone pot's behaviour.
-        const auto cutoff = juce::jmap (lastTone01, 0.0f, 1.0f, 1200.0f, 11000.0f);
+        // Treble-cut sweep. TS10's Tone control is documented as having a
+        // noticeably wider range than TS9/808 — darker at minimum, brighter
+        // at maximum.
+        const auto darkHz = variant == Variant::TS10 ? 900.0f : 1200.0f;
+        const auto brightHz = variant == Variant::TS10 ? 13500.0f : 11000.0f;
+        const auto cutoff = juce::jmap (lastTone01, 0.0f, 1.0f, darkHz, brightHz);
         auto coeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, cutoff, 0.707f);
         for (auto& f : toneFilter)
             *f.coefficients = *coeffs;
@@ -108,10 +143,11 @@ private:
     juce::dsp::IIR::Filter<float> preClipHighpass[2], toneFilter[2];
     static constexpr float thermalVoltage = 0.58f;
     static constexpr float ceilingLimit = 1.0f;
-    static constexpr float kneeScale = 0.75f; // matched silicon diodes, symmetric
+    static constexpr float kneeScaleBase = 0.75f; // matched silicon diodes, baseline symmetric
     double sampleRate = 44100.0;
     float driveAmount = 0.3f;
     float outputLevel = 1.0f;
     float lastTone01 = -1.0f;
     bool enabled = false;
+    Variant variant = Variant::TS9;
 };

@@ -69,7 +69,6 @@ void Page3Component::timerCallback()
 
 void Page3Component::paint (juce::Graphics& g)
 {
-    paintThreadlineBackground (g, getLocalBounds());
     paintSectionPlate (g, tremSection);
     paintSectionPlate (g, chorusSection);
     paintSectionPlate (g, echoSection);

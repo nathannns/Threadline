@@ -74,7 +74,6 @@ Page4Component::Page4Component (ThreadlineAudioProcessor& p)
 
 void Page4Component::paint (juce::Graphics& g)
 {
-    paintThreadlineBackground (g, getLocalBounds());
     static const auto eqPlate = juce::ImageCache::getFromMemory (
         BinaryData::plate_eq_png, BinaryData::plate_eq_pngSize);
     drawWideRackPlate (g, eqPlate, cardBounds);
