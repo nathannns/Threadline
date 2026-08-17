@@ -40,10 +40,6 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Reference/threadline_logo.png
     Resources/ImpulseResponses/HallRoom/large_hall.wav
     Resources/ImpulseResponses/HallRoom/large_stage.wav
-    Resources/ImpulseResponses/HallRoom/small_church.wav
-    Resources/ImpulseResponses/HallRoom/small_hall.wav
-    Resources/ImpulseResponses/HallRoom/small_stage.wav
-    Resources/ImpulseResponses/HallRoom/large_room.wav
     Resources/ImpulseResponses/HallRoom/small_room.wav
     Resources/CabIR/Tweed_Combo_1x12_Bright_Mix.wav
     Resources/CabIR/Tweed_Combo_1x12_Dark_Mix.wav

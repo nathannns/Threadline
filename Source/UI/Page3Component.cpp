@@ -6,35 +6,30 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
         { "tremAmount", "Amount" }
     }, false, SectionPlate::Tremolo);
 
-    buildSection (chorusSection, *this, processor.apvts, "Chorus", "chorusOn", {
-        { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusWidth", "Width" },
-        { "chorusTone", "Tone" }, { "chorusMix", "Mix" }
+    // Julia's exact control surface: Rate, Depth, Lag (LFO center delay
+    // time), a Sine/Triangle waveform switch, and D-C-V (Dry-Chorus-Vibrato).
+    buildSection (chorusSection, *this, processor.apvts, "Julia", "chorusOn", {
+        { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusLag", "Lag" },
+        { "chorusDCV", "D-C-V" }
     }, false, SectionPlate::Chorus);
-    flangerMode1Button.setButtonText ("1");
-    flangerMode2Button.setButtonText ("2");
-    flangerMode1Button.setRenderedImageStyle (false);
-    flangerMode2Button.setRenderedImageStyle (false);
-    flangerLabel.setText ("FLANGER", juce::dontSendNotification);
-    flangerLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-    flangerLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
-    flangerLabel.setJustificationType (juce::Justification::centredRight);
-    flangerMode1Button.setTooltip ("Flanger I: independent warm sweep; enable I + II together for Mode III");
-    flangerMode2Button.setTooltip ("Flanger II: independent faster sweep; enable I + II together for Mode III");
-    const auto toggleFlangerBit = [this] (int bit)
+    constexpr int waveformRadioGroup = 9004;
+    for (int i = 0; i < 2; ++i)
     {
-        const auto current = juce::roundToInt (processor.apvts.getRawParameterValue ("chorusFlangerMode")->load());
-        if (auto* parameter = processor.apvts.getParameter ("chorusFlangerMode"))
+        auto& button = waveformButtons[i];
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (waveformRadioGroup, juce::dontSendNotification);
+        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
+        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+        addAndMakeVisible (button);
+        button.onClick = [this, i]
         {
-            parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) (current ^ bit)));
-            parameter->endChangeGesture();
-        }
-    };
-    flangerMode1Button.onClick = [toggleFlangerBit] { toggleFlangerBit (1); };
-    flangerMode2Button.onClick = [toggleFlangerBit] { toggleFlangerBit (2); };
-    addAndMakeVisible (flangerMode1Button);
-    addAndMakeVisible (flangerMode2Button);
-    addAndMakeVisible (flangerLabel);
+            if (auto* parameter = processor.apvts.getParameter ("chorusWaveform"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
+        };
+    }
+    waveformButtons[0].setToggleState (true, juce::dontSendNotification);
 
     buildSection (echoSection, *this, processor.apvts, "Delay", "echoOn", {
         { "echoTime", "Time" }, { "echoRepeats", "Repeats" }, { "echoTone", "Tone" },
@@ -52,15 +47,14 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     echoSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         processor.apvts, "echoSync", echoSyncButton);
 
-    // Reverb: 7 Lexicon 480L hall/room convolutions (the old Rockalizer
+    // Reverb: 3 Lexicon 480L hall/room convolutions (the old Rockalizer
     // spring-tank models are retired). Decay re-envelopes the loaded IR's
     // own tail rather than the live signal — see HallRoomReverbModule.
     buildSection (reverbSection, *this, processor.apvts, "Reverb", "reverbOn", {
         { "reverbPreDelay", "Pre-Delay" }, { "reverbDecay", "Decay" }, { "reverbTone", "Tone" },
         { "reverbMix", "Mix" }, { "reverbWidth", "Width" }
     }, false, SectionPlate::Reverb);
-    reverbModelBox.addItemList ({ "Large Hall", "Large Stage", "Small Church", "Small Hall",
-                                   "Small Stage", "Large Room", "Small Room" }, 1);
+    reverbModelBox.addItemList ({ "Large Hall", "Large Stage", "Small Room" }, 1);
     addAndMakeVisible (reverbModelBox);
     reverbModelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "reverbModel", reverbModelBox);
@@ -69,9 +63,10 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
 
 void Page3Component::timerCallback()
 {
-    const auto mode = juce::roundToInt (processor.apvts.getRawParameterValue ("chorusFlangerMode")->load());
-    flangerMode1Button.setToggleState ((mode & 1) != 0, juce::dontSendNotification);
-    flangerMode2Button.setToggleState ((mode & 2) != 0, juce::dontSendNotification);
+    const auto waveform = juce::roundToInt (processor.apvts.getRawParameterValue ("chorusWaveform")->load());
+    for (int i = 0; i < 2; ++i)
+        if (waveformButtons[i].getToggleState() != (i == waveform))
+            waveformButtons[i].setToggleState (i == waveform, juce::dontSendNotification);
 }
 
 void Page3Component::paint (juce::Graphics& g)
@@ -92,9 +87,9 @@ void Page3Component::resized()
     layoutHorizontalRackSection (chorusSection, area.removeFromTop (cardHeight), 224);
     auto chorusBounds = chorusSection.bounds;
     chorusSection.toggle.setBounds (chorusBounds.getX() + 78, chorusBounds.getY() + 9, 128, 32);
-    flangerLabel.setBounds (chorusBounds.getX() + 76, chorusBounds.getBottom() - 30, 72, 22);
-    flangerMode1Button.setBounds (chorusBounds.getX() + 152, chorusBounds.getBottom() - 30, 32, 22);
-    flangerMode2Button.setBounds (chorusBounds.getX() + 188, chorusBounds.getBottom() - 30, 32, 22);
+    // Julia's Sine/Triangle mini-toggle switch.
+    waveformButtons[0].setBounds (chorusBounds.getX() + 76, chorusBounds.getBottom() - 30, 66, 22);
+    waveformButtons[1].setBounds (chorusBounds.getX() + 146, chorusBounds.getBottom() - 30, 74, 22);
     area.removeFromTop (gap);
     layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight), 310);
     auto echoBounds = echoSection.bounds;

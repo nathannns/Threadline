@@ -2,9 +2,9 @@
 #include <JuceHeader.h>
 #include <BinaryData.h>
 
-// Hall/Room reverb built from real Lexicon 480L impulse responses (7 spaces:
-// Large/Small Hall, Large/Small Stage, Small Church, Large/Small Room) rather
-// than a synthesized algorithm. These IRs already contain a complete,
+// Hall/Room reverb built from real Lexicon 480L impulse responses (3 spaces:
+// Large Hall, Large Stage, Small Room) rather than a synthesized algorithm.
+// These IRs already contain a complete,
 // natural decay, so there's no tail synthesis — just pre-delay, convolution,
 // damping, and (see setParameters/loadImpulse) decay-time shaping applied to
 // the captured impulse itself.
@@ -36,13 +36,10 @@ public:
                         float widthPercent, bool enabled, int modelIndex);
     void process (juce::AudioBuffer<float>& buffer);
 
-    static constexpr int numModels = 7;
+    static constexpr int numModels = 3;
     static const char* getModelName (int index)
     {
-        static const char* names[numModels] {
-            "Large Hall", "Large Stage", "Small Church", "Small Hall",
-            "Small Stage", "Large Room", "Small Room"
-        };
+        static const char* names[numModels] { "Large Hall", "Large Stage", "Small Room" };
         return names[juce::jlimit (0, numModels - 1, index)];
     }
 

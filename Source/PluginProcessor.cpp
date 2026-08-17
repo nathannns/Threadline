@@ -129,19 +129,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tremAmount"), "Tremolo Amount",
         Range (0.0f, 100.0f, 0.1f), 40.0f));
 
-    // --- Chorus ---
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("chorusOn"), "Chorus On", false));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusFlangerMode"), "Flanger Mode",
-        juce::StringArray { "Off", "Mode I", "Mode II", "Mode III (I + II)" }, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusRate"), "Chorus Rate",
+    // --- Julia (Chorus/Vibrato) --- exact control surface of the real
+    // Walrus Audio Julia: Rate, Depth, Lag, a Sine/Triangle waveform
+    // switch, and D-C-V (Dry-Chorus-Vibrato).
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("chorusOn"), "Julia On", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusRate"), "Julia Rate",
         Range (0.05f, 5.0f, 0.01f, 0.35f), 0.32f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusDepth"), "Chorus Depth",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusDepth"), "Julia Depth",
         Range (0.0f, 100.0f, 0.1f), 42.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusWidth"), "Chorus Width",
-        Range (0.0f, 100.0f, 0.1f), 80.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusTone"), "Chorus Tone",
-        Range (1000.0f, 16000.0f, 1.0f, 0.35f), 8000.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusMix"), "Chorus Mix",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusLag"), "Julia Lag",
+        Range (0.0f, 100.0f, 0.1f), 30.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusWaveform"), "Julia Waveform",
+        juce::StringArray { "Sine", "Triangle" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusDCV"), "Julia D-C-V",
         Range (0.0f, 100.0f, 0.1f), 20.0f));
 
     // --- Echo (Delay) ---
@@ -169,13 +169,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoMix"), "Delay Mix",
         Range (0.0f, 100.0f, 0.1f), 25.0f));
 
-    // --- Reverb: 7 Lexicon 480L hall/room convolutions (HallRoomReverbModule).
+    // --- Reverb: 3 Lexicon 480L hall/room convolutions (HallRoomReverbModule).
     // The old Rockalizer spring-tank models (Space/9100/Echomixer) have been
     // retired — SpringModule is no longer part of the chain.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("reverbOn"), "Reverb On", false));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("reverbModel"), "Reverb Model",
-        juce::StringArray { "Large Hall", "Large Stage", "Small Church", "Small Hall",
-                             "Small Stage", "Large Room", "Small Room" }, 0));
+        juce::StringArray { "Large Hall", "Large Stage", "Small Room" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbPreDelay"), "Reverb Pre-Delay",
         Range (0.0f, 1.0f, 0.001f), 0.0f));
     // Shapes the loaded IR's own tail (see HallRoomReverbModule) rather than
@@ -407,13 +406,14 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         tremolo.reset();
     tremoloWasActive = tremoloActive;
 
-    // --- Chorus ---
+    // --- Julia (Chorus/Vibrato) ---
     const auto chorusActive = pBool ("chorusOn");
     if (chorusActive)
     {
-        chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusWidth"),
-                              p ("chorusTone"), p ("chorusMix"), true,
-                              (int) p ("chorusFlangerMode"));
+        const auto waveform = ((int) p ("chorusWaveform")) == 1
+            ? ChorusModule::Waveform::triangle : ChorusModule::Waveform::sine;
+        chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusLag"),
+                              waveform, p ("chorusDCV"), true);
         chorus.process (buffer);
     }
     else if (chorusWasActive)

@@ -73,14 +73,10 @@ void HallRoomReverbModule::handleAsyncUpdate()
 void HallRoomReverbModule::loadImpulse (int index, float decay01)
 {
     const void* data[numModels] {
-        BinaryData::large_hall_wav, BinaryData::large_stage_wav, BinaryData::small_church_wav,
-        BinaryData::small_hall_wav, BinaryData::small_stage_wav, BinaryData::large_room_wav,
-        BinaryData::small_room_wav
+        BinaryData::large_hall_wav, BinaryData::large_stage_wav, BinaryData::small_room_wav
     };
     const int sizes[numModels] {
-        BinaryData::large_hall_wavSize, BinaryData::large_stage_wavSize, BinaryData::small_church_wavSize,
-        BinaryData::small_hall_wavSize, BinaryData::small_stage_wavSize, BinaryData::large_room_wavSize,
-        BinaryData::small_room_wavSize
+        BinaryData::large_hall_wavSize, BinaryData::large_stage_wavSize, BinaryData::small_room_wavSize
     };
 
     juce::WavAudioFormat wav;

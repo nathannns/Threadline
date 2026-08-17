@@ -17,8 +17,8 @@ private:
     ThreadlineAudioProcessor& processor;
     SectionUI tremSection, chorusSection, echoSection, reverbSection;
 
-    ToggleFootswitch flangerMode1Button, flangerMode2Button;
-    juce::Label flangerLabel;
+    // Julia's Sine/Triangle mini-toggle switch.
+    juce::TextButton waveformButtons[2] { juce::TextButton ("Sine"), juce::TextButton ("Triangle") };
     juce::ComboBox echoPatternBox, echoDivisionBox;
     juce::ToggleButton echoSyncButton { "SYNC" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> echoPatternAttachment,

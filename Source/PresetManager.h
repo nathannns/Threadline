@@ -165,11 +165,11 @@ private:
             { "ampOutput", -1.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
-            // Julia chorus (Flanger Mode Off) kept light — a shimmer, not a wobble.
-            { "chorusOn", 1.0f }, { "chorusFlangerMode", 0.0f },
-            { "chorusRate", 0.30f }, { "chorusDepth", 20.0f }, { "chorusWidth", 68.0f },
-            { "chorusTone", 8500.0f }, { "chorusMix", 16.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 6.0f }, { "reverbDecay", 0.48f },
+            // Julia kept light and taut — a shimmer, not a wobble.
+            { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
+            { "chorusRate", 0.30f }, { "chorusDepth", 20.0f }, { "chorusLag", 25.0f },
+            { "chorusDCV", 16.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.48f },
             { "reverbTone", 0.62f }, { "reverbMix", 10.0f }, { "reverbWidth", 58.0f }
         });
         makePreset ("02 Edge of Breakup", {
@@ -183,7 +183,7 @@ private:
             // Bias-tremolo's asymmetric throb: a fast dip toward cutoff, a
             // gentler recovery. Kept subtle so it breathes under a chord.
             { "tremOn", 1.0f }, { "tremAmount", 20.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 5.0f }, { "reverbDecay", 0.56f },
+            { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbDecay", 0.56f },
             { "reverbTone", 0.55f }, { "reverbMix", 9.0f }, { "reverbWidth", 54.0f }
         });
         makePreset ("03 Driven Lead", {
@@ -202,7 +202,7 @@ private:
             { "echoOn", 1.0f }, { "echoSync", 0.0f }, { "echoPattern", 5.0f },
             { "echoTime", 330.0f }, { "echoRepeats", 22.0f }, { "echoTone", 4800.0f },
             { "echoWobble", 16.0f }, { "echoDrive", 22.0f }, { "echoMix", 13.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 4.0f }, { "reverbDecay", 0.66f },
+            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.66f },
             { "reverbMix", 12.0f }, { "reverbWidth", 62.0f }
         });
         makePreset ("04 Vibrato Swirl", {
@@ -210,11 +210,11 @@ private:
             { "ampOutput", -2.0f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
-            // Julia's Dry-Chorus-Vibrato spirit: pushing Mix this high with a
-            // brisk Rate reaches genuine full-wet vibrato, not diluted chorus.
-            { "chorusOn", 1.0f }, { "chorusFlangerMode", 0.0f },
-            { "chorusRate", 1.80f }, { "chorusDepth", 68.0f }, { "chorusWidth", 80.0f },
-            { "chorusTone", 7500.0f }, { "chorusMix", 88.0f },
+            // D-C-V pushed to near-100 with a brisk Rate and a long, sluggish
+            // Lag reaches genuine full-wet vibrato, not diluted chorus.
+            { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
+            { "chorusRate", 1.80f }, { "chorusDepth", 68.0f }, { "chorusLag", 70.0f },
+            { "chorusDCV", 88.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbPreDelay", 0.15f },
             { "reverbDecay", 0.70f }, { "reverbTone", 0.55f }, { "reverbMix", 18.0f },
             { "reverbWidth", 80.0f }
@@ -225,11 +225,11 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 35.0f },
-            // Gentle Julia chorus this time (low Rate/Mix) — width and air
+            // Gentle Julia this time (low Rate/D-C-V, moderate Lag) — air
             // rather than the pronounced wobble of "04 Vibrato Swirl".
-            { "chorusOn", 1.0f }, { "chorusFlangerMode", 0.0f },
-            { "chorusRate", 0.22f }, { "chorusDepth", 28.0f }, { "chorusWidth", 90.0f },
-            { "chorusTone", 7000.0f }, { "chorusMix", 20.0f },
+            { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
+            { "chorusRate", 0.22f }, { "chorusDepth", 28.0f }, { "chorusLag", 35.0f },
+            { "chorusDCV", 20.0f },
             { "echoOn", 1.0f }, { "echoSync", 1.0f }, { "echoPattern", 4.0f },
             { "echoDivision", 3.0f }, { "echoRepeats", 40.0f }, { "echoTone", 5200.0f },
             { "echoWobble", 34.0f }, { "echoDrive", 20.0f }, { "echoMix", 23.0f },
@@ -254,7 +254,7 @@ private:
             { "eqBand8", 0.8f }, { "eqBand9", -1.8f },
             { "eqHpfOn", 1.0f }, { "eqHpfFreq", 76.0f },
             { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9000.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 6.0f }, { "reverbDecay", 0.38f },
+            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.38f },
             { "reverbMix", 6.0f }, { "reverbWidth", 48.0f }
         });
 
