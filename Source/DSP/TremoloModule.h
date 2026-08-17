@@ -20,6 +20,10 @@ public:
     void reset();
     void setAmount (float amountPercent);
     void process (juce::AudioBuffer<float>& buffer);
+    bool isWetTransitionActive() const noexcept
+    {
+        return amount.isSmoothing() || amount.getCurrentValue() > 0.00001f;
+    }
 
 private:
     juce::SmoothedValue<float> amount;

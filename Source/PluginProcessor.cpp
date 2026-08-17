@@ -399,23 +399,35 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    // --- Tremolo: Rockalizer activation/reset topology ---
+    // --- Tremolo: fades the modulation depth to 0 before resetting, same
+    // as Echo/Reverb, instead of snapping the gain state to silence mid-cycle.
     const auto tremoloActive = pBool ("tremOn") && p ("tremAmount") > 0.001f;
     if (tremoloActive)
     {
         tremolo.setAmount (p ("tremAmount"));
         tremolo.process (buffer);
+        tremoloWasActive = true;
     }
     else if (tremoloWasActive)
-        tremolo.reset();
-    tremoloWasActive = tremoloActive;
+    {
+        tremolo.setAmount (0.0f);
+        tremolo.process (buffer);
+        if (! tremolo.isWetTransitionActive())
+        {
+            tremolo.reset();
+            tremoloWasActive = false;
+        }
+    }
 
-    // --- July (Chorus/Vibrato) ---
+    // --- July (Chorus/Vibrato): same fade-then-reset pattern as Echo/
+    // Tremolo above -- calling reset() directly snapped D-C-V's wet mix to
+    // 0 instantly, which is a real, audible click at Vibrato (100% wet,
+    // no dry reference to soften the cut) if toggled off mid-note.
     const auto chorusActive = pBool ("chorusOn");
+    const auto chorusWaveform = ((int) p ("chorusWaveform")) == 1
+        ? ChorusModule::Waveform::triangle : ChorusModule::Waveform::sine;
     if (chorusActive)
     {
-        const auto waveform = ((int) p ("chorusWaveform")) == 1
-            ? ChorusModule::Waveform::triangle : ChorusModule::Waveform::sine;
         // Dry / Chorus / Vibrato stops -> the underlying dry/wet percentage
         // ChorusModule's crossfade expects. Chorus sits at 42%: enough dry
         // signal left for the comb-filtered wobble that IS chorus, without
@@ -423,12 +435,21 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         constexpr float dcvStops[3] { 0.0f, 42.0f, 100.0f };
         const auto dcvIndex = juce::jlimit (0, 2, (int) p ("chorusDCV"));
         chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusLag"),
-                              waveform, dcvStops[dcvIndex], true);
+                              chorusWaveform, dcvStops[dcvIndex], true);
         chorus.process (buffer);
+        chorusWasActive = true;
     }
     else if (chorusWasActive)
-        chorus.reset();
-    chorusWasActive = chorusActive;
+    {
+        chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusLag"),
+                              chorusWaveform, 0.0f, false);
+        chorus.process (buffer);
+        if (! chorus.isWetTransitionActive())
+        {
+            chorus.reset();
+            chorusWasActive = false;
+        }
+    }
 
     // --- Echo (Delay) ---
     const auto echoActive = pBool ("echoOn");

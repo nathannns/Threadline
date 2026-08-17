@@ -28,6 +28,10 @@ public:
     void setParameters (float rateHz, float depthPercent, float lagPercent,
                         Waveform waveform, float dcvPercent, bool enabled);
     void process (juce::AudioBuffer<float>& buffer);
+    bool isWetTransitionActive() const noexcept
+    {
+        return dcvValue.isSmoothing() || dcvValue.getCurrentValue() > 0.00001f;
+    }
 
 private:
     float readDelay (int channel, float distance) const;
