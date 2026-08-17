@@ -86,56 +86,53 @@ on/off toggle regardless) via the Overdrive Order switch.
     delay-time wobble when switched on. Regen reaches near-self-oscillation
     at maximum, same as real hardware. Mixing is a straightforward
     crossfade, unlike Plexer's additive/always-colored EP-3 behaviour.
-- `HallRoomReverbModule` — algorithmic (not convolution) reverb: a faithful
-  port of JUCE's own `juce::Reverb` (itself what HISE's shipped SimpleReverb
-  effect wraps rather than rolling its own) -- 8 parallel combs + 4 series
-  allpasses per channel, using its exact proven constants (0.015 input gain,
-  0.5 allpass feedback, the same `wetScaleFactor`/damping-in-the-feedback-
-  path placement) rather than guessed ones. Two earlier custom versions of
-  this module (independent combs with a guessed input gain, then an 8-line
-  Householder FDN) both needed Mix pushed unrealistically high to hear
-  anything and still didn't sound quite right -- tracing that back to a real
-  reference implementation instead of inventing more constants fixed both
-  problems at once. On top of that, each comb's feedback and damping are
-  now derived from an explicit RT60 (reverberation time) target instead of
-  one coefficient shared across all 8 differently-sized lines -- since a
-  comb's real-time decay rate depends on both its gain and how often it
-  loops (loop period = line length / sample rate), a shared coefficient
-  gives every line a *different* actual decay time. The fix is the
-  standard Schroeder result: a comb of length `M` samples needs gain
-  `g = 10^(-3M / (RT60·fs))` to reach -60dB after `RT60` seconds, computed
-  per comb from its own length so every line agrees on the same decay time
-  instead of 8 lines quietly disagreeing. The same idea sets the damping
-  coefficient from a target high-frequency RT60 as a fraction of the
-  low-frequency one (Tone), rather than an arbitrary damping range -- see
-  the derivation in `HallRoomReverbModule.h`. 3 spaces: **Room** (warm,
-  small/dense, RT60 0.3-1.8s), **Hall** (clear, spacious, RT60 0.8-4.5s --
-  the least-modified of the three), **Plate** (metallic, extended highs,
-  RT60 1.0-5.5s and deliberately tuned *bigger* than Hall -- longer
-  comb/allpass line-length scale, a longer RT60 ceiling, and denser
-  allpass diffusion, the way a real plate's whole surface resonates almost
-  simultaneously, though pulled back from an earlier, too-extreme brightness
-  bias and allpass feedback that read as metallic/synthetic rather than
-  like a real plate). Freeverb's 8 comb tunings were chosen with a specific
-  spread between them so their resonances land at different-enough
-  frequencies to sound diffuse; uniformly scaling every line down for Room
-  shrank that spread too, which was audible as a "phasing"/comb-y quality
-  especially at high Mix -- fixed by scaling each line's deviation from the
-  mean tuning by an extra factor (Room only) so the 8 lines stay
-  decorrelated even at a smaller overall size. (A Shimmer mode —
-  pitch-shifted feedback — was tried and pulled after it produced a
-  runaway-feedback squeal; may come back once the feedback loop gain is
-  worked out properly against a real reference rather than guessed.) Two
-  further stages layer on top without touching the RT60-verified comb math
-  above: a per-channel multi-tap **early-reflection** generator (per-model
-  pattern -- Room modest/dense, Hall sparse/spread, Plate near-instant/
-  ultra-dense) runs in parallel with the tank, since a comb/allpass tank
-  alone is a late-diffuse-field generator with no discrete-echo size/
-  distance cue at all; and each of the 4 **allpasses now reads a slowly,
-  independently modulated fractional delay** (a few tenths of a
-  millisecond, different rate per instance) instead of a fixed integer
-  lookback, the standard technique (Dattorro's plate topology among others)
-  for keeping a diffuse tail smooth under sustained input instead of
+- `HallRoomReverbModule` — algorithmic (not convolution) reverb: a genuine
+  **Feedback Delay Network** (FDN, per Jot's original papers), not a bank of
+  independent parallel combs. The earlier design (still described in git
+  history if you want the comparison) ran 8 combs per channel that only ever
+  interacted by being summed at the output -- structurally just 16
+  independent one-pole-damped resonators, regardless of how the "reverb"
+  math around them was dressed up. The current tank instead runs a single
+  **shared** set of 8 delay lines (not duplicated per channel) through a
+  Householder mixing matrix every sample -- each line's output feeds into
+  *every* line's input, weighted by `H = I - (2/N)·ones(N,N)` -- so the tank
+  is a genuinely coupled network the way a real room's modes couple, not 8
+  parallel echoes. That matrix is orthogonal, which is what makes RT60
+  control tractable at all: an orthogonal matrix preserves vector norm, so
+  applying one *uniform* scalar loop gain `g` to all 8 lines decays the
+  whole coupled network's total energy at exactly rate `g` per round trip,
+  independent of the specific mixing pattern -- the standard way real FDN
+  reverbs control decay time. `g` (and the damping split between it) is
+  computed once from the network's characteristic (mean) line length via
+  the same Schroeder `g = 10^(-3M / (RT60·fs))` result used before, since a
+  genuinely coupled network doesn't have a simple closed form for treating
+  each line's RT60 independently the way 8 non-interacting combs did.
+  Stereo comes out of that single shared tank via two orthogonal
+  (Hadamard-row, ±1) weighted sums of the same 8 lines, rather than running
+  two separate networks. Ahead of the tank, a 4-stage **input diffuser**
+  (Dattorro's exact published JAES-1997 topology: delays 142/107/379/277
+  samples, coefficients 0.75/0.75/0.625/0.625, sample-rate-scaled but fixed
+  across Room/Hall/Plate) smears the transient onset into the network,
+  which is what a real room's early scattering does and a comb bank alone
+  never modeled. 3 spaces: **Room** (warm, small/dense, RT60 0.3-1.8s),
+  **Hall** (clear, spacious, RT60 0.8-4.5s), **Plate** (metallic, extended
+  highs, RT60 1.0-5.5s, longer line-length scale and denser post-tank
+  diffusion than Hall, the way a real plate's whole surface resonates almost
+  simultaneously). The 8 lines keep Freeverb's classic tunings as a spacing
+  pattern (chosen so their resonances land at different-enough frequencies
+  to stay decorrelated -- doubly important now that the Householder matrix
+  explicitly couples all 8 every sample), with Room's extra spread-boost
+  factor preserved from the previous design so shrinking the tank for a
+  small room doesn't also shrink that spacing into a "phasing"/comb-y
+  quality. Two further stages layer on top of the FDN core, applied to its
+  extracted stereo taps rather than inside the shared tank: a per-channel
+  multi-tap **early-reflection** generator (per-model pattern -- Room
+  modest/dense, Hall sparse/spread, Plate near-instant/ultra-dense), since
+  an FDN alone is a late-diffuse-field generator with no discrete-echo
+  size/distance cue; and 4 **post-tank allpasses per channel**, each reading
+  a slowly, independently modulated fractional delay (a few tenths of a
+  millisecond, different rate per instance) rather than a fixed integer
+  lookback, keeping the diffuse tail smooth under sustained input instead of
   ringing at its own static resonances. The original Lexicon-480L-captured
   IRs this module used to convolve against are still in
   `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.

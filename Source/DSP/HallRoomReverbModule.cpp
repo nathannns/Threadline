@@ -2,54 +2,67 @@
 
 namespace
 {
-    // JUCE's own juce::Reverb tunings, in samples at 44.1kHz -- chosen to
-    // avoid coincident resonances between the 8 parallel combs. Scaled per
-    // Model (size) and sample rate in prepareTank().
-    constexpr int combTunings[HallRoomReverbModule::numCombs]        { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+    // FDN line tuning, in samples at 44.1kHz -- Freeverb's own classic
+    // values, chosen to avoid coincident resonances. Reused here as the 8
+    // shared FDN line lengths (scaled per Model/sample-rate in
+    // prepareTank()) rather than for 8 independent per-channel combs.
+    constexpr int lineTuning[HallRoomReverbModule::numLines] { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+
+    // Dattorro's own published input-diffuser lengths and coefficients
+    // (JAES 1997, "Effect Design Part 1") -- fixed regardless of Model, so
+    // the input's own diffusion character stays consistent while the late
+    // field (FDN line-length scale, RT60 range) is what actually varies
+    // Room/Hall/Plate.
+    constexpr int inputDiffuserTuning[HallRoomReverbModule::numInputDiffusers] { 142, 107, 379, 277 };
+    constexpr float inputDiffuserCoeff[HallRoomReverbModule::numInputDiffusers] { 0.75f, 0.75f, 0.625f, 0.625f };
+
     constexpr int allpassTunings[HallRoomReverbModule::numAllpasses] { 556, 441, 341, 225 };
     constexpr int stereoSpread = 23;
 
-    // Exactly JUCE's own input gain constant (juce_Reverb.h: `gain = 0.015f`
-    // when not frozen). This, not a guessed value, is what makes the tank's
-    // resonant build-up land at a musically useful level in the first
-    // place -- see file header.
-    constexpr float inputGain = 0.015f;
+    // Two rows of an 8-point Hadamard matrix -- mutually orthogonal +-1
+    // patterns used to extract a decorrelated stereo pair from the FDN's 8
+    // shared lines, rather than duplicating the whole network per channel.
+    constexpr float outSignsL[HallRoomReverbModule::numLines] { 1, -1, 1, -1, 1, -1, 1, -1 };
+    constexpr float outSignsR[HallRoomReverbModule::numLines] { 1, 1, -1, -1, 1, 1, -1, -1 };
+    const float outputScale = 1.0f / std::sqrt (static_cast<float> (HallRoomReverbModule::numLines));
 
-    // Model 0 = Room, 1 = Hall, 2 = Plate (matches getModelName()). Decay
-    // now sets an explicit RT60 target in seconds (rt60Low, per model
-    // range below) instead of a raw feedback coefficient -- see file
-    // header for why that's the mathematically correct quantity to expose
-    // rather than "roomSize". Plate gets both a bigger comb/allpass line
-    // scale AND a longer RT60 ceiling than Hall, plus a little denser
-    // allpass diffusion and a ratioBias that keeps its high-frequency RT60
-    // a bit closer to its low-frequency one (brighter, "extended highs")
-    // than Room/Hall -- kept modest rather than near-zero damping, which
-    // read as metallic/artificial instead of like a real plate.
+    // Exactly JUCE's own input gain constant (juce_Reverb.h: `gain = 0.015f`
+    // when not frozen) -- proven gain-staging, not a guessed value.
+    constexpr float inputGain = 0.015f;
+    // JUCE's own wetScaleFactor: this module's single equal-power Mix knob
+    // blends dry/wet more conservatively than JUCE's independent wet/dry
+    // levels do, so this makeup gain is carried forward explicitly.
+    constexpr float wetScaleFactor = 3.0f;
+
+    // Model 0 = Room, 1 = Hall, 2 = Plate (matches getModelName()). Plate
+    // gets both a bigger line-length scale AND a longer RT60 ceiling than
+    // Hall, plus a little denser post-FDN allpass diffusion and a ratioBias
+    // that keeps its high-frequency RT60 a bit closer to its low-frequency
+    // one (brighter, "extended highs") than Room/Hall.
     constexpr float modelSizeScale[HallRoomReverbModule::numModels]      { 0.55f, 1.0f, 1.3f };
     constexpr float modelRt60LowMin[HallRoomReverbModule::numModels]     { 0.3f, 0.8f, 1.0f };
     constexpr float modelRt60LowMax[HallRoomReverbModule::numModels]     { 1.8f, 4.5f, 5.5f };
     constexpr float modelRatioBias[HallRoomReverbModule::numModels]      { 0.0f, 0.0f, 0.08f };
     constexpr float modelAllpassFeedback[HallRoomReverbModule::numModels] { 0.5f, 0.5f, 0.58f };
 
-    // Freeverb's 8 tunings were chosen (at their native 44.1kHz scale) with
-    // a specific spread between them so the 8 resonance peaks land at
-    // different-enough frequencies to sound diffuse rather than beating
-    // against each other. Uniformly scaling every line down by the same
-    // factor (Room's 0.55x) shrinks that spread by the same amount, which
-    // is audible as a "phasing"/comb-y quality especially at high Mix --
-    // the short lines end up too close in length relative to each other.
-    // Scaling deviations from the mean tuning by an extra spreadBoost
-    // factor (Room only) restores real decorrelation between the 8 lines
-    // without changing the model's overall average size.
+    // Freeverb's 8 tunings were chosen with a specific spread between them
+    // so the 8 resonances land at different-enough frequencies to sound
+    // diffuse rather than beating against each other. Uniformly scaling
+    // every line down for Room shrinks that spread by the same amount,
+    // audible as a "phasing"/comb-y quality -- fixed by scaling each
+    // line's deviation from the mean tuning by an extra spreadBoost factor
+    // (Room only) so the 8 lines stay decorrelated at a smaller overall
+    // size. Matters even more here than in an independent-comb design,
+    // since the Householder matrix explicitly couples all 8 lines together
+    // every sample -- well-separated resonant frequencies are what keep
+    // that coupling sounding diffuse rather than metallic.
     constexpr float modelSpreadBoost[HallRoomReverbModule::numModels] { 1.6f, 1.0f, 1.0f };
 
     // Early-reflection tap patterns (ms, gain), scaled down by erGainScale
-    // so they sit comfortably alongside the tank's own (already-tuned)
-    // level rather than overpowering it -- this is a spatial-cue addition,
-    // not a level change. Room: modest density, moderate spread. Hall:
+    // so they sit alongside the tank's own (already-tuned) level rather
+    // than overpowering it. Room: modest density, moderate spread. Hall:
     // sparser and more spread out, with a clearer gap before it thickens.
-    // Plate: near-instantaneous and very dense, almost no gap. See file
-    // header point 1.
+    // Plate: near-instantaneous and very dense, almost no gap.
     constexpr float erGainScale = 0.15f;
     constexpr float roomTapMs[8]     { 3.0f, 7.0f, 12.0f, 18.0f, 25.0f, 33.0f, 42.0f, 52.0f };
     constexpr float roomTapGain[8]   { 0.90f, 0.75f, 0.62f, 0.50f, 0.40f, 0.32f, 0.25f, 0.20f };
@@ -59,18 +72,16 @@ namespace
     constexpr float plateTapGain[10] { 0.95f, 0.92f, 0.88f, 0.85f, 0.82f, 0.78f, 0.75f, 0.72f, 0.68f, 0.65f };
     constexpr float erStereoStretch = 1.03f; // decorrelates ER between channels even for a mono dry signal
 
-    // Modulated-allpass depth/rate -- see file header point 2. Kept small
-    // (a fraction of a millisecond) so it breaks up static ringing without
-    // reading as audible pitch wobble; each of the 8 instances (4 allpasses
-    // x 2 channels) gets its own rate and starting phase so they decorrelate
-    // rather than all wobbling in lockstep.
+    // Post-FDN modulated-allpass depth/rate. Kept small (a fraction of a
+    // millisecond) so it breaks up static ringing without reading as
+    // audible pitch wobble; each instance gets its own rate/starting phase
+    // so they decorrelate rather than wobbling in lockstep.
     constexpr float allpassModDepthMs = 0.4f;
     constexpr float allpassModRateHz[HallRoomReverbModule::numAllpasses] { 0.17f, 0.23f, 0.31f, 0.41f };
 
-    // With correct gain-staging this should rarely actually trigger --
-    // kept as a backstop, not a routine level-setter, since resonant combs
-    // can in principle still build gain at coincident frequencies for
-    // pathological parameter combinations.
+    // With correct gain-staging and g < 1 guaranteed by construction, this
+    // should rarely actually trigger -- kept as a backstop, not a routine
+    // level-setter.
     float smoothRail (float value, float knee, float ceiling)
     {
         const auto magnitude = std::abs (value);
@@ -95,28 +106,32 @@ void HallRoomReverbModule::prepareTank (Tank& tank, int modelIndex)
     const auto spreadBoost = modelSpreadBoost[modelIndex];
     const auto spread = juce::roundToInt (static_cast<float> (stereoSpread) * scale);
     const auto allpassFeedback = modelAllpassFeedback[modelIndex];
-    const auto combMean = meanOf (combTunings, numCombs);
-    const auto modDepthSamples = allpassModDepthMs * 0.001f * static_cast<float> (sampleRate);
+    const auto lineMean = meanOf (lineTuning, numLines);
 
-    for (int i = 0; i < numCombs; ++i)
+    for (int i = 0; i < numLines; ++i)
     {
         // Boost each line's deviation from the mean before scaling, so
         // shrinking the model doesn't also shrink the relative spread that
         // keeps the 8 resonances decorrelated -- see modelSpreadBoost above.
-        const auto boostedTuning = combMean + (static_cast<float> (combTunings[i]) - combMean) * spreadBoost;
-        tank.combL[i].setSize (juce::roundToInt (boostedTuning * scale));
-        tank.combR[i].setSize (juce::roundToInt (boostedTuning * scale) + spread);
+        const auto boostedTuning = lineMean + (static_cast<float> (lineTuning[i]) - lineMean) * spreadBoost;
+        tank.lines[i].setSize (juce::roundToInt (boostedTuning * scale));
     }
+
+    // Input diffusion: fixed regardless of Model, sample-rate scaled only.
+    for (int i = 0; i < numInputDiffusers; ++i)
+    {
+        tank.inputDiffuser[i].setSize (juce::roundToInt (static_cast<float> (inputDiffuserTuning[i]) * srScale));
+        tank.inputDiffuser[i].diffusion = inputDiffuserCoeff[i];
+    }
+
     for (int i = 0; i < numAllpasses; ++i)
     {
         auto& left = tank.allpassL[i];
         auto& right = tank.allpassR[i];
-        left.modDepthSamples = right.modDepthSamples = modDepthSamples;
+        left.modDepthSamples = right.modDepthSamples = allpassModDepthMs * 0.001f * static_cast<float> (sampleRate);
         const auto rateHz = allpassModRateHz[i];
         left.modIncrement = right.modIncrement =
             juce::MathConstants<float>::twoPi * rateHz / static_cast<float> (sampleRate);
-        // Stagger starting phase per instance (and offset L from R) so the
-        // 8 lines decorrelate instead of wobbling in lockstep.
         left.modPhase = juce::MathConstants<float>::twoPi * static_cast<float> (i) / static_cast<float> (numAllpasses);
         right.modPhase = left.modPhase + juce::MathConstants<float>::pi * 0.5f;
 
@@ -201,10 +216,7 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayN
     const auto decay01 = juce::jlimit (0.0f, 1.0f, decayNormalised);
     rt60Low = juce::jmap (decay01, modelRt60LowMin[activeModel], modelRt60LowMax[activeModel]);
 
-    // Tone -> the high-frequency RT60 as a fraction of rt60Low (darker =
-    // smaller fraction = highs die much faster than lows, same as real air
-    // absorption). Plate's ratio bias keeps its extended-highs character
-    // even at matched Tone settings.
+    // Tone -> the high-frequency RT60 as a fraction of rt60Low.
     const auto toneClamped = juce::jlimit (0.0f, 1.0f, toneNormalised);
     const auto ratio = juce::jlimit (0.02f, 0.98f,
         juce::jmap (toneClamped, 0.05f, 0.95f) + modelRatioBias[activeModel]);
@@ -215,9 +227,24 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayN
 
 void HallRoomReverbModule::updateDecayTimes()
 {
+    // For an orthogonally-mixed network, a uniform loop gain g combined
+    // with the Householder matrix decays the network's total energy at
+    // exactly rate g per round trip (the matrix preserves vector norm) --
+    // the standard way real FDN reverbs control T60. Applied at the
+    // network's characteristic (mean) line length, same Schroeder formula
+    // as before -- see file header.
     auto& tank = tanks[activeModel];
-    for (auto& c : tank.combL) c.setDecayTimes (rt60Low, rt60High, sampleRate);
-    for (auto& c : tank.combR) c.setDecayTimes (rt60Low, rt60High, sampleRate);
+    float meanLength = 0.0f;
+    for (auto& line : tank.lines) meanLength += static_cast<float> (line.buffer.size());
+    meanLength /= static_cast<float> (numLines);
+
+    const auto exponent = -3.0f * meanLength / static_cast<float> (sampleRate);
+    const auto gainLow = std::pow (10.0f, exponent / juce::jmax (0.02f, rt60Low));
+    const auto gainHigh = std::pow (10.0f, exponent / juce::jmax (0.02f, rt60High));
+    loopFeedback = juce::jlimit (0.0f, 0.999f, gainLow);
+    const auto ratio = juce::jlimit (0.0001f, 1.0f, gainHigh / juce::jmax (0.0001f, gainLow));
+    damp1 = juce::jlimit (0.0f, 0.999f, (1.0f - ratio) / (1.0f + ratio));
+    damp2 = 1.0f - damp1;
 }
 
 void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
@@ -234,7 +261,7 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
 
     // Pre-delay, with a slow sub-millisecond modulation that's inverted
     // between L/R so the two channels decorrelate slightly instead of
-    // tracking a single static delay — see file header for why.
+    // tracking a single static delay.
     constexpr auto modRateHz = 0.11f;
     constexpr auto modDepthMs = 0.35f;
     const auto modDepthSamples = static_cast<float> (sampleRate) * modDepthMs * 0.001f;
@@ -263,45 +290,49 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
         if (modPhaseRight >= juce::MathConstants<float>::twoPi) modPhaseRight -= juce::MathConstants<float>::twoPi;
     }
 
-    // The tank: exactly JUCE's own topology -- a single mono-summed input
-    // (like a real Freeverb, not per-channel input) drives 8 parallel combs
-    // per channel, accumulated, then 4 series allpasses per channel. Stereo
-    // comes purely from the L/R comb/allpass tunings being offset by
-    // stereoSpread, not from feeding different per-channel input. A
-    // per-channel early-reflection generator runs in parallel from the
-    // same (unscaled) dry signal -- see file header point 1.
+    // The FDN core: mono-sum -> input diffusion -> 8 shared lines mixed by
+    // a Householder matrix every sample -> stereo extracted via two
+    // orthogonal (Hadamard-row) weighted sums of those same 8 lines. Early
+    // reflections and post-FDN modulated diffusion are added afterward,
+    // per-channel, from the genuinely-stereo dry signal.
     auto& tank = tanks[activeModel];
     for (int sample = 0; sample < samples; ++sample)
     {
         const auto dryL = wetBuffer.getSample (0, sample);
         const auto dryR = channels > 1 ? wetBuffer.getSample (1, sample) : dryL;
-        const auto input = (dryL + dryR) * 0.5f * inputGain;
+        auto diffused = (dryL + dryR) * 0.5f * inputGain;
+        for (auto& d : tank.inputDiffuser) diffused = d.process (diffused);
 
-        float outL = 0.0f, outR = 0.0f;
-        for (auto& c : tank.combL) outL += c.process (input);
-        for (auto& c : tank.combR) outR += c.process (input);
-        for (auto& a : tank.allpassL) outL = a.process (outL);
-        for (auto& a : tank.allpassR) outR = a.process (outR);
+        float yd[numLines];
+        float sum = 0.0f;
+        for (int i = 0; i < numLines; ++i)
+        {
+            yd[i] = tank.lines[i].readDamped (damp1, damp2);
+            sum += yd[i];
+        }
+        const auto reflected = sum * (2.0f / static_cast<float> (numLines));
 
-        // JUCE's own wetScaleFactor: our single equal-power Mix knob blends
-        // dry/wet more conservatively than JUCE's independent wet/dry
-        // levels do (their default wetLevel=0.33 becomes an almost-unity
-        // wetGain1 once scaled by this same 3.0), so this makeup gain is
-        // carried forward explicitly rather than assuming the tank's own
-        // resonant build-up is loud enough on its own.
-        constexpr float wetScaleFactor = 3.0f;
-        outL *= wetScaleFactor;
-        outR *= wetScaleFactor;
+        float tailL = 0.0f, tailR = 0.0f;
+        for (int i = 0; i < numLines; ++i)
+        {
+            tailL += yd[i] * outSignsL[i];
+            tailR += yd[i] * outSignsR[i];
 
-        // Early reflections are added after the tank's own makeup gain, at
-        // their own (already-tuned) level, so they read as a spatial cue
-        // layered under the tank's tail rather than getting tripled too.
-        outL += tank.erL.process (dryL);
-        outR += tank.erR.process (dryR);
+            const auto z = yd[i] - reflected; // Householder-reflected (energy-preserving) mix
+            tank.lines[i].writeBack (diffused + z * loopFeedback);
+        }
+        tailL *= outputScale * wetScaleFactor;
+        tailR *= outputScale * wetScaleFactor;
 
-        wetBuffer.setSample (0, sample, smoothRail (outL, 2.5f, 6.0f));
+        for (auto& a : tank.allpassL) tailL = a.process (tailL);
+        for (auto& a : tank.allpassR) tailR = a.process (tailR);
+
+        tailL += tank.erL.process (dryL);
+        tailR += tank.erR.process (dryR);
+
+        wetBuffer.setSample (0, sample, smoothRail (tailL, 2.5f, 6.0f));
         if (channels > 1)
-            wetBuffer.setSample (1, sample, smoothRail (outR, 2.5f, 6.0f));
+            wetBuffer.setSample (1, sample, smoothRail (tailR, 2.5f, 6.0f));
     }
 
     juce::dsp::AudioBlock<float> wetBlock (wetBuffer);
@@ -311,12 +342,8 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
 
     // Width: simple M/S scaling of the wet signal only (dry stays untouched),
     // so it reshapes the reverb's own stereo image rather than the guitar's.
-    // widthFactor can reach 2.0 ("doubled side"), which can push mid+-side
-    // beyond what the tank's own smoothRail clamp upstream guaranteed (e.g.
-    // L near +6, R near -6 both individually valid, but side alone then
-    // reaches (L-R)*widthFactor/2 = 12) -- re-clamped here so the safety
-    // rail's bound actually holds for what leaves this stage, not just for
-    // what enters it.
+    // Re-clamped after, since widthFactor can reach 2.0 ("doubled side"),
+    // which can push mid+-side beyond what smoothRail guaranteed upstream.
     if (channels > 1 && std::abs (widthFactor - 1.0f) > 0.001f)
     {
         for (int sample = 0; sample < samples; ++sample)
