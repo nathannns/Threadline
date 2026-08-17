@@ -77,15 +77,29 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ampOversampling"), "Amp Oversampling",
         juce::StringArray { "Off", "2x", "4x" }, 2));
 
-    // --- Cab ---
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabOn"), "Cab On", true));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("cabIRSelect"), "Cab IR",
+    // --- Cab: two IR slots processed in parallel (like two mics on the same
+    // cab), each independently on/off with its own IR + internal wet/dry
+    // mix, blended together by cabBlend (0 = all A, 100 = all B).
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabAOn"), "Cab A On", true));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("cabAIRSelect"), "Cab A IR",
         juce::StringArray { CabModule::getBuiltInIRName (0), CabModule::getBuiltInIRName (1),
                              CabModule::getBuiltInIRName (2), CabModule::getBuiltInIRName (3),
                              CabModule::getBuiltInIRName (4), CabModule::getBuiltInIRName (5) },
         2 /* default: Medium Mix */));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabMix"), "Cab Mix",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabAMix"), "Cab A Mix",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabBOn"), "Cab B On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("cabBIRSelect"), "Cab B IR",
+        juce::StringArray { CabModule::getBuiltInIRName (0), CabModule::getBuiltInIRName (1),
+                             CabModule::getBuiltInIRName (2), CabModule::getBuiltInIRName (3),
+                             CabModule::getBuiltInIRName (4), CabModule::getBuiltInIRName (5) },
+        0 /* default: Bright Mix — deliberately different from A's default */));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabBMix"), "Cab B Mix",
+        Range (0.0f, 1.0f, 0.001f), 1.0f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabBlend"), "Cab A/B Blend",
+        Range (0.0f, 100.0f, 0.1f), 50.0f));
 
     // --- Tremolo ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("tremOn"), "Tremolo On", false));
@@ -208,12 +222,18 @@ void ThreadlineAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     // (see the comment further down where it's selected), so the reported
     // total stays constant across a live oversampling-mode switch too.
     setLatencySamples (klon.getLatencySamples() + ts9.getLatencySamples() + amps.back().getLatencySamples());
-    cab.prepare (spec);
-    // Load the selected built-in cabinet IR.
-    const auto cabSelection = (int) p ("cabIRSelect");
-    if (cabSelection < CabModule::numBuiltInIRs)
-        cab.loadBuiltInIR (cabSelection);
-    lastCabIRSelection = cabSelection;
+    cabA.prepare (spec);
+    cabB.prepare (spec);
+    // Load each slot's selected built-in cabinet IR.
+    const auto cabASelection = (int) p ("cabAIRSelect");
+    if (cabASelection < CabModule::numBuiltInIRs)
+        cabA.loadBuiltInIR (cabASelection);
+    lastCabAIRSelection = cabASelection;
+
+    const auto cabBSelection = (int) p ("cabBIRSelect");
+    if (cabBSelection < CabModule::numBuiltInIRs)
+        cabB.loadBuiltInIR (cabBSelection);
+    lastCabBIRSelection = cabBSelection;
     tremolo.prepare (spec);
     chorus.prepare (spec);
     echo.prepare (spec);
@@ -290,16 +310,38 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     selectedAmp.setParameters (p ("ampDrive"), p ("ampTone"), p ("ampOutput"));
     selectedAmp.process (buffer);
 
-    // --- Cab (IR) ---
-    cab.setEnabled (pBool ("cabOn"));
-    cab.setMix (p ("cabMix"));
+    // --- Cab (IR): two slots processed in parallel from the same dry
+    // signal (like two mics on one cab, not two cabs chained in series),
+    // then blended — each slot's own on/off and internal mix still apply.
     {
-        const auto cabSelection = (int) p ("cabIRSelect");
-        if (cabSelection != lastCabIRSelection && cabSelection < CabModule::numBuiltInIRs)
-            cab.loadBuiltInIR (cabSelection);
-        lastCabIRSelection = cabSelection;
+        cabA.setEnabled (pBool ("cabAOn"));
+        cabA.setMix (p ("cabAMix"));
+        const auto cabASelection = (int) p ("cabAIRSelect");
+        if (cabASelection != lastCabAIRSelection && cabASelection < CabModule::numBuiltInIRs)
+            cabA.loadBuiltInIR (cabASelection);
+        lastCabAIRSelection = cabASelection;
+
+        cabB.setEnabled (pBool ("cabBOn"));
+        cabB.setMix (p ("cabBMix"));
+        const auto cabBSelection = (int) p ("cabBIRSelect");
+        if (cabBSelection != lastCabBIRSelection && cabBSelection < CabModule::numBuiltInIRs)
+            cabB.loadBuiltInIR (cabBSelection);
+        lastCabBIRSelection = cabBSelection;
+
+        juce::AudioBuffer<float> bufferB;
+        bufferB.makeCopyOf (buffer);
+        cabA.process (buffer);   // buffer now holds A's result (dry if A is off)
+        cabB.process (bufferB);  // bufferB now holds B's result (dry if B is off)
+
+        const auto blend = juce::jlimit (0.0f, 1.0f, p ("cabBlend") * 0.01f);
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        {
+            auto* a = buffer.getWritePointer (ch);
+            auto* b = bufferB.getReadPointer (ch);
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+                a[i] = a[i] * (1.0f - blend) + b[i] * blend;
+        }
     }
-    cab.process (buffer);
 
     // --- Tremolo: Rockalizer activation/reset topology ---
     const auto tremoloActive = pBool ("tremOn") && p ("tremAmount") > 0.001f;

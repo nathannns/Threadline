@@ -11,6 +11,12 @@ namespace
         label.setColour (juce::Label::textColourId, juce::Colours::white);
         label.attachToComponent (&knob, false);
     }
+
+    void setupCabSlot (SectionUI& section, juce::Component& parent, juce::AudioProcessorValueTreeState& apvts,
+                        const juce::String& title, const char* onId, const char* mixId, int plateIndex)
+    {
+        buildSection (section, parent, apvts, title, onId, { { mixId, "Mix" } }, false, plateIndex);
+    }
 }
 
 Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
@@ -33,15 +39,29 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     ampOutputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, "ampOutput", ampOutputKnob);
 
-    buildSection (cabSection, *this, processor.apvts, "Cabinet (IR)", "cabOn", {
-        { "cabMix", "Mix" }
-    }, false, SectionPlate::Cab);
+    // Two IR slots, processed in parallel and blended — like two mics on
+    // the same cab rather than two cabs chained one after another.
+    setupCabSlot (cabASection, *this, processor.apvts, "Cab A", "cabAOn", "cabAMix", SectionPlate::Cab);
+    setupCabSlot (cabBSection, *this, processor.apvts, "Cab B", "cabBOn", "cabBMix", SectionPlate::Cab);
 
-    cabIRBox.addItemList ({ "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57",
-                             "Medium 87", "Medium 160" }, 1);
-    addAndMakeVisible (cabIRBox);
-    cabIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        processor.apvts, "cabIRSelect", cabIRBox);
+    cabAIRBox.addItemList ({ "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57", "Medium 87", "Medium 160" }, 1);
+    cabBIRBox.addItemList ({ "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57", "Medium 87", "Medium 160" }, 1);
+    addAndMakeVisible (cabAIRBox);
+    addAndMakeVisible (cabBIRBox);
+    cabAIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, "cabAIRSelect", cabAIRBox);
+    cabBIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, "cabBIRSelect", cabBIRBox);
+
+    blendLabel.setText ("A / B", juce::dontSendNotification);
+    blendLabel.setJustificationType (juce::Justification::centred);
+    blendLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    blendLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    blendLabel.attachToComponent (&blendKnob, false);
+    addAndMakeVisible (blendKnob);
+    addAndMakeVisible (blendLabel);
+    blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.apvts, "cabBlend", blendKnob);
 }
 
 void Page2Component::paint (juce::Graphics& g)
@@ -54,25 +74,26 @@ void Page2Component::paint (juce::Graphics& g)
         g.drawImage (ampImage, ampArea, placement);
     }
 
-    // Two clean translucent cards over the global background. There is no
-    // baked-in divider or oversized decorative frame competing with the
-    // actual amp/cab geometry.
     paintCard (g, ampKnobFrameBounds);
-    paintCard (g, cabSection.bounds);
+    paintCard (g, cabASection.bounds);
+    paintCard (g, cabBSection.bounds);
 }
 
 void Page2Component::resized()
 {
-    auto area = getLocalBounds().reduced (20, 16);
-    constexpr int columnGap = 14;
-    const auto leftWidth = juce::roundToInt (static_cast<float> (area.getWidth() - columnGap) * 0.55f);
-    ampImageFrameBounds = area.removeFromLeft (leftWidth);
-    area.removeFromLeft (columnGap);
+    auto full = getLocalBounds().reduced (20, 16);
 
-    constexpr int frameGap = 14;
-    const auto frameHeight = (area.getHeight() - frameGap) / 2;
-    ampKnobFrameBounds = area.removeFromTop (frameHeight);
-    area.removeFromTop (frameGap);
+    // Cab A/B get a full-width row at the bottom rather than being confined
+    // to the (narrower) knob column, so there's real room for two cards.
+    const auto cabRowHeight = juce::roundToInt (full.getHeight() * 0.34f);
+    auto cabRow = full.removeFromBottom (cabRowHeight);
+    full.removeFromBottom (14);
+
+    constexpr int columnGap = 14;
+    const auto leftWidth = juce::roundToInt (static_cast<float> (full.getWidth() - columnGap) * 0.55f);
+    ampImageFrameBounds = full.removeFromLeft (leftWidth);
+    full.removeFromLeft (columnGap);
+    ampKnobFrameBounds = full;
 
     auto knobRow = ampKnobFrameBounds.reduced (juce::jmax (6, ampKnobFrameBounds.getWidth() / 28), 8);
     knobRow.removeFromTop (juce::jmin (18, knobRow.getHeight() / 8));
@@ -85,17 +106,31 @@ void Page2Component::resized()
     ampToneKnob.toFront (false);
     ampOutputKnob.toFront (false);
 
-    auto cabRow = area;
-    cabSection.bounds = cabRow;
-    cabRow.reduce (10, 8);
-    auto header = cabRow.removeFromTop (24);
-    cabSection.toggle.setBounds (header.removeFromRight (36).reduced (2, 0));
-    cabIRBox.setBounds (header.removeFromRight (130).reduced (4, 0));
-    cabSection.titleLabel.setBounds (header);
+    // Cab A | blend knob | Cab B, left to right.
+    constexpr int blendWidth = 84;
+    const auto cabWidth = (cabRow.getWidth() - blendWidth) / 2;
+    auto cabAArea = cabRow.removeFromLeft (cabWidth);
+    auto blendArea = cabRow.removeFromLeft (blendWidth);
+    auto cabBArea = cabRow;
 
-    cabRow.removeFromTop (juce::jmin (16, cabRow.getHeight() / 10));
-    auto mixKnobArea = cabRow.removeFromLeft (juce::jmin (90, cabRow.getWidth()));
-    if (! cabSection.knobs.empty())
-        cabSection.knobs[0]->slider.setBounds (mixKnobArea.reduced (4, 0));
+    auto layoutCabSlot = [] (SectionUI& section, juce::ComboBox& irBox, juce::Rectangle<int> area)
+    {
+        section.bounds = area;
+        area.reduce (10, 8);
+        auto header = area.removeFromTop (24);
+        section.toggle.setBounds (header.removeFromRight (36).reduced (2, 0));
+        irBox.setBounds (header.removeFromRight (130).reduced (4, 0));
+        section.titleLabel.setBounds (header);
 
+        area.removeFromTop (juce::jmin (16, area.getHeight() / 10));
+        auto mixKnobArea = area.removeFromLeft (juce::jmin (90, area.getWidth()));
+        if (! section.knobs.empty())
+            section.knobs[0]->slider.setBounds (mixKnobArea.reduced (4, 0));
+    };
+    layoutCabSlot (cabASection, cabAIRBox, cabAArea);
+    layoutCabSlot (cabBSection, cabBIRBox, cabBArea);
+
+    blendKnob.setBounds (blendArea.withSizeKeepingCentre (
+        juce::jmin (blendArea.getWidth(), 64), juce::jmin (blendArea.getHeight() - 30, 84))
+        .withY (blendArea.getCentreY() - 10));
 }

@@ -66,7 +66,9 @@ private:
     TS9Module ts9;
     // Prepared up front so changing quality never allocates on the audio thread.
     std::array<AmpModule, 3> amps;
-    CabModule cab;
+    // Two IR slots processed in parallel from the same dry signal (like two
+    // mics on one cab, not two cabs chained in series), blended by cabBlend.
+    CabModule cabA, cabB;
     TremoloModule tremolo;
     ChorusModule chorus;
     EchoModule echo;
@@ -76,7 +78,7 @@ private:
     PeakLevel inputLevel, outputLevel;
 
     double currentSampleRate = 44100.0;
-    int lastCabIRSelection = -1;
+    int lastCabAIRSelection = -1, lastCabBIRSelection = -1;
     bool tremoloWasActive = false, chorusWasActive = false, echoWasActive = false;
     double cachedTempoBpm = -1.0;
     int cachedEchoDivision = -1;

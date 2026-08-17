@@ -3,7 +3,8 @@
 #include "SectionBuilder.h"
 #include "../PluginProcessor.h"
 
-// Page 2 — Amp (big centered tweed photo, per the layout mockup) + Cab/IR.
+// Page 2 — Amp (big centered tweed photo) + Cab/IR (two parallel-blended
+// slots, side by side).
 class Page2Component : public juce::Component
 {
 public:
@@ -21,17 +22,21 @@ private:
     // bottom edge of the photo like the real panel's knob row.
     juce::Label ampDriveLabel, ampToneLabel, ampOutputLabel;
     // The amp's own knobs stay on the vintage chicken-head style — everything
-    // else (Gate/Input/Output, Cab Mix, and the other pages) defaults to the
+    // else (Gate/Input/Output, Cab, and the other pages) defaults to the
     // modern brushed-disc knob now.
     PhotoKnob ampDriveKnob { PhotoKnob::Style::Vintage };
     PhotoKnob ampToneKnob { PhotoKnob::Style::Vintage };
     PhotoKnob ampOutputKnob { PhotoKnob::Style::Vintage };
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampDriveAttachment, ampToneAttachment, ampOutputAttachment;
-    juce::Rectangle<int> ampKnobFrameBounds; // same size as cabSection.bounds — see resized()
+    juce::Rectangle<int> ampKnobFrameBounds;
 
-    SectionUI cabSection; // reuses the toggle + Mix knob
-    juce::ComboBox cabIRBox;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cabIRAttachment;
+    // Two IR slots processed in parallel and blended (like two mics on one
+    // cab) — each independently on/off with its own IR choice and mix.
+    SectionUI cabASection, cabBSection;
+    juce::ComboBox cabAIRBox, cabBIRBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cabAIRAttachment, cabBIRAttachment;
 
-    // cabIRBox is the single visible indication of the active IR.
+    juce::Label blendLabel;
+    PhotoKnob blendKnob;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> blendAttachment;
 };
