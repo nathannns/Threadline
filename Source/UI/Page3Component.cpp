@@ -45,14 +45,14 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     echoSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         processor.apvts, "echoSync", echoSyncButton);
 
-    // Reverb: 3 spring-tank models + 7 Lexicon 480L hall/room models sharing
-    // one Decay/Tone/Mix set. Decay works as pre-delay when a hall/room model
-    // is selected (springs have no true pre-delay stage).
+    // Reverb: 7 Lexicon 480L hall/room convolutions (the old Rockalizer
+    // spring-tank models are retired). Decay re-envelopes the loaded IR's
+    // own tail rather than the live signal — see HallRoomReverbModule.
     buildSection (reverbSection, *this, processor.apvts, "Reverb", "reverbOn", {
-        { "reverbDecay", "Decay" }, { "reverbTone", "Tone" }, { "reverbMix", "Mix" }, { "reverbWidth", "Width" }
+        { "reverbPreDelay", "Pre-Delay" }, { "reverbDecay", "Decay" }, { "reverbTone", "Tone" },
+        { "reverbMix", "Mix" }, { "reverbWidth", "Width" }
     }, false, SectionPlate::Reverb);
-    reverbModelBox.addItemList ({ "Space", "9100", "Echomixer",
-                                   "Large Hall", "Large Stage", "Small Church", "Small Hall",
+    reverbModelBox.addItemList ({ "Large Hall", "Large Stage", "Small Church", "Small Hall",
                                    "Small Stage", "Large Room", "Small Room" }, 1);
     addAndMakeVisible (reverbModelBox);
     reverbModelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
@@ -106,12 +106,12 @@ void Page3Component::resized()
     const auto typeWidth = juce::jlimit (130, 176, reverbArea.getWidth() / 7);
     reverbModelBox.setBounds (reverbArea.getRight() - typeWidth - 14,
                               reverbArea.getCentreY() - 14, typeWidth, 28);
-    if (reverbSection.knobs.size() == 4)
+    if (reverbSection.knobs.size() == 5)
     {
         const auto controlsLeft = reverbArea.getX() + juce::jlimit (112, 210, reverbArea.getWidth() / 5) + 18;
         const auto controlsRight = reverbModelBox.getX() - 18;
         const auto controlsWidth = controlsRight - controlsLeft;
-        const float positions[] { 0.12f, 0.34f, 0.62f, 0.84f };
+        const float positions[] { 0.08f, 0.28f, 0.48f, 0.68f, 0.88f };
         for (size_t i = 0; i < reverbSection.knobs.size(); ++i)
         {
             auto& slider = reverbSection.knobs[i]->slider;

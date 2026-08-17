@@ -127,22 +127,28 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoMix"), "Delay Mix",
         Range (0.0f, 100.0f, 0.1f), 25.0f));
 
-    // --- Reverb: 3 spring-tank models (SpringModule) + 7 Lexicon 480L
-    // hall/room models (HallRoomReverbModule), picked from one list. Index
-    // 0-2 route to the spring engine, 3-9 to the hall/room engine.
+    // --- Reverb: 7 Lexicon 480L hall/room convolutions (HallRoomReverbModule).
+    // The old Rockalizer spring-tank models (Space/9100/Echomixer) have been
+    // retired — SpringModule is no longer part of the chain.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("reverbOn"), "Reverb On", false));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("reverbModel"), "Reverb Model",
-        juce::StringArray { "Space", "9100", "Echomixer",
-                             "Large Hall", "Large Stage", "Small Church", "Small Hall",
+        juce::StringArray { "Large Hall", "Large Stage", "Small Church", "Small Hall",
                              "Small Stage", "Large Room", "Small Room" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbPreDelay"), "Reverb Pre-Delay",
+        Range (0.0f, 1.0f, 0.001f), 0.0f));
+    // Shapes the loaded IR's own tail (see HallRoomReverbModule) rather than
+    // the live signal — there's no single "t=0" to decay from in a
+    // continuously-fed convolution, so real convolution reverbs adjust decay
+    // by re-enveloping the captured impulse itself ("shaped convolution").
+    // 1.0 = the room's full natural captured decay; lower values trim the
+    // tail shorter with a smooth taper — this can only shorten the space,
+    // not lengthen it past what was actually recorded.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbDecay"), "Reverb Decay",
-        Range (0.0f, 1.0f, 0.001f), 0.5f));
+        Range (0.0f, 1.0f, 0.001f), 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbTone"), "Reverb Tone",
         Range (0.0f, 1.0f, 0.001f), 0.6f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbMix"), "Reverb Mix",
         Range (0.0f, 100.0f, 0.1f), 25.0f));
-    // Hall/Room engine only (M/S width of the convolved signal); ignored by
-    // the spring models, which have their own built-in stereo dispersion.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbWidth"), "Reverb Width",
         Range (0.0f, 100.0f, 0.1f), 50.0f));
 
@@ -206,7 +212,6 @@ void ThreadlineAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     tremolo.prepare (spec);
     chorus.prepare (spec);
     echo.prepare (spec);
-    spring.prepare (spec);
     hallRoomReverb.prepare (spec);
     graphicEQ.prepare (spec);
 }
@@ -354,21 +359,12 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    // --- Reverb: route to whichever engine the selected model belongs to.
-    // Both are always ticked (each is a cheap no-op when its own wet mix is
-    // at 0), so only the active one ever does real DSP work.
+    // --- Reverb (Hall/Room only — the spring models are retired) ---
     {
-        const auto reverbModelIndex = (int) p ("reverbModel");
         const auto reverbEnabled = pBool ("reverbOn");
-        const auto springActive = reverbEnabled && reverbModelIndex < 3;
-        const auto hallRoomActive = reverbEnabled && reverbModelIndex >= 3;
-
-        spring.setParameters (p ("reverbDecay"), 0.2f /* dwell */, p ("reverbTone"), 0.0f /* drip */,
-                               p ("reverbMix"), springActive, juce::jlimit (0, 2, reverbModelIndex));
-        spring.process (buffer);
-
-        hallRoomReverb.setParameters (p ("reverbDecay") /* reused as pre-delay */, p ("reverbTone"),
-                                       p ("reverbMix"), p ("reverbWidth"), hallRoomActive, reverbModelIndex - 3);
+        hallRoomReverb.setParameters (p ("reverbPreDelay"), p ("reverbDecay"), p ("reverbTone"),
+                                       p ("reverbMix"), p ("reverbWidth"), reverbEnabled,
+                                       (int) p ("reverbModel"));
         hallRoomReverb.process (buffer);
     }
 

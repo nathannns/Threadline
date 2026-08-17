@@ -34,8 +34,8 @@ void HallRoomReverbModule::reset()
     wetMix.setCurrentAndTargetValue (0.0f);
 }
 
-void HallRoomReverbModule::setParameters (float preDelayNormalised, float toneNormalised, float mix,
-                                          float widthPercent, bool enabled, int modelIndex)
+void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayNormalised, float toneNormalised,
+                                          float mix, float widthPercent, bool enabled, int modelIndex)
 {
     widthFactor = juce::jmap (juce::jlimit (0.0f, 100.0f, widthPercent), 0.0f, 100.0f, 0.0f, 2.0f);
 
@@ -52,20 +52,25 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float toneNo
     wetMix.setTargetValue (enabled ? juce::jlimit (0.0f, 1.0f, mix * 0.01f) : 0.0f);
 
     modelIndex = juce::jlimit (0, numModels - 1, modelIndex);
+    decayNormalised = juce::jlimit (0.0f, 1.0f, decayNormalised);
+    const auto decayStep = decayToStep (decayNormalised);
+    requestedDecay01.store (decayNormalised);
     const auto impulseChanged = requestedImpulse.exchange (modelIndex) != modelIndex;
-    if (impulseChanged || loadedImpulse != modelIndex)
+    const auto decayChanged = requestedDecayStep.exchange (decayStep) != decayStep;
+    if (impulseChanged || decayChanged || loadedImpulse != modelIndex || loadedDecayStep != decayStep)
         triggerAsyncUpdate();
 }
 
 void HallRoomReverbModule::handleAsyncUpdate()
 {
     const auto impulse = requestedImpulse.load();
-    loadImpulse (impulse);
-    if (impulse != requestedImpulse.load())
+    const auto decay01 = requestedDecay01.load();
+    loadImpulse (impulse, decay01);
+    if (impulse != requestedImpulse.load() || decayToStep (decay01) != requestedDecayStep.load())
         triggerAsyncUpdate();
 }
 
-void HallRoomReverbModule::loadImpulse (int index)
+void HallRoomReverbModule::loadImpulse (int index, float decay01)
 {
     const void* data[numModels] {
         BinaryData::large_hall_wav, BinaryData::large_stage_wav, BinaryData::small_church_wav,
@@ -83,19 +88,43 @@ void HallRoomReverbModule::loadImpulse (int index)
         new juce::MemoryInputStream (data[index], static_cast<size_t> (sizes[index]), false), true));
     if (reader != nullptr)
     {
-        // Unlike the spring IRs, these Lexicon 480L captures are complete,
-        // natural decays — load the whole thing rather than a short onset
-        // plus a synthesized tail. Convolution::Trim removes any near-silent
-        // head/tail without touching the audible decay itself.
+        // These Lexicon 480L captures are complete, natural decays — load
+        // the whole thing rather than a short onset plus a synthesized tail.
         const auto length = static_cast<int> (reader->lengthInSamples);
         const auto channels = juce::jlimit (1, 2, static_cast<int> (reader->numChannels));
         juce::AudioBuffer<float> impulse (channels, juce::jmax (1, length));
         reader->read (&impulse, 0, length, 0, true, channels > 1);
+
+        // Decay shaping ("shaped convolution" — see class comment): keep a
+        // leading fraction of the natural capture at full level, then taper
+        // the rest out with a smooth raised-cosine window (avoids a click at
+        // the cut point) and truncate the buffer there. decay01=1 keeps the
+        // whole thing; lower values keep progressively less. A floor keeps
+        // even decay01=0 from sounding like a gated click rather than a
+        // (very) tight room, and shortening the IR this way is also cheaper
+        // for the convolution engine to run — CPU scales down with Decay.
+        constexpr float minKeepFraction = 0.12f;
+        const auto keepFraction = juce::jmap (juce::jlimit (0.0f, 1.0f, decay01), minKeepFraction, 1.0f);
+        const auto keepSamples = juce::jlimit (256, length, static_cast<int> (length * keepFraction));
+        const auto taperSamples = juce::jlimit (0, length - keepSamples, static_cast<int> (reader->sampleRate * 0.12));
+        for (int n = 0; n < taperSamples; ++n)
+        {
+            const auto progress = static_cast<float> (n) / static_cast<float> (juce::jmax (1, taperSamples));
+            const auto envelope = 0.5f * (1.0f + std::cos (progress * juce::MathConstants<float>::pi));
+            for (int ch = 0; ch < channels; ++ch)
+                impulse.setSample (ch, keepSamples + n, impulse.getSample (ch, keepSamples + n) * envelope);
+        }
+        const auto shapedLength = juce::jmin (length, keepSamples + taperSamples);
+        impulse.setSize (channels, shapedLength, true, false, true);
+
+        // Convolution::Trim removes any near-silent head/tail without
+        // touching the audible decay itself (or the shaping just applied).
         convolution.loadImpulseResponse (std::move (impulse), reader->sampleRate,
             juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::yes,
             juce::dsp::Convolution::Normalise::yes);
     }
     loadedImpulse = index;
+    loadedDecayStep = decayToStep (decay01);
 }
 
 void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)

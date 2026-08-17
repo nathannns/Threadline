@@ -9,7 +9,6 @@
 #include "DSP/CabModule.h"
 #include "DSP/ChorusModule.h"
 #include "DSP/EchoModule.h"
-#include "DSP/SpringModule.h"
 #include "DSP/HallRoomReverbModule.h"
 #include "DSP/GraphicEQModule.h"
 #include "DSP/TremoloModule.h"
@@ -60,7 +59,7 @@ private:
 
     // Chain order: NoiseGate -> Input Gain -> Input Meter -> Compressor ->
     // Klon -> TS9 -> Amp -> Cab (IR) -> Tremolo -> Chorus -> Echo (Delay) ->
-    // Reverb (Spring or Hall/Room) -> 9-Band EQ -> Output Gain -> Output Meter.
+    // Reverb (Hall/Room) -> 9-Band EQ -> Output Gain -> Output Meter.
     NoiseGateModule noiseGate;
     CompressorModule compressor;
     KlonModule klon;
@@ -71,7 +70,6 @@ private:
     TremoloModule tremolo;
     ChorusModule chorus;
     EchoModule echo;
-    SpringModule spring;
     HallRoomReverbModule hallRoomReverb;
     GraphicEQModule graphicEQ;
 

@@ -20,9 +20,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 juce_add_binary_data(ThreadlineData SOURCES
-    Resources/ImpulseResponses/Optimized/spring_space_clean.wav
-    Resources/ImpulseResponses/Optimized/spring_9100_clean.wav
-    Resources/ImpulseResponses/Optimized/spring_echomixer_clean.wav
     Resources/Images/tweed_amp.png
     Resources/Images/plugin_background_subtle.png
     Resources/Images/knob_pointer.png
@@ -97,8 +94,6 @@ target_sources(Threadline
         Source/DSP/ChorusModule.h
         Source/DSP/EchoModule.cpp
         Source/DSP/EchoModule.h
-        Source/DSP/SpringModule.cpp
-        Source/DSP/SpringModule.h
         Source/DSP/HallRoomReverbModule.cpp
         Source/DSP/HallRoomReverbModule.h
         Source/DSP/TremoloModule.cpp

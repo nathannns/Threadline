@@ -4,11 +4,22 @@
 
 // Hall/Room reverb built from real Lexicon 480L impulse responses (7 spaces:
 // Large/Small Hall, Large/Small Stage, Small Church, Large/Small Room) rather
-// than a synthesized algorithm. Unlike SpringModule — which excites a
-// physically-modeled spring network (dwell drive, dispersion lines, a
-// synthesized late-field tail) — these IRs already contain a complete,
-// natural decay, so this module is just pre-delay + convolution + damping,
-// with no tail synthesis needed.
+// than a synthesized algorithm. These IRs already contain a complete,
+// natural decay, so there's no tail synthesis — just pre-delay, convolution,
+// damping, and (see setParameters/loadImpulse) decay-time shaping applied to
+// the captured impulse itself.
+//
+// Decay is "shaped convolution": since this module convolves a continuous
+// input stream rather than playing back a single triggered impulse, there's
+// no per-sample "time since t=0" to decay a live envelope from — so, like
+// real convolution reverbs that offer an adjustable decay/size control on a
+// fixed captured IR, the Decay knob re-envelopes the loaded impulse itself
+// (keep a leading portion at full level, taper the rest out with a smooth
+// window) rather than shaping the live wet signal. That means changing Decay
+// triggers an impulse reload (async, off the audio thread, same as switching
+// models) rather than being instantaneously live like Tone or Mix — a real,
+// deliberate trade-off: reprocessing convolution partitions on every sample
+// isn't something any convolution engine does.
 class HallRoomReverbModule : private juce::AsyncUpdater
 {
 public:
@@ -17,10 +28,11 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
 
-    // preDelay/tone are normalised 0-1 (mapped internally to ms / Hz); mix and
-    // width are 0-100 (width: 50 = the IR's natural stereo image, 0 = mono,
-    // 100 = doubled side-signal), matching the existing knobs' 0-100 convention.
-    void setParameters (float preDelayNormalised, float toneNormalised, float mix,
+    // preDelay/decay/tone are normalised 0-1 (mapped internally to ms / tail
+    // shape / Hz — decay: 1.0 = the room's full natural captured decay,
+    // lower values trim the tail shorter); mix and width are 0-100 (width:
+    // 50 = the IR's natural stereo image, 0 = mono, 100 = doubled side).
+    void setParameters (float preDelayNormalised, float decayNormalised, float toneNormalised, float mix,
                         float widthPercent, bool enabled, int modelIndex);
     void process (juce::AudioBuffer<float>& buffer);
 
@@ -36,7 +48,8 @@ public:
 
 private:
     void handleAsyncUpdate() override;
-    void loadImpulse (int index);
+    void loadImpulse (int index, float decay01);
+    static int decayToStep (float decay01) { return juce::roundToInt (juce::jlimit (0.0f, 1.0f, decay01) * 24.0f); }
 
     juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 256 } };
     // Damping (lowpass) uses a TPT filter so it can be modulated per-sample
@@ -55,7 +68,10 @@ private:
     float basePreDelaySamples = 0.0f;
 
     std::atomic<int> requestedImpulse { 0 };
+    std::atomic<int> requestedDecayStep { 24 };
+    std::atomic<float> requestedDecay01 { 1.0f };
     int loadedImpulse = -1;
+    int loadedDecayStep = -1;
     int maximumBlockSize = 0, channelCount = 0;
     double sampleRate = 44100.0;
     float cachedToneHz = -1.0f;
