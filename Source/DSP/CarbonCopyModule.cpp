@@ -141,9 +141,18 @@ void CarbonCopyModule::process (juce::AudioBuffer<float>& buffer)
             const auto writeSample = input + darkened * feedback;
             delayBuffer.setSample (channel, writeIndex, smoothRail (writeSample, 1.4f, 3.2f));
 
-            // A straightforward crossfade, not Plexer's additive mixing --
-            // real analog delay pedals like this one just blend wet/dry.
-            buffer.setSample (channel, sample, input * (1.0f - mix) + delayed * mix);
+            // A crossfade, not Plexer's additive mixing -- real analog delay
+            // pedals like this one just blend wet/dry. Equal-power (not
+            // linear) for the same reason every other Mix knob in this
+            // plugin uses it: dryGain^2+wetGain^2 stays at 1 across the
+            // whole range, where a linear crossfade's sum drops as low as
+            // 0.5 around the middle of the range -- an audible loudness dip
+            // that was reading as "Copier is quieter than Plexer" (whose
+            // additive mixing keeps dry at ~unity throughout, so it never
+            // had this dip to begin with).
+            const auto dryGain = std::cos (mix * juce::MathConstants<float>::halfPi);
+            const auto wetGain = std::sin (mix * juce::MathConstants<float>::halfPi);
+            buffer.setSample (channel, sample, input * dryGain + delayed * wetGain);
         }
 
         writeIndex = (writeIndex + 1) % delayBuffer.getNumSamples();

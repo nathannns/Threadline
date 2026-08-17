@@ -164,7 +164,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // real unit doesn't have them (see EchoModule for how those
     // characteristics are modeled as fixed, always-on behaviour instead).
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Plexer Time",
-        Range (60.0f, 800.0f, 1.0f, 0.5f), 300.0f));
+        Range (60.0f, 800.0f, 1.0f, 0.5f), 375.0f));
     // Reaches genuine self-oscillation at maximum, same as the real unit —
     // see EchoModule::setParameters.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoSustain"), "Plexer Sustain",
@@ -179,7 +179,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // wobble on the repeats. No Tone knob — the real unit's BBD darkening
     // is a fixed characteristic, not user-adjustable (see CarbonCopyModule).
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("carbonTime"), "Copier Time",
-        Range (20.0f, 600.0f, 1.0f, 0.5f), 300.0f));
+        Range (20.0f, 600.0f, 1.0f, 0.5f), 375.0f));
     // Reaches near-self-oscillation at maximum, same as the real unit —
     // see CarbonCopyModule::setParameters.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("carbonRegen"), "Copier Regen",

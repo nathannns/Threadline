@@ -41,6 +41,15 @@
 // and reads as a harsh, metallic hiss rather than a warm tape repeat. A
 // fixed lowpass sits inside the feedback path (after saturation, so it
 // tames the harmonics saturation just generated) to model that loss.
+//
+// Saturation drive is keyed off the Sustain knob's own 0-1 position, not
+// the internal feedback coefficient -- that coefficient means something
+// different per mode (Echo mode spans roughly 0.01-1.03 across the whole
+// knob; Sound-on-Sound spans only 0.90-0.99, since it needs a high floor
+// for long sustain rather than headroom toward oscillation), so driving
+// saturation from it directly meant Sound-on-Sound ran close to maximum
+// drive at every Sustain setting, not just high ones -- audible as harsh
+// treble distortion regardless of where the knob was.
 class EchoModule
 {
 public:
@@ -64,6 +73,7 @@ private:
     juce::SmoothedValue<float> wetMix;
     juce::SmoothedValue<float> feedbackValue;
     juce::SmoothedValue<float> volumeValue;
+    juce::SmoothedValue<float> saturationDrive;
     // Fixed (not user-adjustable) preamp coloring — "sweetens the treble,
     // fattens the mids" per the real EP-3's always-on solid-state preamp.
     juce::dsp::IIR::Filter<float> preampMidFilter[2], preampTrebleFilter[2];

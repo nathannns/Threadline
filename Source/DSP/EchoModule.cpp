@@ -38,6 +38,7 @@ void EchoModule::prepare (const juce::dsp::ProcessSpec& spec)
     wetMix.reset (sampleRate, 0.02);
     feedbackValue.reset (sampleRate, 0.03);
     volumeValue.reset (sampleRate, 0.02);
+    saturationDrive.reset (sampleRate, 0.03);
     reset();
 }
 
@@ -57,6 +58,7 @@ void EchoModule::reset()
     wetMix.setCurrentAndTargetValue (0.0f);
     feedbackValue.setCurrentAndTargetValue (0.0f);
     volumeValue.setCurrentAndTargetValue (0.0f);
+    saturationDrive.setCurrentAndTargetValue (0.0f);
 }
 
 void EchoModule::setParameters (float timeMs, float sustainPercent, float volumePercent,
@@ -106,6 +108,11 @@ void EchoModule::setParameters (float timeMs, float sustainPercent, float volume
         }
     }
     feedbackValue.setTargetValue (feedbackTarget);
+    // Driven by the knob's own position, not feedbackTarget -- see file
+    // header for why keying saturation off the internal coefficient made
+    // Sound-on-Sound run hot at every Sustain setting instead of a graduated
+    // range.
+    saturationDrive.setTargetValue (sustain01);
 
     const auto volume01 = juce::jlimit (0.0f, 1.0f, volumePercent * 0.01f);
     volumeValue.setTargetValue (std::pow (volume01, 0.85f) * 1.3f);
@@ -163,6 +170,7 @@ void EchoModule::process (juce::AudioBuffer<float>& buffer)
         const auto baseDelay = delaySamples.getNextValue();
         const auto feedback = feedbackValue.getNextValue();
         const auto volumeGain = volumeValue.getNextValue();
+        const auto drive = saturationDrive.getNextValue();
 
         const auto slowWobble = std::sin (lfoPhase) * 0.0048f;
         const auto gentleFlutter = std::sin (flutterPhase) * 0.00048f;
@@ -180,14 +188,17 @@ void EchoModule::process (juce::AudioBuffer<float>& buffer)
             coloured = preampTrebleFilter[channel].processSample (coloured);
 
             const auto rawFeedback = readDelay (channel, distance);
-            // Saturation intensifies with feedback amount, matching the
-            // real circuit's bias-oscillator/tape-hysteresis behaviour
-            // getting more pronounced as more signal recirculates -- kept
-            // gentler than earlier (was up to 4.5x drive) since harder
-            // clipping every single pass, with nothing rolling off the
-            // harmonics it generates, was what made repeats sound like a
-            // harsh metallic hiss instead of warm tape saturation.
-            const auto satGain = 1.0f + juce::jlimit (0.0f, 1.1f, feedback) * 2.0f;
+            // Saturation intensifies with Sustain, matching the real
+            // circuit's bias-oscillator/tape-hysteresis behaviour getting
+            // more pronounced as more signal recirculates -- driven by the
+            // knob's own 0-1 position (drive), not the feedback coefficient
+            // itself, since that coefficient's range means something
+            // different per mode (see file header). Kept gentler than
+            // earlier (was up to 4.5x drive) since harder clipping every
+            // single pass, with nothing rolling off the harmonics it
+            // generates, was what made repeats sound like a harsh metallic
+            // hiss instead of warm tape saturation.
+            const auto satGain = 1.0f + drive * 2.0f;
             const auto saturatedFeedback = std::tanh (rawFeedback * satGain) / satGain;
             // The tape loop's own bandwidth loss, applied after saturation
             // so it's the harmonics saturation just added that get tamed --

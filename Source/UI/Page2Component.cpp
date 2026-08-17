@@ -238,27 +238,33 @@ void Page2Component::resized()
     auto cabBArea = cabRow;
 
     auto layoutCabSlot = [] (SectionUI& section, juce::ComboBox& irBox, juce::TextButton& phaseButton,
-                             juce::Rectangle<int> area, bool placeMixOnRight)
+                             juce::Rectangle<int> area)
     {
         section.bounds = area;
         area.reduce (10, 8);
-        auto header = area.removeFromTop (24);
-        section.toggle.setBounds (header.removeFromRight (48).reduced (2, 0));
-        phaseButton.setBounds (header.removeFromRight (78).reduced (2, 0));
-        header.removeFromRight (4);
-        irBox.setBounds (header.removeFromRight (130).reduced (4, 0));
-        section.titleLabel.setBounds (header);
+        // Tall enough for the Mix knob to sit at a normal size in this row,
+        // rather than squeezed into the old 24px toggle/phase/IR-type strip.
+        auto header = area.removeFromTop (juce::jmin (72, area.getHeight()));
 
-        area.removeFromTop (juce::jmin (16, area.getHeight() / 10));
-        // Keep both Mix labels away from the central A/B blend wordmark.
-        auto mixKnobArea = placeMixOnRight
-                         ? area.removeFromRight (juce::jmin (96, area.getWidth()))
-                         : area.removeFromLeft (juce::jmin (96, area.getWidth()));
+        auto topRow = header;
+        section.toggle.setBounds (topRow.removeFromRight (48).withHeight (24).reduced (2, 0));
+        phaseButton.setBounds (topRow.removeFromRight (78).withHeight (24).reduced (2, 0));
+        topRow.removeFromRight (4);
+        irBox.setBounds (topRow.removeFromRight (130).withHeight (24).reduced (4, 0));
+
+        // Mix knob sits between the title wordmark and the cab-type
+        // selector, using the header's full height so it reads as a
+        // normal-sized knob instead of being squeezed into the thin
+        // controls row alongside it.
+        constexpr int mixKnobWidth = 72;
+        auto mixArea = topRow.removeFromRight (mixKnobWidth);
         if (! section.knobs.empty())
-            section.knobs[0]->slider.setBounds (mixKnobArea.reduced (4, 0));
+            section.knobs[0]->slider.setBounds (mixArea.reduced (4, 4));
+
+        section.titleLabel.setBounds (topRow.withHeight (24));
     };
-    layoutCabSlot (cabASection, cabAIRBox, cabAPhaseButton, cabAArea, false);
-    layoutCabSlot (cabBSection, cabBIRBox, cabBPhaseButton, cabBArea, true);
+    layoutCabSlot (cabASection, cabAIRBox, cabAPhaseButton, cabAArea);
+    layoutCabSlot (cabBSection, cabBIRBox, cabBPhaseButton, cabBArea);
 
     blendKnob.setBounds (blendArea.withSizeKeepingCentre (
         juce::jmin (blendArea.getWidth(), 64), juce::jmin (blendArea.getHeight() - 30, 84))
