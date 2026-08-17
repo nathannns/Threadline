@@ -115,7 +115,16 @@ void EchoModule::setParameters (float timeMs, float sustainPercent, float volume
     saturationDrive.setTargetValue (sustain01);
 
     const auto volume01 = juce::jlimit (0.0f, 1.0f, volumePercent * 0.01f);
-    volumeValue.setTargetValue (std::pow (volume01, 0.85f) * 1.3f);
+    // Sound-on-Sound's feedback range (0.90-0.99) gives a steady-state loop
+    // gain of 1/(1-feedback) = 10x-100x -- Echo mode's feedback tops out
+    // around 0.891 just before self-oscillation, i.e. ~9x, at most. So even
+    // SoS's *minimum* Sustain setting circulates a signal an order of
+    // magnitude denser than Echo mode's typical range, and the same Volume%
+    // scales that much louder signal -- reading as "way too wet" from just
+    // a small amount, not a Volume-mapping problem so much as SoS's
+    // underlying signal genuinely being much hotter to begin with.
+    const auto modeVolumeScale = mode == Mode::soundOnSound ? 0.2f : 1.0f;
+    volumeValue.setTargetValue (std::pow (volume01, 0.85f) * 1.3f * modeVolumeScale);
 
     wetMix.setTargetValue (enabled ? 1.0f : 0.0f);
 }
