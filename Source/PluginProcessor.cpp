@@ -110,8 +110,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // --- Echo (Delay) ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Delay On", false));
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoSync"), "Delay Sync", false));
+    // Names kept as the friendlier originals; underneath, each pattern's tap
+    // ratios now match the Roland RE-201 Space Echo's actual fixed, equally-
+    // spaced 3-head tape geometry (delay ratio exactly 1:2:3 off head 1's
+    // time) instead of the previous made-up ratios. Ping-Pong is a new,
+    // explicitly modern bonus mode — the real RE-201 is mono.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoPattern"), "Delay Pattern",
-        juce::StringArray { "Straight", "Bounce", "Gallop", "Cluster", "Wash" }, 0));
+        juce::StringArray { "Straight", "Bounce", "Gallop", "Cluster", "Wash", "Ping-Pong" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoDivision"), "Delay Division",
         juce::StringArray { "1/4", "1/4 D", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" }, 2));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Delay Time",

@@ -2,10 +2,16 @@
 
 #include <JuceHeader.h>
 
+// Roland RE-201 Space Echo-inspired: 3 tape playback heads at fixed,
+// equally-spaced positions (delay ratio exactly 1:2:3 off head 1's time).
+// Pattern names stay the original friendly ones (Straight/Bounce/Gallop/
+// Cluster/Wash) — see getPattern() in the .cpp for how each maps to a real
+// head combination underneath. Ping-Pong is a new, explicitly modern bonus
+// mode, not an RE-201 characteristic (the real unit is mono).
 class EchoModule
 {
 public:
-    enum Pattern { straight, bounce, gallop, cluster, wash };
+    enum Pattern { straight, bounce, gallop, cluster, wash, pingPong };
 
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();

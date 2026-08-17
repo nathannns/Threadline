@@ -33,7 +33,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
         { "echoTime", "Time" }, { "echoRepeats", "Repeats" }, { "echoTone", "Tone" },
         { "echoWobble", "Wobble" }, { "echoDrive", "Drive" }, { "echoMix", "Mix" }
     }, false, SectionPlate::Delay);
-    echoPatternBox.addItemList ({ "STRAIGHT", "BOUNCE", "GALLOP", "CLUSTER", "WASH" }, 1);
+    echoPatternBox.addItemList ({ "STRAIGHT", "BOUNCE", "GALLOP", "CLUSTER", "WASH", "PING-PONG" }, 1);
     echoDivisionBox.addItemList ({ "1/4", "1/4 D", "1/8", "1/8 D", "1/8 T", "1/16", "1/16 D", "1/16 T" }, 1);
     addAndMakeVisible (echoPatternBox);
     addAndMakeVisible (echoDivisionBox);
@@ -94,7 +94,7 @@ void Page3Component::resized()
     const auto controlX = echoBounds.getX() + 184;
     const auto topRowY = echoBounds.getY() + 13;
     const auto bottomRowY = echoBounds.getBottom() - 35;
-    echoPatternBox.setBounds (controlX, topRowY, 112, 24);
+    echoPatternBox.setBounds (controlX, topRowY, 138, 24);
     echoDivisionBox.setBounds (controlX, bottomRowY, 64, 24);
     echoSyncButton.setBounds (controlX + 70, bottomRowY, 42, 24);
     area.removeFromTop (gap);

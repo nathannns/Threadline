@@ -3,8 +3,11 @@
 void EchoModule::prepare (const juce::dsp::ProcessSpec& spec)
 {
     sampleRate = spec.sampleRate;
+    // Head 3 sits at 3x head 1's delay time — big enough to hold that at
+    // the maximum Time setting (see setParameters' 2.5s clamp) without taps
+    // silently falling outside the buffer.
     delayBuffer.setSize (static_cast<int> (spec.numChannels),
-                         static_cast<int> (sampleRate * 4.0) + 4);
+                         static_cast<int> (sampleRate * 8.0) + 4);
     delayBuffer.clear();
     toneState.assign (static_cast<size_t> (spec.numChannels), 0.0f);
     delaySamples.reset (sampleRate, 0.05);
@@ -52,7 +55,7 @@ void EchoModule::setParameters (float timeMs, float repeats, float toneHz, float
     // knob. 10% now means subtle ambience, while the endpoint remains 100% wet.
     const auto normalisedMix = juce::jlimit (0.0f, 1.0f, mix * 0.01f);
     wetMix.setTargetValue (enabled ? std::pow (normalisedMix, 1.55f) : 0.0f);
-    pattern = juce::jlimit (0, 4, patternIndex);
+    pattern = juce::jlimit (0, 5, patternIndex);
 }
 
 float EchoModule::readDelay (int channel, float distance) const
@@ -92,11 +95,20 @@ float EchoModule::processFeedbackTone (int channel, float sample)
 
 void EchoModule::getPattern (float* ratios, float* gains, int& taps) const
 {
+    // Real RE-201 head ratios are exactly 1:2:3 off head 1's delay time
+    // (fixed, equally-spaced tape heads) — these replace the previous
+    // made-up ratios (0.5/0.67/0.75/0.38...) that didn't match the actual
+    // hardware. Names stay the same; the head combination each now maps to:
+    //   Straight -> head 1 alone
+    //   Bounce   -> heads 1+2
+    //   Gallop   -> heads 2+3 (skips head 1 for a different rhythmic feel)
+    //   Cluster  -> heads 1+2+3 (all three, dense)
+    //   Wash     -> heads 1+3 (widest spacing, most diffuse)
     taps = 1; ratios[0] = 1.0f; gains[0] = 1.0f;
-    if (pattern == bounce)  { taps = 2; ratios[0] = 0.5f; ratios[1] = 1.0f; gains[0] = 0.65f; gains[1] = 0.85f; }
-    if (pattern == gallop)  { taps = 2; ratios[0] = 0.67f; ratios[1] = 1.0f; gains[0] = 0.8f; gains[1] = 1.0f; }
-    if (pattern == cluster) { taps = 3; ratios[0] = 0.5f; ratios[1] = 0.75f; ratios[2] = 1.0f; gains[0] = 0.45f; gains[1] = 0.6f; gains[2] = 0.8f; }
-    if (pattern == wash)    { taps = 3; ratios[0] = 0.38f; ratios[1] = 0.63f; ratios[2] = 1.0f; gains[0] = 0.4f; gains[1] = 0.55f; gains[2] = 0.75f; }
+    if (pattern == bounce)  { taps = 2; ratios[0] = 1.0f; ratios[1] = 2.0f; gains[0] = 0.85f; gains[1] = 0.7f; }
+    if (pattern == gallop)  { taps = 2; ratios[0] = 2.0f; ratios[1] = 3.0f; gains[0] = 0.8f; gains[1] = 0.65f; }
+    if (pattern == cluster) { taps = 3; ratios[0] = 1.0f; ratios[1] = 2.0f; ratios[2] = 3.0f; gains[0] = 0.8f; gains[1] = 0.62f; gains[2] = 0.48f; }
+    if (pattern == wash)    { taps = 2; ratios[0] = 1.0f; ratios[1] = 3.0f; gains[0] = 0.75f; gains[1] = 0.55f; }
 }
 
 void EchoModule::process (juce::AudioBuffer<float>& buffer)
@@ -129,40 +141,74 @@ void EchoModule::process (juce::AudioBuffer<float>& buffer)
                              * static_cast<float> (sampleRate);
         }
 
-        for (int channel = 0; channel < channels; ++channel)
+        const auto smoothRail = [] (float value, float knee, float ceiling)
         {
-            float wet = 0.0f;
-            for (int tap = 0; tap < taps; ++tap)
-                wet += readDelay (channel, juce::jmax (1.0f, baseDelay * ratios[tap] + sharedModulation)) * gains[tap];
-            wet /= std::sqrt (static_cast<float> (taps));
+            // A hard jlimit introduced a derivative discontinuity whenever a
+            // loud feedback peak touched the rail. At high Mix that edge was
+            // exposed as a click. This wide soft rail is transparent at
+            // normal levels but remains bounded under runaway input.
+            const auto magnitude = std::abs (value);
+            if (magnitude <= knee)
+                return value;
+            const auto range = ceiling - knee;
+            return std::copysign (knee + range * std::tanh ((magnitude - knee) / range), value);
+        };
 
-            auto feedbackSample = processFeedbackTone (channel, wet);
-            // Normalise by the pre-shaper gain, not tanh(gain). The previous
-            // formula amplified quiet repeats inside the feedback loop and
-            // could make driven multi-tap presets regenerate unexpectedly.
+        if (pattern == pingPong && channels > 1)
+        {
+            // True stereo ping-pong: not an RE-201 characteristic (the real
+            // unit is mono) — a modern bonus mode. Mono-summed input enters
+            // channel 0's delay line only; each line's output feeds the
+            // *other* line's input (crossed feedback), which is what makes
+            // successive repeats alternate sides rather than both channels
+            // just echoing identically in place.
+            const auto monoIn = (buffer.getSample (0, sample) + buffer.getSample (1, sample)) * 0.5f;
+            const auto distance = juce::jmax (1.0f, baseDelay + sharedModulation);
+            const auto lineAOut = readDelay (0, distance);
+            const auto lineBOut = readDelay (1, distance);
+
+            auto toneA = processFeedbackTone (0, lineAOut);
+            auto toneB = processFeedbackTone (1, lineBOut);
             if (driveAmount > 0.0001f)
             {
                 const auto gain = 1.0f + driveAmount * 4.0f;
-                feedbackSample = std::tanh (feedbackSample * gain) / gain;
+                toneA = std::tanh (toneA * gain) / gain;
+                toneB = std::tanh (toneB * gain) / gain;
             }
 
-            const auto input = buffer.getSample (channel, sample);
-            // A hard jlimit introduced a derivative discontinuity whenever a
-            // loud feedback peak touched the rail. At high Mix that edge was
-            // exposed as a click. This wide soft rail is transparent at normal
-            // levels but remains bounded under runaway input.
-            const auto writeSample = input + feedbackSample * feedback;
-            const auto smoothRail = [] (float value, float knee, float ceiling)
+            delayBuffer.setSample (0, writeIndex, smoothRail (monoIn + toneB * feedback, 1.0f, 2.0f));
+            delayBuffer.setSample (1, writeIndex, smoothRail (toneA * feedback, 1.0f, 2.0f));
+
+            const auto dryL = buffer.getSample (0, sample), dryR = buffer.getSample (1, sample);
+            buffer.setSample (0, sample, dryL * (1.0f - mix) + smoothRail (lineAOut, 2.0f, 4.0f) * mix);
+            buffer.setSample (1, sample, dryR * (1.0f - mix) + smoothRail (lineBOut, 2.0f, 4.0f) * mix);
+        }
+        else
+        {
+            for (int channel = 0; channel < channels; ++channel)
             {
-                const auto magnitude = std::abs (value);
-                if (magnitude <= knee)
-                    return value;
-                const auto range = ceiling - knee;
-                return std::copysign (knee + range * std::tanh ((magnitude - knee) / range), value);
-            };
-            delayBuffer.setSample (channel, writeIndex, smoothRail (writeSample, 1.0f, 2.0f));
-            const auto safeWet = smoothRail (wet, 2.0f, 4.0f);
-            buffer.setSample (channel, sample, input * (1.0f - mix) + safeWet * mix);
+                float wet = 0.0f;
+                for (int tap = 0; tap < taps; ++tap)
+                    wet += readDelay (channel, juce::jmax (1.0f, baseDelay * ratios[tap] + sharedModulation)) * gains[tap];
+                wet /= std::sqrt (static_cast<float> (taps));
+
+                auto feedbackSample = processFeedbackTone (channel, wet);
+                // Normalise by the pre-shaper gain, not tanh(gain). The
+                // previous formula amplified quiet repeats inside the
+                // feedback loop and could make driven multi-tap presets
+                // regenerate unexpectedly.
+                if (driveAmount > 0.0001f)
+                {
+                    const auto gain = 1.0f + driveAmount * 4.0f;
+                    feedbackSample = std::tanh (feedbackSample * gain) / gain;
+                }
+
+                const auto input = buffer.getSample (channel, sample);
+                const auto writeSample = input + feedbackSample * feedback;
+                delayBuffer.setSample (channel, writeIndex, smoothRail (writeSample, 1.0f, 2.0f));
+                const auto safeWet = smoothRail (wet, 2.0f, 4.0f);
+                buffer.setSample (channel, sample, input * (1.0f - mix) + safeWet * mix);
+            }
         }
 
         writeIndex = (writeIndex + 1) % delayBuffer.getNumSamples();
