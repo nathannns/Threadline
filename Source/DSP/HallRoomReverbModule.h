@@ -52,6 +52,34 @@
 // with gain values now derived to guarantee decay (all g < 1 by
 // construction) rather than picked heuristically, it should essentially
 // never actually engage.
+//
+// Two further stages, both additive rather than touching the comb/allpass
+// math above (that's already RT60-verified; the goal here is to not
+// disturb it):
+//
+// 1. Early reflections. The comb/allpass tank alone is a *late diffuse
+//    field* generator -- it has no notion of discrete first-few echoes off
+//    nearby boundaries, which is the primary perceptual cue for a space's
+//    size and distance (a tank-only reverb, however well-tuned, reads as
+//    "generically diffuse" rather than "a specific-sized room"). A
+//    per-channel multi-tap delay runs in parallel with the tank, with a
+//    per-model tap pattern -- Room: modest density, moderate spread; Hall:
+//    sparser and more spread out, with a clearer gap before it thickens,
+//    reading as a bigger physical distance to the walls; Plate: near-
+//    instantaneous and very dense, almost no gap, the way a real plate's
+//    whole surface resonates nearly simultaneously.
+//
+// 2. Modulated allpass diffusion. A static (unmodulated) delay-based
+//    diffuser can ring at its own resonant frequencies under sustained
+//    input, reading as a faint metallic/comby quality under the main
+//    decay -- audible mainly on long, held notes. Each of the 4 allpasses
+//    now reads its delay line at a slowly, independently modulated
+//    fractional position (a few tenths of a millisecond of wobble,
+//    different rate/phase per instance) instead of a fixed integer
+//    lookback, the standard technique real diffuse-reverb designs
+//    (Dattorro's plate topology among them) use to keep the tail smooth
+//    rather than static. This only touches diffusion character, not decay
+//    time, so it doesn't interact with the RT60 math above.
 class HallRoomReverbModule
 {
 public:
@@ -131,30 +159,101 @@ private:
         }
     };
 
-    // Exactly JUCE's AllPassFilter (fixed feedback per model rather than a
-    // single hardcoded 0.5 everywhere -- Plate runs it higher for denser
-    // diffusion, see file header).
+    // JUCE's AllPassFilter (fixed feedback per model rather than a single
+    // hardcoded 0.5 everywhere -- Plate runs it higher for denser
+    // diffusion, see file header), extended to read its delay line at a
+    // slowly modulated fractional position instead of a fixed integer
+    // lookback -- see file header point 2. buffer is sized with margin
+    // for modDepthSamples on top of the nominal baseDelay.
     struct Allpass
     {
         std::vector<float> buffer;
-        int index = 0;
+        int writeIndex = 0;
+        int baseDelay = 0;
         float feedback = 0.5f;
+        float modDepthSamples = 0.0f;
+        float modIncrement = 0.0f;
+        float modPhase = 0.0f;
 
         void setSize (int size)
         {
-            buffer.assign (static_cast<size_t> (juce::jmax (4, size)), 0.0f);
-            index = 0;
+            baseDelay = juce::jmax (1, size);
+            const auto margin = juce::roundToInt (modDepthSamples) + 4;
+            buffer.assign (static_cast<size_t> (baseDelay + margin), 0.0f);
+            writeIndex = 0;
         }
 
-        void reset() { std::fill (buffer.begin(), buffer.end(), 0.0f); }
+        void reset()
+        {
+            std::fill (buffer.begin(), buffer.end(), 0.0f);
+            // Phase is deliberately not reset here -- prepareTank() staggers
+            // each instance's starting phase once, and re-zeroing it on
+            // every enable/model-switch would resynchronise all 8 lines to
+            // the same modulation phase, defeating the point.
+        }
 
         float process (float input)
         {
-            const auto bufferedValue = buffer[static_cast<size_t> (index)];
+            const auto size = static_cast<int> (buffer.size());
+            const auto distance = static_cast<float> (baseDelay) + modDepthSamples * std::sin (modPhase);
+            auto position = static_cast<float> (writeIndex) - distance;
+            while (position < 0.0f) position += static_cast<float> (size);
+            while (position >= static_cast<float> (size)) position -= static_cast<float> (size);
+            const auto index0 = static_cast<int> (position);
+            const auto index1 = (index0 + 1) % size;
+            const auto fraction = position - static_cast<float> (index0);
+            const auto bufferedValue = buffer[static_cast<size_t> (index0)]
+                + (buffer[static_cast<size_t> (index1)] - buffer[static_cast<size_t> (index0)]) * fraction;
+
             const auto temp = input + (bufferedValue * feedback);
-            buffer[static_cast<size_t> (index)] = temp;
-            if (++index >= static_cast<int> (buffer.size())) index = 0;
+            buffer[static_cast<size_t> (writeIndex)] = temp;
+            if (++writeIndex >= size) writeIndex = 0;
+
+            modPhase += modIncrement;
+            if (modPhase >= juce::MathConstants<float>::twoPi)
+                modPhase -= juce::MathConstants<float>::twoPi;
+
             return bufferedValue - input;
+        }
+    };
+
+    // A fixed-tap delay line simulating the discrete early echoes off
+    // nearby boundaries -- see file header point 1.
+    struct EarlyReflections
+    {
+        static constexpr int maxTaps = 10;
+
+        std::vector<float> buffer;
+        int writeIndex = 0;
+        int numActiveTaps = 0;
+        int tapDelaySamples[maxTaps] {};
+        float tapGain[maxTaps] {};
+
+        void setBufferSize (int size)
+        {
+            buffer.assign (static_cast<size_t> (juce::jmax (8, size)), 0.0f);
+            writeIndex = 0;
+        }
+
+        void reset()
+        {
+            std::fill (buffer.begin(), buffer.end(), 0.0f);
+            writeIndex = 0;
+        }
+
+        float process (float input)
+        {
+            buffer[static_cast<size_t> (writeIndex)] = input;
+            const auto size = static_cast<int> (buffer.size());
+            float sum = 0.0f;
+            for (int t = 0; t < numActiveTaps; ++t)
+            {
+                auto readPos = writeIndex - tapDelaySamples[t];
+                while (readPos < 0) readPos += size;
+                sum += buffer[static_cast<size_t> (readPos)] * tapGain[t];
+            }
+            if (++writeIndex >= size) writeIndex = 0;
+            return sum;
         }
     };
 
@@ -162,6 +261,7 @@ private:
     {
         Comb combL[numCombs], combR[numCombs];
         Allpass allpassL[numAllpasses], allpassR[numAllpasses];
+        EarlyReflections erL, erR;
 
         void reset()
         {
@@ -169,6 +269,8 @@ private:
             for (auto& c : combR) c.reset();
             for (auto& a : allpassL) a.reset();
             for (auto& a : allpassR) a.reset();
+            erL.reset();
+            erR.reset();
         }
     };
 

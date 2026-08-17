@@ -242,9 +242,9 @@ void Page2Component::resized()
     {
         section.bounds = area;
         area.reduce (10, 8);
-        // Tall enough for the Mix knob to sit at a normal size in this row,
-        // rather than squeezed into the old 24px toggle/phase/IR-type strip.
-        auto header = area.removeFromTop (juce::jmin (72, area.getHeight()));
+        // Tall enough for the Mix knob to sit at a genuinely normal size
+        // below the title/toggle row, not squeezed into a short strip.
+        auto header = area.removeFromTop (juce::jmin (120, area.getHeight()));
 
         auto topRow = header;
         section.toggle.setBounds (topRow.removeFromRight (48).withHeight (24).reduced (2, 0));
@@ -256,8 +256,8 @@ void Page2Component::resized()
         // selector -- lower than the title/toggle row rather than spanning
         // the header's full height from the very top, and nudged left of
         // its reserved column.
-        constexpr int mixKnobWidth = 72;
-        constexpr int mixLeftNudge = 10;
+        constexpr int mixKnobWidth = 88;
+        constexpr int mixLeftNudge = 12;
         auto mixColumn = topRow.removeFromRight (mixKnobWidth);
         auto mixArea = mixColumn.withTrimmedTop (24).translated (-mixLeftNudge, 0);
         if (! section.knobs.empty())

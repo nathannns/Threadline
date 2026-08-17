@@ -100,10 +100,20 @@ on/off toggle regardless) via the Overdrive Order switch.
   decorrelated even at a smaller overall size. (A Shimmer mode —
   pitch-shifted feedback — was tried and pulled after it produced a
   runaway-feedback squeal; may come back once the feedback loop gain is
-  worked out properly against a real reference rather than guessed.) The
-  original Lexicon-480L-captured IRs this module used to convolve against
-  are still in `Resources/ImpulseResponses/HallRoom/` but are no longer
-  loaded.
+  worked out properly against a real reference rather than guessed.) Two
+  further stages layer on top without touching the RT60-verified comb math
+  above: a per-channel multi-tap **early-reflection** generator (per-model
+  pattern -- Room modest/dense, Hall sparse/spread, Plate near-instant/
+  ultra-dense) runs in parallel with the tank, since a comb/allpass tank
+  alone is a late-diffuse-field generator with no discrete-echo size/
+  distance cue at all; and each of the 4 **allpasses now reads a slowly,
+  independently modulated fractional delay** (a few tenths of a
+  millisecond, different rate per instance) instead of a fixed integer
+  lookback, the standard technique (Dattorro's plate topology among others)
+  for keeping a diffuse tail smooth under sustained input instead of
+  ringing at its own static resonances. The original Lexicon-480L-captured
+  IRs this module used to convolve against are still in
+  `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
   preset). Ships with 6 factory presets covering clean, edge-of-breakup,
