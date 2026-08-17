@@ -2,6 +2,17 @@
 
 Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
 {
+    // Reads the actual saved parameter value rather than assuming index 0
+    // (or whatever) is current -- reopening a session with, say, Copier or
+    // Vibrato already selected should show that immediately, not flash the
+    // hardcoded default until the first 15Hz timer tick catches up.
+    const auto syncRadioGroup = [this] (juce::TextButton* buttons, int count, const char* paramId)
+    {
+        const auto index = juce::jlimit (0, count - 1,
+            juce::roundToInt (processor.apvts.getRawParameterValue (paramId)->load()));
+        buttons[index].setToggleState (true, juce::dontSendNotification);
+    };
+
     buildSection (tremSection, *this, processor.apvts, "Tremolo", "tremOn", {
         { "tremAmount", "Amount" }
     }, false, SectionPlate::Tremolo);
@@ -28,7 +39,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
                 parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
         };
     }
-    waveformButtons[0].setToggleState (true, juce::dontSendNotification);
+    syncRadioGroup (waveformButtons, 2, "chorusWaveform");
 
     // D-C-V as 3 explicit stops rather than a knob whose Dry/Chorus/Vibrato
     // range wasn't obvious.
@@ -49,7 +60,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
                 parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
         };
     }
-    dcvButtons[1].setToggleState (true, juce::dontSendNotification);
+    syncRadioGroup (dcvButtons, 3, "chorusDCV");
 
     // Delay: one shared card/on-off toggle, two selectable engines. Plexer's
     // exact EP-3 knob set (Time, Sustain, Volume, Echo/Sound-on-Sound mode)
@@ -76,7 +87,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
                 parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
         };
     }
-    echoModeButtons[0].setToggleState (true, juce::dontSendNotification);
+    syncRadioGroup (echoModeButtons, 2, "echoMode");
 
     for (auto& [paramId, labelText] : std::initializer_list<std::pair<const char*, const char*>> {
              { "carbonTime", "Time" }, { "carbonRegen", "Regen" }, { "carbonMix", "Mix" } })
@@ -111,7 +122,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
                 parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
         };
     }
-    delayModelButtons[0].setToggleState (true, juce::dontSendNotification);
+    syncRadioGroup (delayModelButtons, 2, "delayModel");
 
     carbonModButton.setClickingTogglesState (true);
     carbonModButton.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
@@ -124,15 +135,28 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
         if (auto* parameter = processor.apvts.getParameter ("carbonMod"))
             parameter->setValueNotifyingHost (carbonModButton.getToggleState() ? 1.0f : 0.0f);
     };
+    carbonModButton.setToggleState (
+        processor.apvts.getRawParameterValue ("carbonMod")->load() > 0.5f, juce::dontSendNotification);
 
-    // Plexer is the default-selected engine, so Copier's controls start
-    // hidden (timerCallback only toggles visibility on a delayModel change).
+    // Show whichever engine is actually selected, not an assumed default --
+    // this also seeds lastDelayModelWasPlexer so timerCallback's
+    // change-detection starts from the true current state.
+    const auto initialDelayModel = juce::roundToInt (processor.apvts.getRawParameterValue ("delayModel")->load());
+    const auto initialPlexerActive = initialDelayModel == 0;
+    for (auto& knob : echoSection.knobs)
+    {
+        knob->slider.setVisible (initialPlexerActive);
+        knob->label.setVisible (initialPlexerActive);
+    }
+    for (auto& button : echoModeButtons)
+        button.setVisible (initialPlexerActive);
     for (auto& knob : carbonKnobs)
     {
-        knob->slider.setVisible (false);
-        knob->label.setVisible (false);
+        knob->slider.setVisible (! initialPlexerActive);
+        knob->label.setVisible (! initialPlexerActive);
     }
-    carbonModButton.setVisible (false);
+    carbonModButton.setVisible (! initialPlexerActive);
+    lastDelayModelWasPlexer = initialPlexerActive;
 
     // Reverb: 3 Lexicon 480L hall/room convolutions (the old Rockalizer
     // spring-tank models are retired). Decay re-envelopes the loaded IR's
