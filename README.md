@@ -44,7 +44,14 @@ on/off toggle regardless) via the Overdrive Order switch.
     tape wow/flutter, and feedback-linked saturation are fixed
     characteristics here rather than separate Tone/Wobble/Drive knobs it
     doesn't have. Sustain reaches genuine self-oscillation at maximum, same
-    as real hardware.
+    as real hardware. A fixed lowpass sits inside the feedback path, after
+    saturation, modeling the tape loop's own bandwidth loss on every pass —
+    repeated saturation of an unfiltered signal was piling up harmonics
+    each cycle and reading as a harsh metallic hiss rather than a warm tape
+    repeat, especially in Sound-on-Sound (whose near-permanent feedback was
+    also pulled back from 0.998 to 0.99 — close enough to unity that,
+    layered over real playing, it built up into an undifferentiated wash
+    faster than filtering alone could tame).
   - `CarbonCopyModule` ("Copier" in the UI) — modeled on the MXR Carbon
     Copy's control surface: Time, Regen (feedback), Mix, and a Mod toggle.
     A fixed lowpass filter sits inside the feedback path itself (not a Tone
@@ -82,12 +89,21 @@ on/off toggle regardless) via the Overdrive Order switch.
   RT60 1.0-5.5s and deliberately tuned *bigger* than Hall -- longer
   comb/allpass line-length scale, a longer RT60 ceiling, and denser
   allpass diffusion, the way a real plate's whole surface resonates almost
-  simultaneously). (A Shimmer mode — pitch-shifted feedback — was tried
-  and pulled after it produced a runaway-feedback squeal; may come back
-  once the feedback loop gain is worked out properly against a real
-  reference rather than guessed.) The original Lexicon-480L-captured IRs
-  this module used to convolve against are still in
-  `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
+  simultaneously, though pulled back from an earlier, too-extreme brightness
+  bias and allpass feedback that read as metallic/synthetic rather than
+  like a real plate). Freeverb's 8 comb tunings were chosen with a specific
+  spread between them so their resonances land at different-enough
+  frequencies to sound diffuse; uniformly scaling every line down for Room
+  shrank that spread too, which was audible as a "phasing"/comb-y quality
+  especially at high Mix -- fixed by scaling each line's deviation from the
+  mean tuning by an extra factor (Room only) so the 8 lines stay
+  decorrelated even at a smaller overall size. (A Shimmer mode —
+  pitch-shifted feedback — was tried and pulled after it produced a
+  runaway-feedback squeal; may come back once the feedback loop gain is
+  worked out properly against a real reference rather than guessed.) The
+  original Lexicon-480L-captured IRs this module used to convolve against
+  are still in `Resources/ImpulseResponses/HallRoom/` but are no longer
+  loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
   preset). Ships with 6 factory presets covering clean, edge-of-breakup,

@@ -14,6 +14,7 @@ void EchoModule::prepare (const juce::dsp::ProcessSpec& spec)
     {
         preampMidFilter[ch].prepare (spec);
         preampTrebleFilter[ch].prepare (spec);
+        repeatDarkenFilter[ch].prepare (spec);
     }
     // "Sweetens the treble, fattens the mids" -- the real EP-3's always-on
     // solid-state preamp coloration, fixed rather than a user Tone knob.
@@ -21,10 +22,16 @@ void EchoModule::prepare (const juce::dsp::ProcessSpec& spec)
         sampleRate, 650.0f, 0.9f, juce::Decibels::decibelsToGain (2.5f));
     auto trebleCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
         sampleRate, 3200.0f, 0.8f, juce::Decibels::decibelsToGain (2.0f));
+    // The tape loop's own bandwidth loss, inside the feedback path -- see
+    // file header for why repeats need this to sound warm rather than
+    // harsh.
+    auto darkenCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass (
+        sampleRate, 6000.0f, 0.707f);
     for (int ch = 0; ch < 2; ++ch)
     {
         *preampMidFilter[ch].coefficients = *midCoeffs;
         *preampTrebleFilter[ch].coefficients = *trebleCoeffs;
+        *repeatDarkenFilter[ch].coefficients = *darkenCoeffs;
     }
 
     delaySamples.reset (sampleRate, 0.05);
@@ -44,6 +51,7 @@ void EchoModule::reset()
     {
         preampMidFilter[ch].reset();
         preampTrebleFilter[ch].reset();
+        repeatDarkenFilter[ch].reset();
     }
     delaySamples.setCurrentAndTargetValue (static_cast<float> (sampleRate * 0.300));
     wetMix.setCurrentAndTargetValue (0.0f);
@@ -65,8 +73,11 @@ void EchoModule::setParameters (float timeMs, float sustainPercent, float volume
         // Sound-on-Sound disables the erase head on the real machine, so
         // layers persist far longer than any Echo-mode repeat regardless
         // of Sustain; still scaled by Sustain here so the knob stays
-        // useful rather than becoming a no-op in that mode.
-        feedbackTarget = juce::jmap (sustain01, 0.90f, 0.998f);
+        // useful rather than becoming a no-op in that mode. Kept short of
+        // eternal sustain (0.998 was close enough to unity that, layered
+        // over real playing, energy piled up into an undifferentiated
+        // wash faster than the tape-darkening filter could tame it).
+        feedbackTarget = juce::jmap (sustain01, 0.90f, 0.99f);
     }
     else
     {
@@ -171,11 +182,20 @@ void EchoModule::process (juce::AudioBuffer<float>& buffer)
             const auto rawFeedback = readDelay (channel, distance);
             // Saturation intensifies with feedback amount, matching the
             // real circuit's bias-oscillator/tape-hysteresis behaviour
-            // getting more pronounced as more signal recirculates.
-            const auto satGain = 1.0f + juce::jlimit (0.0f, 1.1f, feedback) * 3.5f;
+            // getting more pronounced as more signal recirculates -- kept
+            // gentler than earlier (was up to 4.5x drive) since harder
+            // clipping every single pass, with nothing rolling off the
+            // harmonics it generates, was what made repeats sound like a
+            // harsh metallic hiss instead of warm tape saturation.
+            const auto satGain = 1.0f + juce::jlimit (0.0f, 1.1f, feedback) * 2.0f;
             const auto saturatedFeedback = std::tanh (rawFeedback * satGain) / satGain;
+            // The tape loop's own bandwidth loss, applied after saturation
+            // so it's the harmonics saturation just added that get tamed --
+            // this is what keeps repeats warm rather than accumulating an
+            // ever-brighter, harsher edge with every pass.
+            const auto darkened = repeatDarkenFilter[channel].processSample (saturatedFeedback);
 
-            const auto writeSample = coloured + saturatedFeedback * feedback;
+            const auto writeSample = coloured + darkened * feedback;
             // A wide safety rail: self-oscillation should stay loud and
             // chaotic like the real unit, not numerically explode.
             delayBuffer.setSample (channel, writeIndex, smoothRail (writeSample, 1.4f, 3.2f));

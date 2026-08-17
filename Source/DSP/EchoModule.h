@@ -34,6 +34,13 @@
 // so g = 10^(-2/N). That maps the knob to "how many times do you want to
 // hear it" — the quantity Sustain actually controls perceptually — instead
 // of an arbitrary coefficient range. See EchoModule::setParameters.
+//
+// A real tape loop's own bandwidth (plus the record/playback head response)
+// rolls off highs a little on every single pass -- without that, repeated
+// saturation of an unfiltered signal just piles up harmonics each cycle
+// and reads as a harsh, metallic hiss rather than a warm tape repeat. A
+// fixed lowpass sits inside the feedback path (after saturation, so it
+// tames the harmonics saturation just generated) to model that loss.
 class EchoModule
 {
 public:
@@ -60,6 +67,8 @@ private:
     // Fixed (not user-adjustable) preamp coloring — "sweetens the treble,
     // fattens the mids" per the real EP-3's always-on solid-state preamp.
     juce::dsp::IIR::Filter<float> preampMidFilter[2], preampTrebleFilter[2];
+    // Fixed tape-loop rolloff inside the feedback path -- see file header.
+    juce::dsp::IIR::Filter<float> repeatDarkenFilter[2];
     double sampleRate = 44100.0;
     int writeIndex = 0;
     int validSamples = 0;

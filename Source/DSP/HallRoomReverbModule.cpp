@@ -20,15 +20,28 @@ namespace
     // range below) instead of a raw feedback coefficient -- see file
     // header for why that's the mathematically correct quantity to expose
     // rather than "roomSize". Plate gets both a bigger comb/allpass line
-    // scale AND a longer RT60 ceiling than Hall, plus denser allpass
-    // diffusion and a ratioBias that keeps its high-frequency RT60 closer
-    // to its low-frequency one (brighter, "extended highs") even at
-    // matched Tone settings.
+    // scale AND a longer RT60 ceiling than Hall, plus a little denser
+    // allpass diffusion and a ratioBias that keeps its high-frequency RT60
+    // a bit closer to its low-frequency one (brighter, "extended highs")
+    // than Room/Hall -- kept modest rather than near-zero damping, which
+    // read as metallic/artificial instead of like a real plate.
     constexpr float modelSizeScale[HallRoomReverbModule::numModels]      { 0.55f, 1.0f, 1.3f };
     constexpr float modelRt60LowMin[HallRoomReverbModule::numModels]     { 0.3f, 0.8f, 1.0f };
     constexpr float modelRt60LowMax[HallRoomReverbModule::numModels]     { 1.8f, 4.5f, 5.5f };
-    constexpr float modelRatioBias[HallRoomReverbModule::numModels]      { 0.0f, 0.0f, 0.15f };
-    constexpr float modelAllpassFeedback[HallRoomReverbModule::numModels] { 0.5f, 0.5f, 0.65f };
+    constexpr float modelRatioBias[HallRoomReverbModule::numModels]      { 0.0f, 0.0f, 0.08f };
+    constexpr float modelAllpassFeedback[HallRoomReverbModule::numModels] { 0.5f, 0.5f, 0.58f };
+
+    // Freeverb's 8 tunings were chosen (at their native 44.1kHz scale) with
+    // a specific spread between them so the 8 resonance peaks land at
+    // different-enough frequencies to sound diffuse rather than beating
+    // against each other. Uniformly scaling every line down by the same
+    // factor (Room's 0.55x) shrinks that spread by the same amount, which
+    // is audible as a "phasing"/comb-y quality especially at high Mix --
+    // the short lines end up too close in length relative to each other.
+    // Scaling deviations from the mean tuning by an extra spreadBoost
+    // factor (Room only) restores real decorrelation between the 8 lines
+    // without changing the model's overall average size.
+    constexpr float modelSpreadBoost[HallRoomReverbModule::numModels] { 1.6f, 1.0f, 1.0f };
 
     // With correct gain-staging this should rarely actually trigger --
     // kept as a backstop, not a routine level-setter, since resonant combs
@@ -42,19 +55,32 @@ namespace
         const auto range = ceiling - knee;
         return std::copysign (knee + range * std::tanh ((magnitude - knee) / range), value);
     }
+
+    float meanOf (const int* values, int count)
+    {
+        float sum = 0.0f;
+        for (int i = 0; i < count; ++i) sum += static_cast<float> (values[i]);
+        return sum / static_cast<float> (count);
+    }
 }
 
 void HallRoomReverbModule::prepareTank (Tank& tank, int modelIndex)
 {
     const auto srScale = static_cast<float> (sampleRate / 44100.0);
     const auto scale = srScale * modelSizeScale[modelIndex];
+    const auto spreadBoost = modelSpreadBoost[modelIndex];
     const auto spread = juce::roundToInt (static_cast<float> (stereoSpread) * scale);
     const auto allpassFeedback = modelAllpassFeedback[modelIndex];
+    const auto combMean = meanOf (combTunings, numCombs);
 
     for (int i = 0; i < numCombs; ++i)
     {
-        tank.combL[i].setSize (juce::roundToInt (static_cast<float> (combTunings[i]) * scale));
-        tank.combR[i].setSize (juce::roundToInt (static_cast<float> (combTunings[i]) * scale) + spread);
+        // Boost each line's deviation from the mean before scaling, so
+        // shrinking the model doesn't also shrink the relative spread that
+        // keeps the 8 resonances decorrelated -- see modelSpreadBoost above.
+        const auto boostedTuning = combMean + (static_cast<float> (combTunings[i]) - combMean) * spreadBoost;
+        tank.combL[i].setSize (juce::roundToInt (boostedTuning * scale));
+        tank.combR[i].setSize (juce::roundToInt (boostedTuning * scale) + spread);
     }
     for (int i = 0; i < numAllpasses; ++i)
     {
