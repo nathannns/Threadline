@@ -15,12 +15,14 @@ class AmpModule
 public:
     // Vintage5E3 is the single-voice tweed circuit described above (one
     // passive-feeling Tone knob, per 5E3 authenticity). Modern3Band swaps
-    // that single tone filter for an independent Bass/Mid/Treble stack
-    // (low-shelf + mid-peak + high-shelf) placed at the exact same point in
-    // the signal chain — everything upstream and downstream (preamp gain
+    // that single tone filter for a full Bass/Mid/Treble stack — not three
+    // independent EQ bands, but the real passive Fender/Marshall tone-stack
+    // network (see BassmanToneStack below), placed at the exact same point
+    // in the signal chain. Everything upstream and downstream (preamp gain
     // stages, phase inverter, sag, output-transformer saturation) is
     // unchanged, so Modern3Band is the same amp "engine" wearing a
-    // different, more flexible tone section rather than a different circuit.
+    // different, more flexible — but still physically-derived — tone
+    // section rather than a different circuit.
     enum class Voice { vintage5E3 = 0, modern3Band = 1 };
 
     void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 2)
@@ -44,9 +46,6 @@ public:
             interstageCoupling[ch].prepare (osSpec);
             toneFilter[ch].prepare (osSpec);
             transformerLowPass[ch].prepare (osSpec);
-            bassShelf[ch].prepare (osSpec);
-            midPeak[ch].prepare (osSpec);
-            trebleShelf[ch].prepare (osSpec);
         }
         sagAttack = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.045));
         sagRelease = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.240));
@@ -60,7 +59,7 @@ public:
         outputGain.reset (baseSampleRate, 0.025);
         updateStaticFilters();
         updateToneFilter();
-        updateModernToneFilters();
+        bassmanStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
         reset();
     }
 
@@ -72,8 +71,8 @@ public:
         {
             inputCoupling[ch].reset(); interstageCoupling[ch].reset();
             toneFilter[ch].reset(); transformerLowPass[ch].reset();
-            bassShelf[ch].reset(); midPeak[ch].reset(); trebleShelf[ch].reset();
         }
+        bassmanStack.reset();
         sagEnvelope = 0.0f;
         biasMemory.fill (0.0f);
         sagDetectorLP.fill (0.0f);
@@ -101,7 +100,7 @@ public:
             || ! juce::approximatelyEqual (treble01, lastTreble01))
         {
             lastBass01 = bass01; lastMid01 = mid01; lastTreble01 = treble01;
-            updateModernToneFilters();
+            bassmanStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
         }
     }
 
@@ -140,15 +139,9 @@ public:
                 auto triode2 = std::tanh (stage2Input * stage2Gain + bias2) - std::tanh (bias2);
                 float toned;
                 if (voice == Voice::vintage5E3)
-                {
                     toned = toneFilter[ch].processSample (triode2);
-                }
                 else
-                {
-                    auto shaped = bassShelf[ch].processSample (triode2);
-                    shaped = midPeak[ch].processSample (shaped);
-                    toned = trebleShelf[ch].processSample (shaped);
-                }
+                    toned = bassmanStack.processSample (ch, triode2);
                 auto cathodyne = toned >= 0.0f ? std::tanh (toned * 1.18f)
                                                : 0.94f * std::tanh (toned * 1.32f);
                 phaseInverterOut[(size_t) ch] = cathodyne;
@@ -228,41 +221,124 @@ private:
             *filter.coefficients = *coefficients;
     }
 
-    // Bass/Mid/Treble for Voice::modern3Band. Not an attempt at the exact
-    // passive Fender/Marshall tone-stack transfer function (that's a single
-    // 3-pole network where the three pots interact non-monotonically) — this
-    // is the simpler, independently-adjustable shelf/peak approximation most
-    // digital modelers use for a "modern full-EQ" voice: a low shelf, a mid
-    // peak, and a high shelf in series, each pot mapped to +-12dB around a
-    // flat (0dB) centre so 0.5 on every knob matches the Vintage voice's
-    // roughly neutral starting point.
-    void updateModernToneFilters()
+    // Closed-form emulation of the real passive Fender '59 Bassman tone
+    // stack (Bass/Mid/Treble pots + R1-R4/C1-C3 RC network) for
+    // Voice::modern3Band — not three independent EQ bands, but the actual
+    // circuit's third-order transfer function, so the controls interact the
+    // way the physical stack does (e.g. raising Mid measurably pulls down
+    // apparent Bass and Treble, the classic "scooped mids" behaviour).
+    //
+    // Component values and the symbolic H(s) = (b1*s + b2*s^2 + b3*s^3) /
+    // (a0 + a1*s + a2*s^2 + a3*s^3) derivation, plus its exact bilinear-
+    // transform discretization (c = 2*fs, matching the paper's own choice
+    // for accuracy near DC through the audio band), are from:
+    //   D.T. Yeh, J.O. Smith, "Discretization of the '59 Fender Bassman
+    //   Tone Stack," Proc. DAFx-06, Montreal
+    //   (https://ccrma.stanford.edu/~dtyeh/papers/yeh06_dafx.pdf).
+    // t/m/l below are that paper's Treble/Middle/Bass control names (each
+    // 0-1, matching our knob range directly — no taper conversion needed
+    // since these are already linear 0-1 digital parameters).
+    struct BassmanToneStack
     {
-        if (processingSampleRate <= 0.0)
-            return;
-        const auto bassDb   = (lastBass01   - 0.5f) * 24.0f;
-        const auto midDb    = (lastMid01    - 0.5f) * 24.0f;
-        const auto trebleDb = (lastTreble01 - 0.5f) * 24.0f;
+        void reset() { state.fill (ChannelState {}); }
 
-        auto bassCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (
-            processingSampleRate, 130.0f, 0.707f, juce::Decibels::decibelsToGain (bassDb));
-        auto midCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
-            processingSampleRate, 650.0f, 0.8f, juce::Decibels::decibelsToGain (midDb));
-        auto trebleCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
-            processingSampleRate, 3200.0f, 0.707f, juce::Decibels::decibelsToGain (trebleDb));
-
-        for (int ch = 0; ch < 2; ++ch)
+        void updateCoefficients (double sampleRate, double bass01, double mid01, double treble01)
         {
-            *bassShelf[ch].coefficients = *bassCoeffs;
-            *midPeak[ch].coefficients = *midCoeffs;
-            *trebleShelf[ch].coefficients = *trebleCoeffs;
+            if (sampleRate <= 0.0)
+                return;
+            auto l = juce::jlimit (0.0, 1.0, bass01);
+            const auto m = juce::jlimit (0.0, 1.0, mid01);
+            const auto t = juce::jlimit (0.0, 1.0, treble01);
+            // Denominator coefficients depend only on Bass/Mid (per the
+            // paper — Treble only repositions zeros). At the single exact
+            // corner Bass=0, Mid=1, the analog cubic's a3 term cancels to
+            // zero identically (verified algebraically, independent of
+            // component values — a genuine order-reduction of the physical
+            // network at that corner, not a rounding artifact), which the
+            // bilinear transform maps to a discrete pole sitting exactly on
+            // the unit circle (marginal/undamped). Nudging Bass a hair off
+            // zero only in that corner's neighbourhood keeps every pole
+            // strictly inside the unit circle everywhere else in the full
+            // knob range untouched.
+            if (l < 1.0e-3 && m > 1.0 - 1.0e-3)
+                l = 1.0e-3;
+
+            // '59 Bassman component values, per the paper's Fig. 1.
+            constexpr double C1 = 0.25e-9, C2 = 20e-9, C3 = 20e-9;
+            constexpr double R1 = 250000.0, R2 = 1000000.0, R3 = 25000.0, R4 = 56000.0;
+
+            const auto b1 = t*C1*R1 + m*C3*R3 + l*(C1*R2 + C2*R2) + (C1*R3 + C2*R3);
+            const auto b2 = t*(C1*C2*R1*R4 + C1*C3*R1*R4) - m*m*(C1*C3*R3*R3 + C2*C3*R3*R3)
+                           + m*(C1*C3*R1*R3 + C1*C3*R3*R3 + C2*C3*R3*R3)
+                           + l*(C1*C2*R1*R2 + C1*C2*R2*R4 + C1*C3*R2*R4)
+                           + l*m*(C1*C3*R2*R3 + C2*C3*R2*R3)
+                           + (C1*C2*R1*R3 + C1*C2*R3*R4 + C1*C3*R3*R4);
+            const auto b3 = l*m*(C1*C2*C3*R1*R2*R3 + C1*C2*C3*R2*R3*R4)
+                           - m*m*(C1*C2*C3*R1*R3*R3 + C1*C2*C3*R3*R3*R4)
+                           + m*(C1*C2*C3*R1*R3*R3 + C1*C2*C3*R3*R3*R4)
+                           + t*C1*C2*C3*R1*R3*R4 - t*m*C1*C2*C3*R1*R3*R4
+                           + t*l*C1*C2*C3*R1*R2*R4;
+
+            constexpr double a0 = 1.0;
+            const auto a1 = (C1*R1 + C1*R3 + C2*R3 + C2*R4 + C3*R4) + m*C3*R3 + l*(C1*R2 + C2*R2);
+            const auto a2 = m*(C1*C3*R1*R3 - C2*C3*R3*R4 + C1*C3*R3*R3 + C2*C3*R3*R3)
+                           + l*m*(C1*C3*R2*R3 + C2*C3*R2*R3)
+                           - m*m*(C1*C3*R3*R3 + C2*C3*R3*R3)
+                           + l*(C1*C2*R2*R4 + C1*C2*R1*R2 + C1*C3*R2*R4 + C2*C3*R2*R4)
+                           + (C1*C2*R1*R4 + C1*C3*R1*R4 + C1*C2*R3*R4 + C1*C2*R1*R3 + C1*C3*R3*R4 + C2*C3*R3*R4);
+            const auto a3 = l*m*(C1*C2*C3*R1*R2*R3 + C1*C2*C3*R2*R3*R4)
+                           - m*m*(C1*C2*C3*R1*R3*R3 + C1*C2*C3*R3*R3*R4)
+                           + m*(C1*C2*C3*R3*R3*R4 + C1*C2*C3*R1*R3*R3 - C1*C2*C3*R1*R3*R4)
+                           + l*C1*C2*C3*R1*R2*R4
+                           + C1*C2*C3*R1*R3*R4;
+
+            const auto c  = 2.0 * sampleRate;
+            const auto c2 = c * c;
+            const auto c3 = c2 * c;
+
+            const auto B0 = -b1*c - b2*c2 - b3*c3;
+            const auto B1 = -b1*c + b2*c2 + 3.0*b3*c3;
+            const auto B2 =  b1*c + b2*c2 - 3.0*b3*c3;
+            const auto B3 =  b1*c - b2*c2 + b3*c3;
+
+            const auto A0 = -a0 - a1*c - a2*c2 - a3*c3;
+            const auto A1 = -3.0*a0 - a1*c + a2*c2 + 3.0*a3*c3;
+            const auto A2 = -3.0*a0 + a1*c + a2*c2 - 3.0*a3*c3;
+            const auto A3 = -a0 + a1*c - a2*c2 + a3*c3;
+
+            // Normalise by A0 up front so the per-sample recurrence below
+            // needs no division.
+            const auto invA0 = 1.0 / A0;
+            coeffB0 = B0 * invA0; coeffB1 = B1 * invA0; coeffB2 = B2 * invA0; coeffB3 = B3 * invA0;
+            coeffA1 = A1 * invA0; coeffA2 = A2 * invA0; coeffA3 = A3 * invA0;
         }
-    }
+
+        float processSample (int channel, float input)
+        {
+            auto& s = state[(size_t) channel];
+            const auto x0 = static_cast<double> (input);
+            const auto y0 = coeffB0*x0 + coeffB1*s.x1 + coeffB2*s.x2 + coeffB3*s.x3
+                           - coeffA1*s.y1 - coeffA2*s.y2 - coeffA3*s.y3;
+            s.x3 = s.x2; s.x2 = s.x1; s.x1 = x0;
+            s.y3 = s.y2; s.y2 = s.y1; s.y1 = y0;
+            return static_cast<float> (y0);
+        }
+
+    private:
+        // Direct Form I state: coefficient magnitudes span many orders (the
+        // c^3 terms dominate at oversampled rates), so accumulating in
+        // double keeps the recurrence well-conditioned; only the final
+        // sample is narrowed back to float.
+        struct ChannelState { double x1 = 0, x2 = 0, x3 = 0, y1 = 0, y2 = 0, y3 = 0; };
+        std::array<ChannelState, 2> state {};
+        double coeffB0 = 0, coeffB1 = 0, coeffB2 = 0, coeffB3 = 0;
+        double coeffA1 = 0, coeffA2 = 0, coeffA3 = 0;
+    };
 
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::dsp::IIR::Filter<float> inputCoupling[2], interstageCoupling[2];
     juce::dsp::IIR::Filter<float> toneFilter[2], transformerLowPass[2];
-    juce::dsp::IIR::Filter<float> bassShelf[2], midPeak[2], trebleShelf[2];
+    BassmanToneStack bassmanStack;
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> biasMemory {};
     std::array<float, 2> sagDetectorLP {};
