@@ -247,6 +247,12 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
 
     // Width: simple M/S scaling of the wet signal only (dry stays untouched),
     // so it reshapes the reverb's own stereo image rather than the guitar's.
+    // widthFactor can reach 2.0 ("doubled side"), which can push mid+-side
+    // beyond what the tank's own smoothRail clamp upstream guaranteed (e.g.
+    // L near +6, R near -6 both individually valid, but side alone then
+    // reaches (L-R)*widthFactor/2 = 12) -- re-clamped here so the safety
+    // rail's bound actually holds for what leaves this stage, not just for
+    // what enters it.
     if (channels > 1 && std::abs (widthFactor - 1.0f) > 0.001f)
     {
         for (int sample = 0; sample < samples; ++sample)
@@ -255,8 +261,8 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
             const auto right = wetBuffer.getSample (1, sample);
             const auto mid = (left + right) * 0.5f;
             const auto side = (left - right) * 0.5f * widthFactor;
-            wetBuffer.setSample (0, sample, mid + side);
-            wetBuffer.setSample (1, sample, mid - side);
+            wetBuffer.setSample (0, sample, smoothRail (mid + side, 2.5f, 6.0f));
+            wetBuffer.setSample (1, sample, smoothRail (mid - side, 2.5f, 6.0f));
         }
     }
 

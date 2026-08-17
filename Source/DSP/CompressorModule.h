@@ -83,12 +83,17 @@ public:
             detectorPower = detectorCoeff * detectorPower + (1.0f - detectorCoeff) * linkedPower;
             const auto levelDb = juce::Decibels::gainToDecibels (std::sqrt (detectorPower), -100.0f);
 
+            // Standard soft-knee gain computer (Giannoulis/Massberg/Reiss):
+            // above the knee, reduction = slope*over; inside the knee,
+            // reduction = slope*(over+knee/2)^2/(2*knee) -- the two must
+            // agree at over=knee/2 (kneePosition=knee there, giving
+            // slope*knee/2 either way) for the curve to be continuous.
             constexpr float kneeDb = 8.0f;
             const auto over = levelDb - thresholdDb;
             const auto slope = 1.0f - 1.0f / ratio;
             float targetReduction = 0.0f;
             if (over > kneeDb * 0.5f)
-                targetReduction = slope * (over - kneeDb * 0.25f);
+                targetReduction = slope * over;
             else if (over > -kneeDb * 0.5f)
             {
                 const auto kneePosition = over + kneeDb * 0.5f;
