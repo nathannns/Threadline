@@ -73,16 +73,10 @@ void Page1Component::resized()
     layoutHorizontalRackSection (ts9Section, area, 294);
 
     const auto breakerBounds = ts9Section.bounds;
-    ts9Section.ledBounds = juce::Rectangle<int> (breakerBounds.getX() + 10,
-                                                 breakerBounds.getY() + 21, 20, 20);
-    ts9Section.titleLabel.setBounds (breakerBounds.getX() + 32, breakerBounds.getY() + 10, 96, 42);
-    ts9Section.titleLabel.setJustificationType (juce::Justification::centred);
-    ts9Section.toggle.setBounds (breakerBounds.getX() + 40, breakerBounds.getBottom() - 32, 62, 22);
-
     // Stack the circuit variants immediately to the right of BREAKER. The
     // array remains parameter-index ordered (TS9, TS808, TS10), while the
     // requested visual order is TS9, TS10, TS808.
-    auto variants = juce::Rectangle<int> (breakerBounds.getX() + 142,
+    auto variants = juce::Rectangle<int> (breakerBounds.getX() + 210,
                                           breakerBounds.getY() + 10, 126,
                                           breakerBounds.getHeight() - 20);
     const auto rowHeight = juce::jmax (20, (variants.getHeight() - 6) / 3);

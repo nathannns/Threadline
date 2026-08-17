@@ -175,12 +175,40 @@ public:
         setRepaintsOnMouseActivity (true);
     }
 
+    void setWordmarkStyle (bool shouldUseWordmark)
+    {
+        wordmarkStyle = shouldUseWordmark;
+        repaint();
+    }
+
     void paint (juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (1.0f);
         const auto on = getToggleState();
         const auto hovered = isMouseOverOrDragging();
         const auto down = isDown();
+
+        if (wordmarkStyle)
+        {
+            if (down) bounds.translate (0.0f, 1.0f);
+            auto colour = findColour (on ? juce::ToggleButton::textColourId
+                                         : juce::ToggleButton::tickDisabledColourId);
+            if (hovered && isEnabled()) colour = colour.brighter (0.18f);
+            if (! isEnabled()) colour = colour.withAlpha (0.35f);
+            g.setColour (colour);
+            g.setFont (juce::FontOptions (juce::jlimit (14.0f, 22.0f,
+                                                       (float) getHeight() * 0.46f),
+                                          juce::Font::bold));
+            g.drawFittedText (getButtonText(), bounds.reduced (3, 0).toNearestInt(),
+                              juce::Justification::centredLeft, 1);
+            if (hasKeyboardFocus (true))
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.68f));
+                g.drawRoundedRectangle (bounds, 4.0f, 1.2f);
+            }
+            return;
+        }
+
         if (down) bounds.translate (0.0f, 1.0f);
         if (! down)
         {
@@ -204,4 +232,7 @@ public:
         const auto label = getButtonText().isNotEmpty() ? getButtonText() : (on ? "ON" : "OFF");
         g.drawText (label, bounds, juce::Justification::centred);
     }
+
+private:
+    bool wordmarkStyle = false;
 };

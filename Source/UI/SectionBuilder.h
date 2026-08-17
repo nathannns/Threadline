@@ -264,12 +264,20 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
                         || section.plateIndex == SectionPlate::Reverb;
     section.titleLabel.setColour (juce::Label::textColourId,
                                   lightFace ? juce::Colour (0xff352a22) : ThreadlineColours::textCream);
-    auto titleArea = identity.removeFromTop (juce::jmax (24, identity.getHeight() - 24));
-    auto ledArea = titleArea.removeFromLeft (24);
-    section.ledBounds = ledArea.withSizeKeepingCentre (20, 20);
+    auto titleArea = identity;
+    auto ledArea = titleArea.removeFromLeft (68);
+    section.ledBounds = ledArea.withSizeKeepingCentre (60, 60);
+    section.titleLabel.setVisible (! section.hasToggle);
     section.titleLabel.setBounds (titleArea);
     if (section.hasToggle)
-        section.toggle.setBounds (identity.withSizeKeepingCentre (58, 20));
+    {
+        section.toggle.setWordmarkStyle (true);
+        section.toggle.setColour (juce::ToggleButton::textColourId,
+                                  lightFace ? juce::Colour (0xff352a22) : ThreadlineColours::textCream);
+        section.toggle.setColour (juce::ToggleButton::tickDisabledColourId,
+                                  lightFace ? juce::Colour (0xff71675d) : juce::Colour (0xff564b40));
+        section.toggle.setBounds (titleArea.reduced (2, juce::jmax (2, titleArea.getHeight() / 5)));
+    }
 
     area.removeFromLeft (10);
     const auto count = juce::jmax (1, (int) section.knobs.size());
@@ -304,6 +312,7 @@ inline void buildSection (SectionUI& section, juce::Component& parent,
     section.toggle.setVisible (section.hasToggle);
     if (section.hasToggle)
     {
+        section.toggle.setButtonText (title);
         section.toggle.setTitle (title + " bypass");
         section.toggle.setHelpText ("Enable or bypass the " + title + " section");
         section.toggle.onStateChange = [&parent] { parent.repaint(); };

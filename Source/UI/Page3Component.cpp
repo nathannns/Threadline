@@ -84,16 +84,13 @@ void Page3Component::resized()
     area.removeFromTop (gap);
     layoutHorizontalRackSection (chorusSection, area.removeFromTop (cardHeight), 224);
     auto chorusBounds = chorusSection.bounds;
-    chorusSection.toggle.setBounds (chorusBounds.getX() + 12, chorusBounds.getBottom() - 30, 56, 22);
     flangerMode1Button.setBounds (chorusBounds.getX() + 112, chorusBounds.getBottom() - 30, 42, 22);
     flangerMode2Button.setBounds (chorusBounds.getX() + 160, chorusBounds.getBottom() - 30, 42, 22);
     area.removeFromTop (gap);
     layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight), 310);
     auto echoBounds = echoSection.bounds;
     const auto selectorY = echoBounds.getBottom() - 29;
-    echoSection.titleLabel.setBounds (echoBounds.getX() + 12, echoBounds.getY() + 7, 108, 28);
-    echoSyncButton.setBounds (echoBounds.getX() + 124, echoBounds.getY() + 10, 52, 22);
-    echoSection.toggle.setBounds (echoBounds.getX() + 12, selectorY, 54, 22);
+    echoSyncButton.setBounds (echoBounds.getX() + 256, echoBounds.getY() + 10, 52, 22);
     echoPatternBox.setBounds (echoBounds.getX() + 72, selectorY, 146, 22);
     echoDivisionBox.setBounds (echoBounds.getX() + 224, selectorY, 72, 22);
     area.removeFromTop (gap);
