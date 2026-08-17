@@ -59,7 +59,7 @@ private:
 
     // Chain order: NoiseGate -> Input Gain -> Input Meter -> Compressor ->
     // Klon -> TS9 -> Amp -> Cab (IR) -> Tremolo -> Chorus (July) ->
-    // Echo (Plexy) -> Reverb (Hall/Room) -> 9-Band EQ -> Output Gain ->
+    // Echo (Plexer) -> Reverb (Hall/Room) -> 9-Band EQ -> Output Gain ->
     // Output Meter.
     NoiseGateModule noiseGate;
     CompressorModule compressor;

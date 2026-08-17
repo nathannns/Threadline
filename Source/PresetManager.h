@@ -198,7 +198,7 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 4.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 42.0f },
-            // Plexy in Echo mode: a handful of clean-ish slapback repeats
+            // Plexer in Echo mode: a handful of clean-ish slapback repeats
             // behind the lead, not self-oscillating.
             { "echoOn", 1.0f }, { "echoMode", 0.0f },
             { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f },

@@ -2,7 +2,7 @@
 
 #include <JuceHeader.h>
 
-// "Plexy" is this plugin's own name for the effect (Echoplex is Maestro/
+// "Plexer" is this plugin's own name for the effect (Echoplex is Maestro/
 // Dunlop's trademark, kept out of our UI/parameter names) — modeled on the
 // real Maestro Echoplex EP-3's exact control surface and behaviour, not the
 // Roland RE-201 this module was originally built around.

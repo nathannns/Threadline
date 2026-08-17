@@ -148,22 +148,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusDCV"), "July D-C-V",
         juce::StringArray { "Dry", "Chorus", "Vibrato" }, 1));
 
-    // --- Plexy (Delay) --- our name for the effect (Echoplex is Maestro/
+    // --- Plexer (Delay) --- our name for the effect (Echoplex is Maestro/
     // Dunlop's trademark); the control surface matches the real EP-3's
     // exactly: Time (a slider on the real unit), Sustain, Volume, and an
     // Echo / Sound-on-Sound mode switch. No separate Tone/Wobble/Drive/Sync
     // knobs — the real unit doesn't have them (see EchoModule for how those
     // characteristics are modeled as fixed, always-on behaviour instead).
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Plexy On", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Plexy Time",
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Plexer On", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Plexer Time",
         Range (60.0f, 800.0f, 1.0f, 0.5f), 300.0f));
     // Reaches genuine self-oscillation at maximum, same as the real unit —
     // see EchoModule::setParameters.
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoSustain"), "Plexy Sustain",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoSustain"), "Plexer Sustain",
         Range (0.0f, 100.0f, 0.1f), 30.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoVolume"), "Plexy Volume",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoVolume"), "Plexer Volume",
         Range (0.0f, 100.0f, 0.1f), 25.0f));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoMode"), "Plexy Mode",
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoMode"), "Plexer Mode",
         juce::StringArray { "Echo", "Sound-on-Sound" }, 0));
 
     // --- Reverb: 3 Lexicon 480L hall/room convolutions (HallRoomReverbModule).
@@ -440,7 +440,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    // --- Plexy (Delay) ---
+    // --- Plexer (Delay) ---
     const auto echoActive = pBool ("echoOn");
     const auto echoMode = ((int) p ("echoMode")) == 1
         ? EchoModule::Mode::soundOnSound : EchoModule::Mode::echo;

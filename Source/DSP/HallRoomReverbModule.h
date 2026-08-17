@@ -1,41 +1,36 @@
 #pragma once
 #include <JuceHeader.h>
 
-// Algorithmic Room/Hall/Plate reverb -- an 8-line Feedback Delay Network
-// (FDN) with a Householder mixing matrix for the late, diffuse tail, plus a
-// separate per-channel multi-tap early-reflection (ER) generator for the
-// direct, discrete-echo onset that actually gives a space its sense of size
-// and distance -- the previous version had no ER stage at all, just 8
-// mutually-independent comb filters summed at the output (classic 1996
-// Freeverb topology), which is why it read as thin/metallic rather than
-// spacious: independent combs don't exchange energy with each other, so
-// the diffuse buildup relies entirely on a following allpass chain, which
-// is comparatively weak. A Householder matrix mixes every line's output
-// into every other line's input each sample (all entries nonzero), which
-// is specifically what maximizes echo density in FDN reverb design -- this
-// is the standard architecture behind essentially every serious
-// algorithmic reverb since Stautner & Puckette (1982), not just an
-// incremental tweak.
+// Algorithmic Room/Hall/Plate reverb -- a faithful port of the exact
+// Freeverb structure and gain-staging used by JUCE's own juce::Reverb class
+// (juce_audio_basics/utilities/juce_Reverb.h), which is itself what HISE's
+// own shipped SimpleReverb effect wraps rather than rolling its own. Two
+// earlier custom versions of this module (independent combs with a guessed
+// input gain, then an 8-line Householder FDN) both needed Mix pushed
+// unrealistically high to hear anything -- because their gain constants
+// were guessed rather than taken from a working reference. This version
+// uses JUCE's actual proven numbers instead of guessing: 0.015 input gain
+// into the comb bank, allpass feedback of 0.5, and critically the same
+// damping formula placement (a one-pole lowpass inside each comb's own
+// feedback path, not a separate post-filter) -- these specific constants
+// are why a stock juce::Reverb sounds full and correctly balanced at
+// ordinary-looking Mix settings instead of needing to be driven hot.
 //
-// Three spaces -- Room (small/warm), Hall (larger/spacious), Plate
-// (metallic, extended highs) -- modeled on the Boss RV-6's mode
-// descriptions, as pre-allocated/pre-tuned tanks so switching Model is a
+// 8 comb filters run in parallel per channel (accumulated), followed by 4
+// allpass filters in series per channel -- exactly JUCE's topology, just
+// duplicated into 3 pre-sized/pre-tuned tanks for Room/Hall/Plate rather
+// than JUCE's single continuously-sized model, so switching Model is a
 // same-thread index swap with no reload or click. Plate is deliberately
-// tuned "bigger" than Hall: a longer FDN line-length scale, a higher decay
-// ceiling, and an early-reflection pattern that's nearly instantaneous and
-// extremely dense (no audible gap before the wash arrives) rather than
-// Hall's sparser, more spread-out taps -- a real plate's whole surface
-// resonates almost simultaneously, which reads as bigger/more enveloping
-// than a room-shaped space even though the physical device is smaller.
-//
-// Tone maps to each line's internal damping coefficient (a one-pole
-// lowpass in the feedback path, so highs decay faster than lows in the
-// tail -- real air-absorption behaviour). Decay maps to the FDN's loop
-// gain within a per-space ceiling. A tanh safety rail bounds the final
-// output regardless of parameter combination; early-reflection gains are
-// kept comfortably below its knee in normal use so the clamp stays a true
-// safety net rather than something that flattens the intended level
-// differences between spaces.
+// tuned bigger than Hall (longer comb/allpass line-length scale, a higher
+// feedback ceiling, and denser diffusion via a higher allpass coefficient)
+// -- a real plate's whole surface resonates almost simultaneously, which
+// reads as more enveloping than a room-shaped space despite the smaller
+// physical device. Tone drives each comb's damping coefficient (JUCE's own
+// `damp`/`1-damp` blend), with a fixed brightness bias for Plate. Decay
+// drives comb feedback within a per-space range. A tanh safety rail is
+// kept as a backstop since resonant combs can in principle still build
+// gain at coincident frequencies, but with real gain-staging this time it
+// should rarely actually engage.
 class HallRoomReverbModule
 {
 public:
@@ -56,96 +51,79 @@ public:
         return names[juce::jlimit (0, numModels - 1, index)];
     }
 
-    static constexpr int numLines = 8;
-    static constexpr int maxTaps = 10;
+    static constexpr int numCombs = 8;
+    static constexpr int numAllpasses = 4;
 
 private:
-    // One FDN delay line. readDamped() and writeBack() are split (rather
-    // than one combined process() call, as the old independent-comb design
-    // used) because the Householder mix needs every line's damped output
-    // before any line can be written back to.
-    struct Line
+    // Exactly JUCE's CombFilter: the damping one-pole lives inside the
+    // feedback path itself (`last`), not as a separate post-filter stage.
+    struct Comb
     {
         std::vector<float> buffer;
-        int writeIndex = 0;
-        float damp1 = 0.2f, damp2 = 0.8f;
-        float filterStore = 0.0f;
+        int index = 0;
+        float last = 0.0f;
 
         void setSize (int size)
         {
             buffer.assign (static_cast<size_t> (juce::jmax (4, size)), 0.0f);
-            writeIndex = 0;
+            index = 0;
         }
 
         void reset()
         {
             std::fill (buffer.begin(), buffer.end(), 0.0f);
-            filterStore = 0.0f;
+            last = 0.0f;
         }
 
-        float readDamped()
+        float process (float input, float dampAmount, float feedbackAmount)
         {
-            const auto raw = buffer[static_cast<size_t> (writeIndex)];
-            filterStore = raw * damp2 + filterStore * damp1;
-            return filterStore;
-        }
-
-        void writeBack (float value)
-        {
-            buffer[static_cast<size_t> (writeIndex)] = value;
-            if (++writeIndex >= static_cast<int> (buffer.size())) writeIndex = 0;
+            const auto output = buffer[static_cast<size_t> (index)];
+            last = (output * (1.0f - dampAmount)) + (last * dampAmount);
+            const auto temp = input + (last * feedbackAmount);
+            buffer[static_cast<size_t> (index)] = temp;
+            if (++index >= static_cast<int> (buffer.size())) index = 0;
+            return output;
         }
     };
 
-    // A fixed-tap delay line simulating the discrete early echoes off
-    // nearby boundaries -- the primary perceptual cue for a space's size
-    // and distance, independent of the late diffuse tail.
-    struct EarlyReflections
+    // Exactly JUCE's AllPassFilter (fixed feedback per model rather than a
+    // single hardcoded 0.5 everywhere -- Plate runs it higher for denser
+    // diffusion, see file header).
+    struct Allpass
     {
         std::vector<float> buffer;
-        int writeIndex = 0;
-        int numActiveTaps = 0;
-        int tapDelaySamples[maxTaps] {};
-        float tapGain[maxTaps] {};
+        int index = 0;
+        float feedback = 0.5f;
 
-        void setBufferSize (int size)
+        void setSize (int size)
         {
-            buffer.assign (static_cast<size_t> (juce::jmax (8, size)), 0.0f);
-            writeIndex = 0;
+            buffer.assign (static_cast<size_t> (juce::jmax (4, size)), 0.0f);
+            index = 0;
         }
 
-        void reset()
-        {
-            std::fill (buffer.begin(), buffer.end(), 0.0f);
-            writeIndex = 0;
-        }
+        void reset() { std::fill (buffer.begin(), buffer.end(), 0.0f); }
 
         float process (float input)
         {
-            buffer[static_cast<size_t> (writeIndex)] = input;
-            const auto size = static_cast<int> (buffer.size());
-            float sum = 0.0f;
-            for (int t = 0; t < numActiveTaps; ++t)
-            {
-                auto readPos = writeIndex - tapDelaySamples[t];
-                while (readPos < 0) readPos += size;
-                sum += buffer[static_cast<size_t> (readPos)] * tapGain[t];
-            }
-            if (++writeIndex >= size) writeIndex = 0;
-            return sum;
+            const auto bufferedValue = buffer[static_cast<size_t> (index)];
+            const auto temp = input + (bufferedValue * feedback);
+            buffer[static_cast<size_t> (index)] = temp;
+            if (++index >= static_cast<int> (buffer.size())) index = 0;
+            return bufferedValue - input;
         }
     };
 
     struct Tank
     {
-        Line lines[numLines];
-        EarlyReflections erL, erR;
+        Comb combL[numCombs], combR[numCombs];
+        Allpass allpassL[numAllpasses], allpassR[numAllpasses];
 
         void reset()
         {
-            for (auto& l : lines) l.reset();
-            erL.reset();
-            erR.reset();
+            for (auto& c : combL) c.reset();
+            for (auto& c : combR) c.reset();
+            for (auto& a : allpassL) a.reset();
+            for (auto& a : allpassR) a.reset();
         }
     };
 
@@ -153,7 +131,8 @@ private:
 
     Tank tanks[numModels];
     int activeModel = 0;
-    float loopFeedback = 0.5f;
+    float damp = 0.2f;
+    float feedback = 0.7f;
 
     // Fixed rumble cut on the wet tail, independent of the Tone knob --
     // keeps the tail from building up mud regardless of how bright Tone

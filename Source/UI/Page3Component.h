@@ -3,7 +3,7 @@
 #include "SectionBuilder.h"
 #include "../PluginProcessor.h"
 
-// Page 3 — Tremolo, July (Chorus), Plexy (Delay), Reverb.
+// Page 3 — Tremolo, July (Chorus), Plexer (Delay), Reverb.
 class Page3Component : public juce::Component, private juce::Timer
 {
 public:
@@ -22,7 +22,7 @@ private:
     // D-C-V as 3 explicit stops rather than a knob whose Dry/Chorus/Vibrato
     // range wasn't obvious.
     juce::TextButton dcvButtons[3] { juce::TextButton ("Dry"), juce::TextButton ("Chorus"), juce::TextButton ("Vibrato") };
-    // Plexy's Echo / Sound-on-Sound mode switch — the real EP-3's toggle.
+    // Plexer's Echo / Sound-on-Sound mode switch — the real EP-3's toggle.
     juce::TextButton echoModeButtons[2] { juce::TextButton ("Echo"), juce::TextButton ("Sound-on-Sound") };
 
     juce::ComboBox reverbModelBox;

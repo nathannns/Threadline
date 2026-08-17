@@ -2,7 +2,7 @@
 
 Amp sim + drive stack, VST3 / AU / Standalone, one JUCE codebase.
 
-**Chain:** Noise Gate → Input Gain → Compressor → Klon → Breaker (TS9/TS808/TS10) → Amp (5E3 Tweed Deluxe-inspired) → Cab (your own IR) → Tremolo → July (Chorus/Vibrato) → Plexy (Echo) → Reverb (Hall/Room) → 9-Band EQ → Output Gain
+**Chain:** Noise Gate → Input Gain → Compressor → Klon → Breaker (TS9/TS808/TS10) → Amp (5E3 Tweed Deluxe-inspired) → Cab (your own IR) → Tremolo → July (Chorus/Vibrato) → Plexer (Echo) → Reverb (Hall/Room) → 9-Band EQ → Output Gain
 
 Klon and Breaker can run in either order ahead of the Amp (each keeps its own
 on/off toggle regardless) via the Overdrive Order switch.
@@ -32,32 +32,37 @@ on/off toggle regardless) via the Overdrive Order switch.
   control surface: Rate, Depth, Lag (LFO center delay time), a Sine/Triangle
   waveform switch, and a Dry/Chorus/Vibrato 3-way switch in place of a
   continuous knob.
-- `EchoModule` ("Plexy" in the UI) — modeled on the Maestro Echoplex EP-3's
+- `EchoModule` ("Plexer" in the UI) — modeled on the Maestro Echoplex EP-3's
   control surface: Time, Sustain (feedback), Volume, and an Echo /
   Sound-on-Sound mode switch. The real unit's always-on preamp coloration,
   tape wow/flutter, and feedback-linked saturation are fixed characteristics
   here rather than separate Tone/Wobble/Drive knobs it doesn't have. Sustain
   reaches genuine self-oscillation at maximum, same as real hardware.
-- `HallRoomReverbModule` — algorithmic (not convolution) reverb: an 8-line
-  Feedback Delay Network (FDN) with a Householder mixing matrix for the late,
-  diffuse tail, plus a separate per-channel multi-tap early-reflection
-  generator for the discrete-echo onset that actually cues a space's size
-  and distance (the first version had no early-reflection stage at all,
-  just independent comb filters summed at the output — which is why it
-  sounded thin/metallic rather than spacious). 3 spaces modeled on the Boss
-  RV-6's modes: **Room** (warm, small/dense), **Hall** (clear, spacious),
-  **Plate** (metallic, extended highs, and deliberately tuned *bigger* than
-  Hall — longer FDN lines, a higher decay ceiling, and near-instantaneous/
-  ultra-dense early reflections rather than Hall's sparser, more spread-out
-  taps, the way a real plate's whole surface resonates almost
-  simultaneously). Tone controls each line's internal damping (highs decay
-  faster than lows in the tail, real air-absorption behaviour); Decay
-  controls the FDN's loop gain within a per-space ceiling, live and
-  continuous. (A Shimmer mode — pitch-shifted feedback — was tried and
+- `HallRoomReverbModule` — algorithmic (not convolution) reverb: a faithful
+  port of JUCE's own `juce::Reverb` (itself what HISE's shipped SimpleReverb
+  effect wraps rather than rolling its own) -- 8 parallel combs + 4 series
+  allpasses per channel, using its exact proven constants (0.015 input gain,
+  0.5 allpass feedback, the same `wetScaleFactor`/damping-in-the-feedback-
+  path placement) rather than guessed ones. Two earlier custom versions of
+  this module (independent combs with a guessed input gain, then an 8-line
+  Householder FDN) both needed Mix pushed unrealistically high to hear
+  anything and still didn't sound quite right -- tracing that back to a real
+  reference implementation instead of inventing more constants fixed both
+  problems at once. 3 spaces: **Room** (warm, small/dense), **Hall** (clear,
+  spacious -- the least-modified of the three, matching JUCE's own default
+  feedback range almost exactly), **Plate** (metallic, extended highs, and
+  deliberately tuned *bigger* than Hall -- longer comb/allpass line-length
+  scale, a higher decay ceiling, and denser allpass diffusion, the way a
+  real plate's whole surface resonates almost simultaneously). Tone controls
+  each comb's internal damping (highs decay faster than lows in the tail,
+  real air-absorption behaviour, applied exactly where JUCE's own topology
+  puts it); Decay controls comb feedback within a per-space ceiling, live
+  and continuous. (A Shimmer mode — pitch-shifted feedback — was tried and
   pulled after it produced a runaway-feedback squeal; may come back once
-  the feedback loop gain is worked out properly.) The original
-  Lexicon-480L-captured IRs this module used to convolve against are still
-  in `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
+  the feedback loop gain is worked out properly against a real reference
+  rather than guessed.) The original Lexicon-480L-captured IRs this module
+  used to convolve against are still in `Resources/ImpulseResponses/HallRoom/`
+  but are no longer loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
   preset). Ships with 6 factory presets covering clean, edge-of-breakup,
@@ -65,7 +70,7 @@ on/off toggle regardless) via the Overdrive Order switch.
 
 Several modules started as direct ports from the Rockalizer repo
 (`ChorusModule`, `EchoModule`, `TremoloModule`) but have since diverged
-significantly — July and Plexy in particular are now built around specific
+significantly — July and Plexer in particular are now built around specific
 real pedals' control surfaces rather than Rockalizer's more generic
 versions.
 

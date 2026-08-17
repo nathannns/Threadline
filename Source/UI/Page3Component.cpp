@@ -51,10 +51,10 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     }
     dcvButtons[1].setToggleState (true, juce::dontSendNotification);
 
-    // Plexy's exact EP-3 control surface: Time (the real slider, as a knob
+    // Plexer's exact EP-3 control surface: Time (the real slider, as a knob
     // here), Sustain (feedback), Volume (echo level), and an Echo /
     // Sound-on-Sound mode switch -- no separate Tone/Wobble/Drive knobs.
-    buildSection (echoSection, *this, processor.apvts, "Plexy", "echoOn", {
+    buildSection (echoSection, *this, processor.apvts, "Plexer", "echoOn", {
         { "echoTime", "Time" }, { "echoSustain", "Sustain" }, { "echoVolume", "Volume" }
     }, false, SectionPlate::Delay);
     constexpr int echoModeRadioGroup = 9006;
@@ -162,7 +162,7 @@ void Page3Component::resized()
     }
     area.removeFromTop (gap);
 
-    // Plexy: same treatment — the Echo/Sound-on-Sound mode switch moves to
+    // Plexer: same treatment — the Echo/Sound-on-Sound mode switch moves to
     // the right of the knob row instead of widening the header.
     layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight));
     {
