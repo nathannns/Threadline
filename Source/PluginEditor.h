@@ -44,6 +44,50 @@ public:
     }
 };
 
+// Left of the power/bypass ring — toggles numeric value readouts on every
+// knob in the editor. Off by default (just the rotary graphic, matching
+// every other Threadline control); pressed once draws an open eye and
+// reveals the numbers, pressed again draws it with a slash through it and
+// hides them again.
+class EyeButton : public juce::ToggleButton
+{
+public:
+    EyeButton()
+    {
+        setClickingTogglesState (true);
+        setWantsKeyboardFocus (true);
+        setTitle ("Show knob values");
+        setHelpText ("Show or hide the numeric value under every knob");
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat().reduced (4.0f);
+        if (isDown()) bounds.translate (0.0f, 1.0f);
+        const auto shown = getToggleState();
+        const auto colour = shown ? ThreadlineColours::accentBright : juce::Colour (0xff6a5a4e);
+        g.setColour (colour);
+        g.drawEllipse (bounds, 2.5f);
+
+        auto glyph = bounds.reduced (bounds.getWidth() * 0.18f);
+        juce::Path eye;
+        eye.startNewSubPath (glyph.getX(), glyph.getCentreY());
+        eye.quadraticTo (glyph.getCentreX(), glyph.getY(), glyph.getRight(), glyph.getCentreY());
+        eye.quadraticTo (glyph.getCentreX(), glyph.getBottom(), glyph.getX(), glyph.getCentreY());
+        eye.closeSubPath();
+        g.strokePath (eye, juce::PathStrokeType (2.0f));
+        if (shown)
+            g.fillEllipse (juce::Rectangle<float> (glyph.getWidth() * 0.26f, glyph.getWidth() * 0.26f)
+                                .withCentre (glyph.getCentre()));
+        else
+            g.drawLine (glyph.getX() - 1.0f, glyph.getBottom() + 1.0f,
+                        glyph.getRight() + 1.0f, glyph.getY() - 1.0f, 2.2f);
+
+        if (hasKeyboardFocus (true))
+            g.drawEllipse (bounds.expanded (2.0f), 1.4f);
+    }
+};
+
 // Copied from Rockalizer's preset header: compact vector icons remain crisp at
 // every editor scale and avoid platform-dependent emoji rendering.
 class PresetIconButton final : public juce::Button
@@ -255,6 +299,10 @@ private:
     void switchToPage (int pageIndex);
     void showPresetMenu();
     void refreshPresetList();
+    // Walks the whole component tree so it picks up every PhotoKnob
+    // regardless of which page or section built it, rather than needing
+    // each page to expose its own knob list.
+    void setAllKnobValuesVisible (bool visible);
 
     ThreadlineAudioProcessor& processor;
     // Declared before all controls so it outlives every component using it.
@@ -272,6 +320,7 @@ private:
     PresetIconButton savePresetButton { "Save preset", PresetIconButton::Icon::save };
     PresetIconButton deletePresetButton { "Delete preset", PresetIconButton::Icon::remove };
     PowerButton powerButton;
+    EyeButton eyeButton;
     GearButton optionsMenuButton;
     OptionsPanel optionsGroup;
     bool optionsVisible = false;

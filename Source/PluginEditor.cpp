@@ -11,6 +11,22 @@ namespace
         label.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
         label.setJustificationType (juce::Justification::centredLeft);
     }
+
+    // Recurses the whole component tree so it finds every PhotoKnob
+    // regardless of which page or section built it.
+    void walkForKnobs (juce::Component& root, bool visible)
+    {
+        for (int i = 0; i < root.getNumChildComponents(); ++i)
+        {
+            auto* child = root.getChildComponent (i);
+            if (child == nullptr)
+                continue;
+            if (auto* knob = dynamic_cast<PhotoKnob*> (child))
+                knob->setTextBoxStyle (visible ? juce::Slider::TextBoxBelow : juce::Slider::NoTextBox,
+                                       false, 64, 16);
+            walkForKnobs (*child, visible);
+        }
+    }
 }
 
 ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor& p)
@@ -84,6 +100,11 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         processor.apvts, "masterBypass", powerButton);
 
+    // UI-only state (not an APVTS parameter) -- purely a display preference,
+    // not something that should be recalled from a saved preset.
+    addAndMakeVisible (eyeButton);
+    eyeButton.onClick = [this] { setAllKnobValuesVisible (eyeButton.getToggleState()); };
+
     // --- Rockalizer-style Options panel and gear behavior ---
     optionsGroup.setColour (juce::GroupComponent::outlineColourId, ThreadlineColours::cardBorder);
     optionsGroup.setColour (juce::GroupComponent::textColourId, ThreadlineColours::textDim);
@@ -97,6 +118,7 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
         if (optionsVisible)
             optionsGroup.toFront (false);
         optionsMenuButton.toFront (false);
+        eyeButton.toFront (false);
         powerButton.toFront (false);
     };
     addAndMakeVisible (optionsMenuButton);
@@ -202,6 +224,15 @@ void ThreadlineAudioProcessorEditor::switchToPage (int pageIndex)
         tabPills[(size_t) i].setToggleState (i == pageIndex, juce::dontSendNotification);
 }
 
+void ThreadlineAudioProcessorEditor::setAllKnobValuesVisible (bool visible)
+{
+    // Recurses through every page (visible or not, so the state still holds
+    // when the user switches tabs) and the persistent Gate/Input/Output
+    // rail, catching every PhotoKnob wherever it lives rather than needing
+    // each page to expose its own knob list.
+    walkForKnobs (*this, visible);
+}
+
 void ThreadlineAudioProcessorEditor::refreshPresetList()
 {
     const auto files = processor.presetManager.getAllPresets();
@@ -293,7 +324,8 @@ void ThreadlineAudioProcessorEditor::resized()
     addPresetButton.setBounds (rect (708, 28, 40, 36));
     savePresetButton.setBounds (rect (754, 28, 40, 36));
     deletePresetButton.setBounds (rect (800, 28, 40, 36));
-    optionsMenuButton.setBounds (rect (1004, 18, 56, 56));
+    optionsMenuButton.setBounds (rect (956, 18, 48, 56));
+    eyeButton.setBounds (rect (1014, 18, 48, 56));
     powerButton.setBounds (rect (1084, 18, 56, 56));
     logoComponent.setBounds (rect (46, 10, 252, 80));
     logoComponent.toFront (false);
