@@ -253,13 +253,15 @@ void Page2Component::resized()
         irBox.setBounds (topRow.removeFromRight (130).withHeight (24).reduced (4, 0));
 
         // Mix knob sits between the title wordmark and the cab-type
-        // selector, using the header's full height so it reads as a
-        // normal-sized knob instead of being squeezed into the thin
-        // controls row alongside it.
+        // selector -- lower than the title/toggle row rather than spanning
+        // the header's full height from the very top, and nudged left of
+        // its reserved column.
         constexpr int mixKnobWidth = 72;
-        auto mixArea = topRow.removeFromRight (mixKnobWidth);
+        constexpr int mixLeftNudge = 10;
+        auto mixColumn = topRow.removeFromRight (mixKnobWidth);
+        auto mixArea = mixColumn.withTrimmedTop (24).translated (-mixLeftNudge, 0);
         if (! section.knobs.empty())
-            section.knobs[0]->slider.setBounds (mixArea.reduced (4, 4));
+            section.knobs[0]->slider.setBounds (mixArea.reduced (4, 0));
 
         section.titleLabel.setBounds (topRow.withHeight (24));
     };

@@ -50,13 +50,27 @@ public:
     explicit PhotoKnob (Style initialStyle) : style (initialStyle)
     {
         setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        setTextBoxStyle (juce::Slider::TextBoxBelow, false, 64, 16);
-        setColour (juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha (0.85f));
-        setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
-        setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        // The value readout is drawn by this class's own paint() (see
+        // valuesVisible below), not JUCE's built-in text box -- that let the
+        // reserved space (and so the knob graphic's size/position) change
+        // depending on whether the box was currently shown, which is exactly
+        // what made the knob appear to jump when the eye-icon toggle fired.
+        // valueRowHeight is reserved unconditionally instead, whether or not
+        // the value is actually drawn this frame.
+        setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
     }
 
     void setStyle (Style newStyle) { style = newStyle; repaint(); }
+
+    // Toggled globally by the eye icon in the editor header (see
+    // ThreadlineAudioProcessorEditor::setAllKnobValuesVisible).
+    void setValueVisible (bool visible)
+    {
+        if (valuesVisible == visible)
+            return;
+        valuesVisible = visible;
+        repaint();
+    }
 
     void paint (juce::Graphics& g) override
     {
@@ -65,8 +79,7 @@ public:
             return;
 
         auto bounds = getLocalBounds().toFloat();
-        if (getTextBoxPosition() == juce::Slider::TextBoxBelow)
-            bounds.removeFromBottom ((float) getTextBoxHeight());
+        auto valueArea = bounds.removeFromBottom (valueRowHeight);
 
         // Keep rotated photo corners and the lower shadow inside the component.
         // Vintage chicken-heads need a little more rotational clearance.
@@ -106,6 +119,14 @@ public:
         g.drawImageTransformed (image, transform.translated (2.5f, 3.5f), true);
 
         g.drawImageTransformed (image, transform);
+
+        if (valuesVisible)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.85f));
+            g.setFont (juce::FontOptions (juce::jmax (8.5f, valueRowHeight * 0.8f)));
+            g.drawFittedText (getTextFromValue (getValue()), valueArea.toNearestInt(),
+                              juce::Justification::centred, 1);
+        }
     }
 
     static const juce::Image& getVintageImage()
@@ -124,8 +145,12 @@ private:
     // Measured shaft centre in the 279x417 crop. The previous 0.665 pivot was
     // below the physical shaft and made the knob orbit like a wiper.
     static constexpr float vintagePivotYRatio = 222.0f / 417.0f;
+    // Always subtracted from the drawing area, whether or not a value is
+    // actually drawn there this frame -- see setValueVisible().
+    static constexpr float valueRowHeight = 13.0f;
 
     Style style;
+    bool valuesVisible = false;
 };
 
 // One vertical fader of the 9-band graphic EQ. No numeric readout by

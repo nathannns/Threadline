@@ -22,8 +22,7 @@ namespace
             if (child == nullptr)
                 continue;
             if (auto* knob = dynamic_cast<PhotoKnob*> (child))
-                knob->setTextBoxStyle (visible ? juce::Slider::TextBoxBelow : juce::Slider::NoTextBox,
-                                       false, 64, 16);
+                knob->setValueVisible (visible);
             walkForKnobs (*child, visible);
         }
     }
