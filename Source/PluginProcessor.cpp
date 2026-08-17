@@ -129,20 +129,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tremAmount"), "Tremolo Amount",
         Range (0.0f, 100.0f, 0.1f), 40.0f));
 
-    // --- Julia (Chorus/Vibrato) --- exact control surface of the real
-    // Walrus Audio Julia: Rate, Depth, Lag, a Sine/Triangle waveform
-    // switch, and D-C-V (Dry-Chorus-Vibrato).
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("chorusOn"), "Julia On", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusRate"), "Julia Rate",
+    // --- July (Chorus/Vibrato) --- our name for the effect (Julia is
+    // Walrus Audio's trademark); the control surface exactly matches the
+    // real Julia's: Rate, Depth, Lag, a Sine/Triangle waveform switch, and
+    // D-C-V (Dry-Chorus-Vibrato).
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("chorusOn"), "July On", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusRate"), "July Rate",
         Range (0.05f, 5.0f, 0.01f, 0.35f), 0.32f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusDepth"), "Julia Depth",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusDepth"), "July Depth",
         Range (0.0f, 100.0f, 0.1f), 42.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusLag"), "Julia Lag",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusLag"), "July Lag",
         Range (0.0f, 100.0f, 0.1f), 30.0f));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusWaveform"), "Julia Waveform",
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusWaveform"), "July Waveform",
         juce::StringArray { "Sine", "Triangle" }, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusDCV"), "Julia D-C-V",
-        Range (0.0f, 100.0f, 0.1f), 20.0f));
+    // A continuous 0-100 knob made it unclear where "Dry", "Chorus", and
+    // "Vibrato" actually fell on the sweep. Three explicit stops instead —
+    // still the same underlying dry/wet crossfade (see ChorusModule).
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusDCV"), "July D-C-V",
+        juce::StringArray { "Dry", "Chorus", "Vibrato" }, 1));
 
     // --- Echo (Delay) ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Delay On", false));
@@ -406,14 +410,20 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         tremolo.reset();
     tremoloWasActive = tremoloActive;
 
-    // --- Julia (Chorus/Vibrato) ---
+    // --- July (Chorus/Vibrato) ---
     const auto chorusActive = pBool ("chorusOn");
     if (chorusActive)
     {
         const auto waveform = ((int) p ("chorusWaveform")) == 1
             ? ChorusModule::Waveform::triangle : ChorusModule::Waveform::sine;
+        // Dry / Chorus / Vibrato stops -> the underlying dry/wet percentage
+        // ChorusModule's crossfade expects. Chorus sits at 42%: enough dry
+        // signal left for the comb-filtered wobble that IS chorus, without
+        // drowning it out.
+        constexpr float dcvStops[3] { 0.0f, 42.0f, 100.0f };
+        const auto dcvIndex = juce::jlimit (0, 2, (int) p ("chorusDCV"));
         chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusLag"),
-                              waveform, p ("chorusDCV"), true);
+                              waveform, dcvStops[dcvIndex], true);
         chorus.process (buffer);
     }
     else if (chorusWasActive)

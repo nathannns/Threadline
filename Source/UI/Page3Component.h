@@ -17,8 +17,11 @@ private:
     ThreadlineAudioProcessor& processor;
     SectionUI tremSection, chorusSection, echoSection, reverbSection;
 
-    // Julia's Sine/Triangle mini-toggle switch.
+    // July's Sine/Triangle mini-toggle switch.
     juce::TextButton waveformButtons[2] { juce::TextButton ("Sine"), juce::TextButton ("Triangle") };
+    // D-C-V as 3 explicit stops rather than a knob whose Dry/Chorus/Vibrato
+    // range wasn't obvious.
+    juce::TextButton dcvButtons[3] { juce::TextButton ("Dry"), juce::TextButton ("Chorus"), juce::TextButton ("Vibrato") };
     juce::ComboBox echoPatternBox, echoDivisionBox;
     juce::ToggleButton echoSyncButton { "SYNC" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> echoPatternAttachment,

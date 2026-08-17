@@ -155,7 +155,7 @@ private:
         // Diamond optical compressor (two-stage vactrol release), switchable
         // drive order, TS9/TS808/TS10 variants, Vintage/Boutique amp voices,
         // parallel dual-cab IRs (with a phase-invert showcase), RE-201-style
-        // delay patterns including Ping-Pong, the Julia-inspired chorus/
+        // delay patterns including Ping-Pong, the July-inspired chorus/
         // vibrato, the bias-modulation tremolo, convolution spaces, and the
         // post-effects EQ.
         makePreset ("01 Clean Tweed", {
@@ -165,10 +165,10 @@ private:
             { "ampOutput", -1.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
-            // Julia kept light and taut — a shimmer, not a wobble.
+            // July kept light and taut — a shimmer, not a wobble.
             { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
             { "chorusRate", 0.30f }, { "chorusDepth", 20.0f }, { "chorusLag", 25.0f },
-            { "chorusDCV", 16.0f },
+            { "chorusDCV", 1.0f }, // Chorus
             { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.48f },
             { "reverbTone", 0.62f }, { "reverbMix", 10.0f }, { "reverbWidth", 58.0f }
         });
@@ -210,11 +210,11 @@ private:
             { "ampOutput", -2.0f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
-            // D-C-V pushed to near-100 with a brisk Rate and a long, sluggish
-            // Lag reaches genuine full-wet vibrato, not diluted chorus.
+            // D-C-V set to Vibrato, with a brisk Rate and a long, sluggish
+            // Lag — genuine full-wet vibrato, not diluted chorus.
             { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
             { "chorusRate", 1.80f }, { "chorusDepth", 68.0f }, { "chorusLag", 70.0f },
-            { "chorusDCV", 88.0f },
+            { "chorusDCV", 2.0f }, // Vibrato
             { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbPreDelay", 0.15f },
             { "reverbDecay", 0.70f }, { "reverbTone", 0.55f }, { "reverbMix", 18.0f },
             { "reverbWidth", 80.0f }
@@ -225,11 +225,12 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 35.0f },
-            // Gentle Julia this time (low Rate/D-C-V, moderate Lag) — air
-            // rather than the pronounced wobble of "04 Vibrato Swirl".
+            // Gentle July this time (slow Rate, moderate Lag, Chorus not
+            // Vibrato) — air rather than the pronounced wobble of "04
+            // Vibrato Swirl".
             { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
             { "chorusRate", 0.22f }, { "chorusDepth", 28.0f }, { "chorusLag", 35.0f },
-            { "chorusDCV", 20.0f },
+            { "chorusDCV", 1.0f }, // Chorus
             { "echoOn", 1.0f }, { "echoSync", 1.0f }, { "echoPattern", 4.0f },
             { "echoDivision", 3.0f }, { "echoRepeats", 40.0f }, { "echoTone", 5200.0f },
             { "echoWobble", 34.0f }, { "echoDrive", 20.0f }, { "echoMix", 23.0f },
