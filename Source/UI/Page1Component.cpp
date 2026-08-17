@@ -11,7 +11,7 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
         { "klonGain", "Gain" }, { "klonTreble", "Treble" }, { "klonLevel", "Level" }
     }, false, SectionPlate::Klon);
 
-    buildSection (ts9Section, *this, processor.apvts, "TS9", "ts9On", {
+    buildSection (ts9Section, *this, processor.apvts, "Breaker", "ts9On", {
         { "ts9Drive", "Drive" }, { "ts9Tone", "Tone" }, { "ts9Level", "Level" }
     }, false, SectionPlate::TS9);
 
@@ -70,32 +70,23 @@ void Page1Component::resized()
     area.removeFromTop (gap);
     layoutHorizontalRackSection (klonSection, area.removeFromTop (cardHeight));
     area.removeFromTop (gap);
-    layoutHorizontalRackSection (ts9Section, area);
+    layoutHorizontalRackSection (ts9Section, area, 294);
 
-    // TS9/TS808/TS10 variant buttons get a slim strip carved from the top of
-    // the knob row (same "adjust after the shared layout" approach used for
-    // Compressor above) — the knobs shrink down slightly to make room.
-    if (ts9Section.knobs.size() == 3)
+    const auto breakerBounds = ts9Section.bounds;
+    ts9Section.titleLabel.setBounds (breakerBounds.getX() + 12, breakerBounds.getY() + 10, 116, 42);
+    ts9Section.titleLabel.setJustificationType (juce::Justification::centred);
+    ts9Section.toggle.setBounds (breakerBounds.getX() + 40, breakerBounds.getBottom() - 32, 62, 22);
+
+    // Stack the circuit variants immediately to the right of BREAKER. The
+    // array remains parameter-index ordered (TS9, TS808, TS10), while the
+    // requested visual order is TS9, TS10, TS808.
+    auto variants = juce::Rectangle<int> (breakerBounds.getX() + 142,
+                                          breakerBounds.getY() + 10, 126,
+                                          breakerBounds.getHeight() - 20);
+    const auto rowHeight = juce::jmax (20, (variants.getHeight() - 6) / 3);
+    for (const auto index : { 0, 2, 1 })
     {
-        juce::Rectangle<int> knobRowBounds;
-        for (auto& knob : ts9Section.knobs)
-            knobRowBounds = knobRowBounds.getUnion (knob->slider.getBounds());
-
-        constexpr int variantStripHeight = 22;
-        constexpr int variantGap = 4;
-        auto variantStrip = knobRowBounds.removeFromTop (variantStripHeight);
-        knobRowBounds.removeFromTop (variantGap);
-
-        for (auto& knob : ts9Section.knobs)
-        {
-            auto b = knob->slider.getBounds();
-            b.setY (knobRowBounds.getY());
-            b.setBottom (knobRowBounds.getBottom());
-            knob->slider.setBounds (b);
-        }
-
-        const auto buttonWidth = variantStrip.getWidth() / 3;
-        for (int i = 0; i < 3; ++i)
-            ts9VariantButtons[i].setBounds (variantStrip.removeFromLeft (buttonWidth).reduced (3, 0));
+        ts9VariantButtons[index].setBounds (variants.removeFromTop (rowHeight).reduced (2, 1));
+        variants.removeFromTop (2);
     }
 }

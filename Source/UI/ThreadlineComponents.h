@@ -155,8 +155,8 @@ public:
 
         static const auto capImage = juce::ImageCache::getFromMemory (
             BinaryData::eq_slider_cap_png, BinaryData::eq_slider_cap_pngSize);
-        const auto capWidth = juce::jmin (bounds.getWidth() * 0.96f, 34.0f);
-        const auto capHeight = juce::jlimit (9.0f, 15.0f, capWidth / 3.0f);
+        const auto capHeight = juce::jmin (bounds.getWidth() * 0.96f, 34.0f);
+        const auto capWidth = juce::jlimit (9.0f, 15.0f, capHeight / 3.0f);
         auto cap = juce::Rectangle<float> (capWidth, capHeight).withCentre ({ bounds.getCentreX(), capY });
         g.setColour (juce::Colour (0xff211a16));
         g.fillRoundedRectangle (cap, 3.0f);
