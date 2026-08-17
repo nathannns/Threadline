@@ -19,7 +19,7 @@ namespace
         label.setText (text, juce::dontSendNotification);
         label.setJustificationType (juce::Justification::centred);
         label.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-        label.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+        label.setColour (juce::Label::textColourId, juce::Colour (0xff251a12));
         parent.addAndMakeVisible (label);
         parent.addAndMakeVisible (toggle);
         parent.addAndMakeVisible (knob);
@@ -44,7 +44,7 @@ Page4Component::Page4Component (ThreadlineAudioProcessor& p)
         band->freqLabel.setText (formatFrequencyLabel (freqs[(size_t) i]), juce::dontSendNotification);
         band->freqLabel.setJustificationType (juce::Justification::centred);
         band->freqLabel.setFont (juce::FontOptions (11.0f));
-        band->freqLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+        band->freqLabel.setColour (juce::Label::textColourId, juce::Colour (0xff251a12));
         addAndMakeVisible (band->freqLabel);
 
         band->attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (

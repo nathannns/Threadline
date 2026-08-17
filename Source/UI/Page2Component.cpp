@@ -51,14 +51,6 @@ void Page2Component::paint (juce::Graphics& g)
         auto placement = juce::RectanglePlacement (juce::RectanglePlacement::centred
                                                    | juce::RectanglePlacement::onlyReduceInSize);
         auto ampArea = ampImageFrameBounds.toFloat().reduced (18.0f);
-        auto shadow = ampArea.reduced (ampArea.getWidth() * 0.08f, ampArea.getHeight() * 0.09f)
-                             .translated (10.0f, 15.0f);
-        juce::ColourGradient shadowFill (juce::Colours::black.withAlpha (0.48f),
-                                         shadow.getCentreX(), shadow.getY(),
-                                         juce::Colours::black.withAlpha (0.04f),
-                                         shadow.getCentreX(), shadow.getBottom(), false);
-        g.setGradientFill (shadowFill);
-        g.fillRoundedRectangle (shadow, 24.0f);
         g.drawImage (ampImage, ampArea, placement);
     }
 
@@ -89,6 +81,9 @@ void Page2Component::resized()
     ampDriveKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
     ampToneKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
     ampOutputKnob.setBounds (knobRow.reduced (knobInset, 0));
+    ampDriveKnob.toFront (false);
+    ampToneKnob.toFront (false);
+    ampOutputKnob.toFront (false);
 
     auto cabRow = area;
     cabSection.bounds = cabRow;

@@ -18,6 +18,10 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
 {
     setLookAndFeel (&buttonLookAndFeel);
     logoImage = juce::ImageCache::getFromMemory (BinaryData::threadline_logo_png, BinaryData::threadline_logo_pngSize);
+    logoComponent.setImage (logoImage, juce::RectanglePlacement (juce::RectanglePlacement::centred
+                                                                  | juce::RectanglePlacement::onlyReduceInSize));
+    logoComponent.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (logoComponent);
 
     // --- Preset bar: same control structure and vector icons as Rockalizer ---
     presetBox.setEditableText (true);
@@ -115,6 +119,7 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
         gateSection.knobs[0]->label.setVisible (false);
     gateSection.titleLabel.setVisible (false);
     gateSection.toggle.setButtonText ("GATE");
+    gateSection.toggle.setWordmarkStyle (true);
 
     setupUtilityKnob (inputLabel, inputGainKnob, "Input");
     setupUtilityKnob (outputLabel, outputGainKnob, "Output");
@@ -253,18 +258,6 @@ void ThreadlineAudioProcessorEditor::paint (juce::Graphics& g)
 {
     paintThreadlineBackground (g, getLocalBounds());
 
-    if (logoImage.isValid())
-    {
-        // Same on-screen box Rockalizer draws its own logo into (252x80 at
-        // (46,10)), so Threadline's logo reads at the same size/weight.
-        const auto scaleX = static_cast<float> (getWidth()) / 1200.0f;
-        const auto scaleY = static_cast<float> (getHeight()) / 660.0f;
-        auto logoArea = juce::Rectangle<float> (46.0f * scaleX, 10.0f * scaleY,
-                                                252.0f * scaleX, 80.0f * scaleY);
-        g.drawImage (logoImage, logoArea, juce::RectanglePlacement (juce::RectanglePlacement::centred
-                                                                    | juce::RectanglePlacement::onlyReduceInSize));
-    }
-
     paintCard (g, presetCardBounds, 8.0f);
 
     // Gate, Input and Output read as one compact global utility strip.
@@ -301,6 +294,8 @@ void ThreadlineAudioProcessorEditor::resized()
     deletePresetButton.setBounds (rect (800, 28, 40, 36));
     optionsMenuButton.setBounds (rect (1004, 18, 56, 56));
     powerButton.setBounds (rect (1084, 18, 56, 56));
+    logoComponent.setBounds (rect (46, 10, 252, 80));
+    logoComponent.toFront (false);
 
     // Exact Rockalizer footer frame, positions and control sizes.
     utilityFrameBounds = rect (28, 546, 1144, 108);

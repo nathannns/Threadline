@@ -152,6 +152,7 @@ struct SectionUI
     // rack-plate photo backdrop is drawn behind this section's children.
     juce::Rectangle<int> bounds;
     juce::Rectangle<int> ledBounds;
+    juce::ImageComponent ledImage;
     int plateIndex = 0;
 };
 
@@ -218,15 +219,6 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.drawRoundedRectangle (bounds.reduced (0.75f), 9.0f, 1.25f);
 
-        if (section.hasToggle && ! section.ledBounds.isEmpty())
-        {
-            static const auto ledOff = juce::ImageCache::getFromMemory (
-                BinaryData::led_effect_off_png, BinaryData::led_effect_off_pngSize);
-            static const auto ledOn = juce::ImageCache::getFromMemory (
-                BinaryData::led_effect_on_png, BinaryData::led_effect_on_pngSize);
-            const auto& led = section.toggle.getToggleState() ? ledOn : ledOff;
-            g.drawImage (led, section.ledBounds.toFloat(), juce::RectanglePlacement::stretchToFit);
-        }
         return;
     }
 
@@ -269,6 +261,8 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
     auto titleArea = identity;
     auto ledArea = titleArea.removeFromLeft (68);
     section.ledBounds = ledArea.withSizeKeepingCentre (60, 60);
+    section.ledImage.setBounds (section.ledBounds);
+    section.ledImage.toFront (false);
     section.titleLabel.setVisible (! section.hasToggle);
     section.titleLabel.setBounds (titleArea);
     if (section.hasToggle)
@@ -289,8 +283,11 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
     {
         knob->slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         auto cell = area.removeFromLeft (cellWidth);
-        knob->slider.setBounds (cell.reduced (4, 3).withTrimmedTop (15));
+        knob->slider.setBounds (cell.reduced (6, 8).withTrimmedTop (12));
+        knob->slider.toFront (false);
     }
+    section.ledImage.toFront (false);
+    section.toggle.toFront (false);
 }
 
 // Adds title/toggle/knobs as children of `parent` and wires them to `apvts`.
@@ -318,10 +315,22 @@ inline void buildSection (SectionUI& section, juce::Component& parent,
         section.toggle.setButtonText (title);
         section.toggle.setTitle (title + " bypass");
         section.toggle.setHelpText ("Enable or bypass the " + title + " section");
-        section.toggle.onStateChange = [&parent] { parent.repaint(); };
+        const auto updateLed = [&section]
+        {
+            static const auto ledOff = juce::ImageCache::getFromMemory (
+                BinaryData::led_effect_off_png, BinaryData::led_effect_off_pngSize);
+            static const auto ledOn = juce::ImageCache::getFromMemory (
+                BinaryData::led_effect_on_png, BinaryData::led_effect_on_pngSize);
+            section.ledImage.setImage (section.toggle.getToggleState() ? ledOn : ledOff,
+                                       juce::RectanglePlacement::stretchToFit);
+        };
+        section.toggle.onStateChange = [&parent, updateLed] { updateLed(); parent.repaint(); };
         parent.addAndMakeVisible (section.toggle);
+        section.ledImage.setInterceptsMouseClicks (false, false);
+        parent.addAndMakeVisible (section.ledImage);
         section.toggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
             apvts, toggleParamId, section.toggle);
+        updateLed();
     }
 
     for (auto& [paramId, labelText] : paramIdAndLabel)

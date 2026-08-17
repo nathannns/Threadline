@@ -261,6 +261,7 @@ private:
     ThreadlineButtonLookAndFeel buttonLookAndFeel;
 
     juce::Image logoImage;
+    juce::ImageComponent logoComponent;
     juce::Rectangle<int> presetCardBounds;
 
     // --- Preset bar: Add (new) / Save (overwrite current) / Delete, plus prev/next ---

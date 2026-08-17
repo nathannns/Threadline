@@ -68,7 +68,10 @@ public:
         if (getTextBoxPosition() == juce::Slider::TextBoxBelow)
             bounds.removeFromBottom ((float) getTextBoxHeight());
 
-        auto side = juce::jmin (bounds.getWidth(), bounds.getHeight());
+        // Keep rotated photo corners and the lower shadow inside the component.
+        // Vintage chicken-heads need a little more rotational clearance.
+        const auto clearance = style == Style::Vintage ? 0.80f : 0.86f;
+        auto side = juce::jmin (bounds.getWidth(), bounds.getHeight()) * clearance;
         auto knobBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
 
         // The source PNGs contain transparent pixels around and within the
@@ -211,6 +214,29 @@ public:
                                           juce::Font::bold));
             g.drawFittedText (getButtonText(), bounds.reduced (3, 0).toNearestInt(),
                               juce::Justification::centredLeft, 1);
+            return;
+        }
+
+        static const auto off = juce::ImageCache::getFromMemory (
+            BinaryData::button_off_png, BinaryData::button_off_pngSize);
+        static const auto offHover = juce::ImageCache::getFromMemory (
+            BinaryData::button_off_hover_png, BinaryData::button_off_hover_pngSize);
+        static const auto offPressed = juce::ImageCache::getFromMemory (
+            BinaryData::button_off_pressed_png, BinaryData::button_off_pressed_pngSize);
+        static const auto onImage = juce::ImageCache::getFromMemory (
+            BinaryData::button_on_png, BinaryData::button_on_pngSize);
+        static const auto onHover = juce::ImageCache::getFromMemory (
+            BinaryData::button_on_hover_png, BinaryData::button_on_hover_pngSize);
+        static const auto onPressed = juce::ImageCache::getFromMemory (
+            BinaryData::button_on_pressed_png, BinaryData::button_on_pressed_pngSize);
+
+        const auto& image = on ? (down ? onPressed : (hovered ? onHover : onImage))
+                               : (down ? offPressed : (hovered ? offHover : off));
+        if (image.isValid())
+        {
+            const auto side = juce::jmin (bounds.getWidth(), bounds.getHeight());
+            g.drawImage (image, juce::Rectangle<float> (side, side).withCentre (bounds.getCentre()),
+                         juce::RectanglePlacement::stretchToFit);
             return;
         }
 
