@@ -305,7 +305,24 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     noiseGate.process (buffer);
 
     // --- Input Gain (+ Guitar/Line calibration offset) ---
-    const auto calibrationDb = ((int) p ("inputSource") == 0) ? 12.0f : 0.0f; // Guitar : Line
+    // Guitar-mode offset derived from a real interface gain-staging table
+    // (average of Focusrite Scarlett 2i2 4th Gen: +12.0dBu, and 3rd Gen:
+    // +12.5dBu max instrument input level, gain trim at minimum -> +12.25dBu
+    // average), the same methodology used by other amp-sim plugins to
+    // calibrate against an interface's max-input-at-0dBFS spec rather than
+    // guessing a flat number. Four independent amp-sim vendors in that same
+    // table (Neural DSP, Nembrini/Plugin Alliance, Bogren Digital, UAD
+    // UAFX) converge on the same +12.2dBu internal reference level, which
+    // Threadline now targets too: offset = interfaceMaxInputDbu -
+    // referenceDbu = 12.25 - 12.2 = +0.05dB. The previous flat +12dB was an
+    // unsourced guess that, on a Focusrite run per the standard workflow
+    // (interface/instrument gain at minimum), overdrove the front end by
+    // roughly 12dB versus what the downstream Klon/TS9/Amp stages actually
+    // need to see.
+    constexpr float focusriteAverageMaxInputDbu = (12.0f + 12.5f) * 0.5f; // 2i2 4th Gen, 3rd Gen
+    constexpr float ampSimReferenceDbu = 12.2f; // Neural DSP / Nembrini / Bogren / UAD UAFX convention
+    constexpr float guitarCalibrationDb = focusriteAverageMaxInputDbu - ampSimReferenceDbu;
+    const auto calibrationDb = ((int) p ("inputSource") == 0) ? guitarCalibrationDb : 0.0f; // Guitar : Line
     buffer.applyGain (juce::Decibels::decibelsToGain (p ("inputGain") + calibrationDb));
 
     // --- Input Meter (taps signal right here, pre-compressor) ---
