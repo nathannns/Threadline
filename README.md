@@ -2,29 +2,55 @@
 
 Amp sim + drive stack, VST3 / AU / Standalone, one JUCE codebase.
 
-**Chain:** Noise Gate → Klon → TS9 → Amp (5E3 Tweed Deluxe-inspired) → Cab (your own IR) → Tremolo → Chorus → Echo → Spring Reverb
+**Chain:** Noise Gate → Input Gain → Compressor → Klon → Breaker (TS9/TS808/TS10) → Amp (5E3 Tweed Deluxe-inspired) → Cab (your own IR) → Tremolo → July (Chorus/Vibrato) → Plexy (Echo) → Reverb (Hall/Room) → 9-Band EQ → Output Gain
 
-## What's reused from Rockalizer vs. new
+Klon and Breaker can run in either order ahead of the Amp (each keeps its own
+on/off toggle regardless) via the Overdrive Order switch.
 
-Pulled straight from your Rockalizer repo, unmodified:
-- `ChorusModule`, `EchoModule`, `SpringModule` (+ its 3 embedded spring IRs), `TremoloModule`
+## Modules
 
-Built new for Threadline:
-- `NoiseGateModule` — same algorithm as Rockalizer's inline gate, just pulled
-  out of `PluginProcessor` into its own reusable class so both projects can
-  use it.
+- `NoiseGateModule` — inline gate shared with Rockalizer.
+- `CompressorModule` — Diamond-style optical compressor with a two-stage
+  vactrol release curve (fast initial recovery, slower tail).
 - `KlonModule` — treble-boost pre-emphasis into asymmetric germanium-style
   soft clipping, blended against the clean signal (that clean/driven blend
   is what makes a Klon-style circuit sound "transparent" rather than fuzzy).
-- `TS9Module` — symmetric silicon-diode-style clipping plus the ~720 Hz
-  mid-hump tone stack the TS9 is known for.
+- `TS9Module` ("Breaker" in the UI) — switchable TS9/TS808/TS10 variants,
+  each with the appropriate symmetric silicon-diode-style clipping and tone
+  stack differences.
 - `AmpModule` — two cascaded gain stages (12AY7-style preamp, brighter/
   harder clip → 6V6-style power stage, softer/more compressed clip with
   power-supply sag modeled as a slow envelope follower pulling down power
   stage gain under sustained drive) and a **single** tone knob, since the
   real 5E3 circuit only has one treble-cut control, not a 3-band EQ.
 - `CabModule` — `juce::dsp::Convolution` loading whatever IR file you point
-  it at via the in-UI file chooser. No bundled cab IRs.
+  it at via the in-UI file chooser. No bundled cab IRs. Two parallel IR
+  slots (A/B) blend from the same dry signal, like two mics on one cab.
+- `TremoloModule` — bias-modulation tremolo, modeled on the real tube gm
+  curve's asymmetric throb (fast dip, gentler recovery), single Amount knob.
+- `ChorusModule` ("July" in the UI) — modeled on the Julia pedal's exact
+  control surface: Rate, Depth, Lag (LFO center delay time), a Sine/Triangle
+  waveform switch, and a Dry/Chorus/Vibrato 3-way switch in place of a
+  continuous knob.
+- `EchoModule` ("Plexy" in the UI) — modeled on the Maestro Echoplex EP-3's
+  control surface: Time, Sustain (feedback), Volume, and an Echo /
+  Sound-on-Sound mode switch. The real unit's always-on preamp coloration,
+  tape wow/flutter, and feedback-linked saturation are fixed characteristics
+  here rather than separate Tone/Wobble/Drive knobs it doesn't have. Sustain
+  reaches genuine self-oscillation at maximum, same as real hardware.
+- `HallRoomReverbModule` — 3 Lexicon 480L-style convolution spaces (Large
+  Hall, Large Stage, Small Room). Decay re-envelopes the loaded IR's own
+  tail rather than processing the live signal through a synthetic algorithm.
+- `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
+- `PresetManager` — real save/load to disk-backed XML presets (one file per
+  preset). Ships with 6 factory presets covering clean, edge-of-breakup,
+  driven lead, vibrato, ambient, and tight rhythm tones.
+
+Several modules started as direct ports from the Rockalizer repo
+(`ChorusModule`, `EchoModule`, `TremoloModule`) but have since diverged
+significantly — July and Plexy in particular are now built around specific
+real pedals' control surfaces rather than Rockalizer's more generic
+versions.
 
 ## Build
 
@@ -61,16 +87,10 @@ more bite/presence than the IR alone gives you.
 
 ## Known gaps / next steps
 
-- **Overdrive order is fixed** (Klon → TS9 → Amp). If you want them
-  swappable or stackable in either order, that's a straightforward change —
-  worth doing once you've heard which order you actually prefer.
 - **Amp model is a single voice.** No Bass/Treble/Middle 3-band stack by
   design (5E3 authenticity), but if you want an alternate "modern" voicing
   with full EQ as a second amp model, that's a separate `AmpModule` variant
   rather than a change to this one.
-- **Echo wobble/drive are hardcoded to 0** in `processBlock` right now (not
-  exposed as knobs yet) — trivial to wire up if you want tape-style pitch
-  wobble on the echo repeats.
 - UI is functional, not skinned — no custom knob art or pedal graphics like
   Rockalizer has. Given you already have that visual language built, it's
   probably worth porting those assets over once the DSP side feels right,
