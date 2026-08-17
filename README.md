@@ -18,11 +18,29 @@ on/off toggle regardless) via the Overdrive Order switch.
 - `TS9Module` ("Breaker" in the UI) — switchable TS9/TS808/TS10 variants,
   each with the appropriate symmetric silicon-diode-style clipping and tone
   stack differences.
-- `AmpModule` — two cascaded gain stages (12AY7-style preamp, brighter/
-  harder clip → 6V6-style power stage, softer/more compressed clip with
-  power-supply sag modeled as a slow envelope follower pulling down power
-  stage gain under sustained drive) and a **single** tone knob, since the
-  real 5E3 circuit only has one treble-cut control, not a 3-band EQ.
+- `AmpModule` — dynamic, oversampled 5E3-inspired model (Rob Robinette's 5E3
+  circuit writeup): input/interstage coupling caps, a two-stage 12AY7 preamp
+  with grid-bias-shift memory (blocking distortion -- sustained heavy drive
+  shifts the operating point, causing a momentary "gasp" and recovery), a
+  cathodyne-style phase inverter, a genuinely differential push-pull power
+  stage (two tubes driven by +V/-V from the cathodyne, subtracted at the
+  output transformer -- for a matched pair this cancels even-order harmonics
+  exactly, leaving only odd-order content doubled; a small same-direction
+  bias mismatch between the two tubes breaks that cancellation on purpose,
+  since real 6V6 pairs are never perfectly matched), a bass-weighted sag
+  detector (low chords draw more current and "bloom" more than a bright
+  single-note lead at the same peak level), and output-transformer core
+  saturation as a second, distinct compression mechanism from sag (sag is
+  slow/envelope-driven; this is an instantaneous per-sample soft-knee, so a
+  hard transient gets capped even before sag catches up). Two voices:
+  **Vintage5E3** (the single passive-feeling Tone knob above, since the real
+  5E3 only has one treble-cut control) and **Modern3Band**, which swaps that
+  for the exact real passive Fender '59 Bassman tone-stack network (not
+  three independent EQ bands -- the actual circuit's third-order transfer
+  function per Yeh & Smith's DAFx-06 paper, so raising Mid measurably pulls
+  down apparent Bass and Treble the way the real passive network does)
+  placed at the identical point in the signal chain; everything else in the
+  amp is unchanged between voices.
 - `CabModule` — `juce::dsp::Convolution` loading whatever IR file you point
   it at via the in-UI file chooser. No bundled cab IRs. Two parallel IR
   slots (A/B) blend from the same dry signal, like two mics on one cab.
@@ -160,11 +178,15 @@ more bite/presence than the IR alone gives you.
 
 ## Known gaps / next steps
 
-- **Amp model is a single voice.** No Bass/Treble/Middle 3-band stack by
-  design (5E3 authenticity), but if you want an alternate "modern" voicing
-  with full EQ as a second amp model, that's a separate `AmpModule` variant
-  rather than a change to this one.
-- UI is functional, not skinned — no custom knob art or pedal graphics like
-  Rockalizer has. Given you already have that visual language built, it's
-  probably worth porting those assets over once the DSP side feels right,
-  rather than guessing at a look here.
+(Both items previously listed here -- a single-voice amp with no 3-band EQ
+option, and an unskinned UI with no custom knob art -- are done: AmpModule
+has had a Modern3Band voice with the real Bassman tone-stack derivation for
+a while, and the UI uses photographed knob/rack-plate art throughout. Ask
+if you want a fresh look for genuinely open items rather than trusting this
+section blindly -- it drifted out of date once already.)
+- Cab IR loading is basic next to something like Ignite Amps' NadIR
+  (dual-IR cab convolver): no Resonance control (speaker-cone/power-amp
+  interaction, independent of whatever IR is loaded), no manual timing
+  offset between the A/B slots beyond automatic alignment + a binary phase
+  flip, no automatic phase-polarity detection on load (invert is manual-only
+  right now). Discussed and deliberately not pursued yet.

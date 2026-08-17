@@ -158,10 +158,25 @@ public:
                 sagEnvelope * (0.20f + 0.34f * driveAmount));
             for (int ch = 0; ch < channels; ++ch)
             {
+                // Real push-pull drives two tubes with opposite-polarity
+                // signals from the cathodyne (+V and -V), and the output
+                // transformer's opposite winding subtracts their outputs.
+                // For a matched pair sharing one nonlinearity f, decomposing
+                // f = f_odd + f_even gives f(V) - f(-V) = 2*f_odd(V): the
+                // even-order content cancels exactly, leaving only odd-order
+                // content doubled -- the textbook reason push-pull reads
+                // different from a single-ended stage. tubeMismatch (real
+                // 6V6 pairs are never perfectly matched) is applied as the
+                // *same*-direction bias to both tubes rather than mirrored,
+                // which breaks that cancellation just enough to leave a
+                // little real even-order content rather than a
+                // mathematically perfect one -- "asymmetric push-pull".
                 const auto effectiveDrive = powerDrive * (1.0f - sag);
-                const auto push = std::tanh (phaseInverterOut[(size_t) ch] * effectiveDrive + 0.035f);
-                const auto pull = std::tanh (phaseInverterOut[(size_t) ch] * effectiveDrive - 0.035f);
-                auto power = (push + pull) * 0.5f;
+                const auto v = phaseInverterOut[(size_t) ch] * effectiveDrive;
+                constexpr float tubeMismatch = 0.035f;
+                const auto tubeA = std::tanh (v + tubeMismatch);
+                const auto tubeB = std::tanh (-v + tubeMismatch);
+                auto power = (tubeA - tubeB) * 0.5f;
                 power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
 
                 // Output-transformer core saturation — a second, distinct
