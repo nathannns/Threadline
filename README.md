@@ -2,7 +2,7 @@
 
 Amp sim + drive stack, VST3 / AU / Standalone, one JUCE codebase.
 
-**Chain:** Noise Gate → Input Gain → Compressor → Klon → Breaker (TS9/TS808/TS10) → Amp (5E3 Tweed Deluxe-inspired) → Cab (your own IR) → Tremolo → July (Chorus/Vibrato) → Plexer (Echo) → Reverb (Hall/Room) → 9-Band EQ → Output Gain
+**Chain:** Noise Gate → Input Gain → Compressor → Klon → Breaker (TS9/TS808/TS10) → Amp (5E3 Tweed Deluxe-inspired) → Cab (your own IR) → Tremolo → July (Chorus/Vibrato) → Delay (Plexer or Copier, user-selectable) → Reverb (Hall/Room) → 9-Band EQ → Output Gain
 
 Klon and Breaker can run in either order ahead of the Amp (each keeps its own
 on/off toggle regardless) via the Overdrive Order switch.
@@ -32,12 +32,24 @@ on/off toggle regardless) via the Overdrive Order switch.
   control surface: Rate, Depth, Lag (LFO center delay time), a Sine/Triangle
   waveform switch, and a Dry/Chorus/Vibrato 3-way switch in place of a
   continuous knob.
-- `EchoModule` ("Plexer" in the UI) — modeled on the Maestro Echoplex EP-3's
-  control surface: Time, Sustain (feedback), Volume, and an Echo /
-  Sound-on-Sound mode switch. The real unit's always-on preamp coloration,
-  tape wow/flutter, and feedback-linked saturation are fixed characteristics
-  here rather than separate Tone/Wobble/Drive knobs it doesn't have. Sustain
-  reaches genuine self-oscillation at maximum, same as real hardware.
+- **Delay** — one shared section/on-off toggle, two selectable engines
+  (`delayModel`); only the active engine's knobs matter for the sound:
+  - `EchoModule` ("Plexer" in the UI) — modeled on the Maestro Echoplex
+    EP-3's control surface: Time, Sustain (feedback), Volume, and an Echo /
+    Sound-on-Sound mode switch. The real unit's always-on preamp coloration,
+    tape wow/flutter, and feedback-linked saturation are fixed
+    characteristics here rather than separate Tone/Wobble/Drive knobs it
+    doesn't have. Sustain reaches genuine self-oscillation at maximum, same
+    as real hardware.
+  - `CarbonCopyModule` ("Copier" in the UI) — modeled on the MXR Carbon
+    Copy's control surface: Time, Regen (feedback), Mix, and a Mod toggle.
+    A fixed lowpass filter sits inside the feedback path itself (not a Tone
+    knob the real unit doesn't have), so repeats get progressively darker
+    with each pass — the defining trait of a real bucket-brigade analog
+    delay versus a clean digital one. Mod adds a slow, modest chorus-like
+    delay-time wobble when switched on. Regen reaches near-self-oscillation
+    at maximum, same as real hardware. Mixing is a straightforward
+    crossfade, unlike Plexer's additive/always-colored EP-3 behaviour.
 - `HallRoomReverbModule` — algorithmic (not convolution) reverb: a faithful
   port of JUCE's own `juce::Reverb` (itself what HISE's shipped SimpleReverb
   effect wraps rather than rolling its own) -- 8 parallel combs + 4 series

@@ -92,6 +92,8 @@ target_sources(Threadline
         Source/DSP/ChorusModule.h
         Source/DSP/EchoModule.cpp
         Source/DSP/EchoModule.h
+        Source/DSP/CarbonCopyModule.cpp
+        Source/DSP/CarbonCopyModule.h
         Source/DSP/HallRoomReverbModule.cpp
         Source/DSP/HallRoomReverbModule.h
         Source/DSP/TremoloModule.cpp

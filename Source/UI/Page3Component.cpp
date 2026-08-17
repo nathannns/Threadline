@@ -51,10 +51,12 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     }
     dcvButtons[1].setToggleState (true, juce::dontSendNotification);
 
-    // Plexer's exact EP-3 control surface: Time (the real slider, as a knob
-    // here), Sustain (feedback), Volume (echo level), and an Echo /
-    // Sound-on-Sound mode switch -- no separate Tone/Wobble/Drive knobs.
-    buildSection (echoSection, *this, processor.apvts, "Plexer", "echoOn", {
+    // Delay: one shared card/on-off toggle, two selectable engines. Plexer's
+    // exact EP-3 knob set (Time, Sustain, Volume, Echo/Sound-on-Sound mode)
+    // is built via buildSection as before; Copier's Time/Regen/Mix knobs
+    // are added by hand below, sharing the same card and knob positions --
+    // only one set is visible at a time (see timerCallback).
+    buildSection (echoSection, *this, processor.apvts, "Delay", "echoOn", {
         { "echoTime", "Time" }, { "echoSustain", "Sustain" }, { "echoVolume", "Volume" }
     }, false, SectionPlate::Delay);
     constexpr int echoModeRadioGroup = 9006;
@@ -75,6 +77,62 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
         };
     }
     echoModeButtons[0].setToggleState (true, juce::dontSendNotification);
+
+    for (auto& [paramId, labelText] : std::initializer_list<std::pair<const char*, const char*>> {
+             { "carbonTime", "Time" }, { "carbonRegen", "Regen" }, { "carbonMix", "Mix" } })
+    {
+        auto knob = std::make_unique<KnobUI>();
+        knob->label.setText (labelText, juce::dontSendNotification);
+        knob->label.setJustificationType (juce::Justification::centred);
+        knob->label.setFont (juce::FontOptions (12.0f));
+        knob->label.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+        knob->label.attachToComponent (&knob->slider, false);
+        addAndMakeVisible (knob->slider);
+        addAndMakeVisible (knob->label);
+        knob->attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            processor.apvts, paramId, knob->slider);
+        carbonKnobs.push_back (std::move (knob));
+    }
+
+    constexpr int delayModelRadioGroup = 9007;
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& button = delayModelButtons[i];
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (delayModelRadioGroup, juce::dontSendNotification);
+        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
+        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+        addAndMakeVisible (button);
+        button.onClick = [this, i]
+        {
+            if (auto* parameter = processor.apvts.getParameter ("delayModel"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
+        };
+    }
+    delayModelButtons[0].setToggleState (true, juce::dontSendNotification);
+
+    carbonModButton.setClickingTogglesState (true);
+    carbonModButton.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+    carbonModButton.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
+    carbonModButton.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+    carbonModButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+    addAndMakeVisible (carbonModButton);
+    carbonModButton.onClick = [this]
+    {
+        if (auto* parameter = processor.apvts.getParameter ("carbonMod"))
+            parameter->setValueNotifyingHost (carbonModButton.getToggleState() ? 1.0f : 0.0f);
+    };
+
+    // Plexer is the default-selected engine, so Copier's controls start
+    // hidden (timerCallback only toggles visibility on a delayModel change).
+    for (auto& knob : carbonKnobs)
+    {
+        knob->slider.setVisible (false);
+        knob->label.setVisible (false);
+    }
+    carbonModButton.setVisible (false);
 
     // Reverb: 3 Lexicon 480L hall/room convolutions (the old Rockalizer
     // spring-tank models are retired). Decay re-envelopes the loaded IR's
@@ -106,6 +164,37 @@ void Page3Component::timerCallback()
     for (int i = 0; i < 2; ++i)
         if (echoModeButtons[i].getToggleState() != (i == echoMode))
             echoModeButtons[i].setToggleState (i == echoMode, juce::dontSendNotification);
+
+    const auto delayModel = juce::roundToInt (processor.apvts.getRawParameterValue ("delayModel")->load());
+    for (int i = 0; i < 2; ++i)
+        if (delayModelButtons[i].getToggleState() != (i == delayModel))
+            delayModelButtons[i].setToggleState (i == delayModel, juce::dontSendNotification);
+
+    const auto carbonModOn = processor.apvts.getRawParameterValue ("carbonMod")->load() > 0.5f;
+    if (carbonModButton.getToggleState() != carbonModOn)
+        carbonModButton.setToggleState (carbonModOn, juce::dontSendNotification);
+
+    // Only the active engine's knobs/secondary toggle are shown -- the
+    // other engine's parameters stay live (and automatable) underneath,
+    // just hidden.
+    const auto plexerActive = delayModel == 0;
+    if (plexerActive != lastDelayModelWasPlexer)
+    {
+        for (auto& knob : echoSection.knobs)
+        {
+            knob->slider.setVisible (plexerActive);
+            knob->label.setVisible (plexerActive);
+        }
+        for (auto& button : echoModeButtons)
+            button.setVisible (plexerActive);
+        for (auto& knob : carbonKnobs)
+        {
+            knob->slider.setVisible (! plexerActive);
+            knob->label.setVisible (! plexerActive);
+        }
+        carbonModButton.setVisible (! plexerActive);
+        lastDelayModelWasPlexer = plexerActive;
+    }
 }
 
 void Page3Component::paint (juce::Graphics& g)
@@ -162,19 +251,27 @@ void Page3Component::resized()
     }
     area.removeFromTop (gap);
 
-    // Plexer: same treatment — the Echo/Sound-on-Sound mode switch moves to
-    // the right of the knob row instead of widening the header.
+    // Delay: same treatment, but two rows on the right instead of one --
+    // the Plexer/Copier model switch on top, the active engine's secondary
+    // toggle (Echo/Sound-on-Sound or Mod) below it, same as July's
+    // Waveform/D-C-V stack.
     layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight));
     {
         auto echoBounds = echoSection.bounds;
         const auto controlWidth = juce::jlimit (150, 200, echoBounds.getWidth() / 6);
         const auto controlsLeft = echoBounds.getRight() - 14 - controlWidth;
-        constexpr int rowHeight = 24;
-        const auto rowY = echoBounds.getCentreY() - rowHeight / 2;
+        constexpr int rowHeight = 22;
+        const auto rowY1 = echoBounds.getY() + 11;
+        const auto rowY2 = echoBounds.getBottom() - rowHeight - 9;
+
+        const auto modelWidth = (controlWidth - 4) / 2;
+        delayModelButtons[0].setBounds (controlsLeft, rowY1, modelWidth, rowHeight);
+        delayModelButtons[1].setBounds (controlsLeft + modelWidth + 4, rowY1, controlWidth - modelWidth - 4, rowHeight);
 
         const auto modeWidth = (controlWidth - 4) / 2;
-        echoModeButtons[0].setBounds (controlsLeft, rowY, modeWidth, rowHeight);
-        echoModeButtons[1].setBounds (controlsLeft + modeWidth + 4, rowY, controlWidth - modeWidth - 4, rowHeight);
+        echoModeButtons[0].setBounds (controlsLeft, rowY2, modeWidth, rowHeight);
+        echoModeButtons[1].setBounds (controlsLeft + modeWidth + 4, rowY2, controlWidth - modeWidth - 4, rowHeight);
+        carbonModButton.setBounds (controlsLeft, rowY2, controlWidth, rowHeight);
 
         if (echoSection.knobs.size() == 3)
         {
@@ -189,6 +286,11 @@ void Page3Component::resized()
                 slider.setTopLeftPosition (knobsLeft + juce::roundToInt (positions[i] * (float) knobsWidth) - width / 2,
                                            slider.getY());
             }
+            // Copier's knobs mirror Plexer's exact geometry -- only one set
+            // is ever visible, so they can share the same slots outright.
+            if (carbonKnobs.size() == echoSection.knobs.size())
+                for (size_t i = 0; i < carbonKnobs.size(); ++i)
+                    carbonKnobs[i]->slider.setBounds (echoSection.knobs[i]->slider.getBounds());
         }
     }
     area.removeFromTop (gap);

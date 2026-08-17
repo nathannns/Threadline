@@ -148,13 +148,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusDCV"), "July D-C-V",
         juce::StringArray { "Dry", "Chorus", "Vibrato" }, 1));
 
-    // --- Plexer (Delay) --- our name for the effect (Echoplex is Maestro/
-    // Dunlop's trademark); the control surface matches the real EP-3's
-    // exactly: Time (a slider on the real unit), Sustain, Volume, and an
-    // Echo / Sound-on-Sound mode switch. No separate Tone/Wobble/Drive/Sync
-    // knobs — the real unit doesn't have them (see EchoModule for how those
+    // --- Delay --- two selectable engines sharing one on/off toggle and one
+    // Delay section: Plexer (our name for an Echoplex-style tape echo —
+    // Echoplex is Maestro/Dunlop's trademark) and Copier (our name for a
+    // Carbon-Copy-style BBD analog delay — Carbon Copy is MXR/Dunlop's
+    // trademark). delayModel picks which engine is actually in the signal
+    // path; only that engine's knobs matter for the current sound.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Delay On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("delayModel"), "Delay Model",
+        juce::StringArray { "Plexer", "Copier" }, 0));
+
+    // Plexer's control surface matches the real EP-3's exactly: Time (a
+    // slider on the real unit), Sustain, Volume, and an Echo / Sound-on-
+    // Sound mode switch. No separate Tone/Wobble/Drive/Sync knobs — the
+    // real unit doesn't have them (see EchoModule for how those
     // characteristics are modeled as fixed, always-on behaviour instead).
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoOn"), "Plexer On", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Plexer Time",
         Range (60.0f, 800.0f, 1.0f, 0.5f), 300.0f));
     // Reaches genuine self-oscillation at maximum, same as the real unit —
@@ -165,6 +173,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 100.0f, 0.1f), 25.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoMode"), "Plexer Mode",
         juce::StringArray { "Echo", "Sound-on-Sound" }, 0));
+
+    // Copier's control surface matches the real Carbon Copy's exactly:
+    // Time, Regen (feedback), Mix, and a Mod toggle for a chorus-like
+    // wobble on the repeats. No Tone knob — the real unit's BBD darkening
+    // is a fixed characteristic, not user-adjustable (see CarbonCopyModule).
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("carbonTime"), "Copier Time",
+        Range (20.0f, 600.0f, 1.0f, 0.5f), 300.0f));
+    // Reaches near-self-oscillation at maximum, same as the real unit —
+    // see CarbonCopyModule::setParameters.
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("carbonRegen"), "Copier Regen",
+        Range (0.0f, 100.0f, 0.1f), 35.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("carbonMix"), "Copier Mix",
+        Range (0.0f, 100.0f, 0.1f), 35.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("carbonMod"), "Copier Mod", false));
 
     // --- Reverb: 3 Lexicon 480L hall/room convolutions (HallRoomReverbModule).
     // The old Rockalizer spring-tank models (Space/9100/Echomixer) have been
@@ -252,6 +274,7 @@ void ThreadlineAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     tremolo.prepare (spec);
     chorus.prepare (spec);
     echo.prepare (spec);
+    copier.prepare (spec);
     hallRoomReverb.prepare (spec);
     graphicEQ.prepare (spec);
 }
@@ -440,11 +463,18 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    // --- Plexer (Delay) ---
-    const auto echoActive = pBool ("echoOn");
+    // --- Delay: Plexer or Copier, user-selectable --- both engines run
+    // their own independent click-free fade-out, so flipping delayModel
+    // while enabled fades the old engine out while the new one fades in
+    // rather than cutting either abruptly.
+    const auto delayOn = pBool ("echoOn");
+    const auto plexerSelected = ((int) p ("delayModel")) == 0;
+    const auto plexerActive = delayOn && plexerSelected;
+    const auto copierActive = delayOn && ! plexerSelected;
+
     const auto echoMode = ((int) p ("echoMode")) == 1
         ? EchoModule::Mode::soundOnSound : EchoModule::Mode::echo;
-    if (echoActive)
+    if (plexerActive)
     {
         echo.setParameters (p ("echoTime"), p ("echoSustain"), p ("echoVolume"), true, echoMode);
         echo.process (buffer);
@@ -458,6 +488,23 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         {
             echo.reset();
             echoWasActive = false;
+        }
+    }
+
+    if (copierActive)
+    {
+        copier.setParameters (p ("carbonTime"), p ("carbonRegen"), p ("carbonMix"), pBool ("carbonMod"), true);
+        copier.process (buffer);
+        copierWasActive = true;
+    }
+    else if (copierWasActive)
+    {
+        copier.setParameters (p ("carbonTime"), p ("carbonRegen"), p ("carbonMix"), pBool ("carbonMod"), false);
+        copier.process (buffer);
+        if (! copier.isWetTransitionActive())
+        {
+            copier.reset();
+            copierWasActive = false;
         }
     }
 

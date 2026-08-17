@@ -9,6 +9,7 @@
 #include "DSP/CabModule.h"
 #include "DSP/ChorusModule.h"
 #include "DSP/EchoModule.h"
+#include "DSP/CarbonCopyModule.h"
 #include "DSP/HallRoomReverbModule.h"
 #include "DSP/GraphicEQModule.h"
 #include "DSP/TremoloModule.h"
@@ -59,8 +60,8 @@ private:
 
     // Chain order: NoiseGate -> Input Gain -> Input Meter -> Compressor ->
     // Klon -> TS9 -> Amp -> Cab (IR) -> Tremolo -> Chorus (July) ->
-    // Echo (Plexer) -> Reverb (Hall/Room) -> 9-Band EQ -> Output Gain ->
-    // Output Meter.
+    // Delay (Plexer or Copier, user-selectable) -> Reverb (Hall/Room) ->
+    // 9-Band EQ -> Output Gain -> Output Meter.
     NoiseGateModule noiseGate;
     CompressorModule compressor;
     KlonModule klon;
@@ -72,7 +73,10 @@ private:
     CabModule cabA, cabB;
     TremoloModule tremolo;
     ChorusModule chorus;
+    // Two delay engines sharing one Delay section and one on/off toggle;
+    // delayModel picks which one is actually in the signal path.
     EchoModule echo;
+    CarbonCopyModule copier;
     HallRoomReverbModule hallRoomReverb;
     GraphicEQModule graphicEQ;
 
@@ -80,7 +84,7 @@ private:
 
     double currentSampleRate = 44100.0;
     int lastCabAIRSelection = -1, lastCabBIRSelection = -1;
-    bool tremoloWasActive = false, chorusWasActive = false, echoWasActive = false;
+    bool tremoloWasActive = false, chorusWasActive = false, echoWasActive = false, copierWasActive = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ThreadlineAudioProcessor)
 };
