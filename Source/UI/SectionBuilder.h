@@ -151,6 +151,7 @@ struct SectionUI
     // Set by layoutSection each resize, read back by paintSectionPlate — the
     // rack-plate photo backdrop is drawn behind this section's children.
     juce::Rectangle<int> bounds;
+    juce::Rectangle<int> ledBounds;
     int plateIndex = 0;
 };
 
@@ -214,6 +215,16 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
         g.restoreState();
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.drawRoundedRectangle (bounds.reduced (0.75f), 9.0f, 1.25f);
+
+        if (section.hasToggle && ! section.ledBounds.isEmpty())
+        {
+            static const auto ledOff = juce::ImageCache::getFromMemory (
+                BinaryData::led_effect_off_png, BinaryData::led_effect_off_pngSize);
+            static const auto ledOn = juce::ImageCache::getFromMemory (
+                BinaryData::led_effect_on_png, BinaryData::led_effect_on_pngSize);
+            const auto& led = section.toggle.getToggleState() ? ledOn : ledOff;
+            g.drawImage (led, section.ledBounds.toFloat(), juce::RectanglePlacement::stretchToFit);
+        }
         return;
     }
 
@@ -253,7 +264,10 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
                         || section.plateIndex == SectionPlate::Reverb;
     section.titleLabel.setColour (juce::Label::textColourId,
                                   lightFace ? juce::Colour (0xff352a22) : ThreadlineColours::textCream);
-    section.titleLabel.setBounds (identity.removeFromTop (juce::jmax (24, identity.getHeight() - 24)));
+    auto titleArea = identity.removeFromTop (juce::jmax (24, identity.getHeight() - 24));
+    auto ledArea = titleArea.removeFromLeft (24);
+    section.ledBounds = ledArea.withSizeKeepingCentre (20, 20);
+    section.titleLabel.setBounds (titleArea);
     if (section.hasToggle)
         section.toggle.setBounds (identity.withSizeKeepingCentre (58, 20));
 
@@ -292,6 +306,7 @@ inline void buildSection (SectionUI& section, juce::Component& parent,
     {
         section.toggle.setTitle (title + " bypass");
         section.toggle.setHelpText ("Enable or bypass the " + title + " section");
+        section.toggle.onStateChange = [&parent] { parent.repaint(); };
         parent.addAndMakeVisible (section.toggle);
         section.toggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
             apvts, toggleParamId, section.toggle);
