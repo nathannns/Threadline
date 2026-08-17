@@ -12,12 +12,24 @@ on/off toggle regardless) via the Overdrive Order switch.
 - `NoiseGateModule` — inline gate shared with Rockalizer.
 - `CompressorModule` — Diamond-style optical compressor with a two-stage
   vactrol release curve (fast initial recovery, slower tail).
-- `KlonModule` — treble-boost pre-emphasis into asymmetric germanium-style
-  soft clipping, blended against the clean signal (that clean/driven blend
-  is what makes a Klon-style circuit sound "transparent" rather than fuzzy).
+- `KlonModule` — treble-boost pre-emphasis into a genuine Wave Digital
+  Filter simulation of the real Klon Centaur clipping stage's circuit
+  (`Source/DSP/WDFCore.h`, ported from and verified against
+  jatinchowdhury18/KlonCentaur's own traced-and-measured model), blended
+  against the clean signal (that clean/driven blend is what makes a
+  Klon-style circuit sound "transparent" rather than fuzzy). The real
+  traced circuit's diode pair turned out to be matched (single Is/Vt for
+  both diodes), not the popular "germanium + silicon asymmetric pair"
+  story this module used to model — corrected to match what the actual
+  reverse-engineered schematic uses.
 - `TS9Module` ("Breaker" in the UI) — switchable TS9/TS808/TS10 variants,
-  each with the appropriate symmetric silicon-diode-style clipping and tone
-  stack differences.
+  each sharing a genuine WDF simulation of the real op-amp/diode-pair
+  clipping stage (ideal-op-amp limit of Chowdhury-DSP/BYOD's own Tube
+  Screamer model, with that model's real component/diode values: Rin=4.7k,
+  Rf=51k+0-500k from Drive, 1N4148 Is=4.352nA/Vt=25.85mV×1.906) — Drive now
+  moves the actual feedback resistor rather than pre-scaling the signal
+  into a fixed curve. Per-variant differences still live in the pre-clip
+  highpass corner and post-clip Tone range, same as before.
 - `AmpModule` — dynamic, oversampled 5E3-inspired model (Rob Robinette's 5E3
   circuit writeup): input/interstage coupling caps, a two-stage 12AY7 preamp
   with grid-bias-shift memory (blocking distortion -- sustained heavy drive
@@ -156,6 +168,50 @@ Several modules started as direct ports from the Rockalizer repo
 significantly — July and Plexer in particular are now built around specific
 real pedals' control surfaces rather than Rockalizer's more generic
 versions.
+
+## Wave Digital Filter clippers (Klon/Bull, Breaker/TS9)
+
+`Source/DSP/WDFCore.h` is a small, from-scratch port of the Wave Digital
+Filter primitives Bull's and Breaker's clipping stages are built from
+(one-port resistor/capacitor/voltage-source/current-source elements, series
+and parallel scattering adaptors, and a diode-pair root element solved via
+the closed-form Wright Omega function) — real circuit simulation of each
+stage's actual passive network and diode I-V law, in place of the
+hand-fit-asinh curve both modules used before. Not derived from scratch:
+every adaptor's scattering rule and the Wright Omega diode solve were
+copied from and checked against two real, working, MIT-licensed reference
+implementations by Jatin Chowdhury —
+[KlonCentaur](https://github.com/jatinchowdhury18/KlonCentaur) (Bull's
+clipper is that repo's own traced Klon Centaur circuit, component values
+included) and [chowdsp_wdf](https://github.com/Chowdhury-DSP/chowdsp_wdf) /
+[BYOD](https://github.com/Chowdhury-DSP/BYOD) (the general adaptor library,
+and Breaker's clipper is the ideal-op-amp limit of BYOD's own Tube Screamer
+model). Before wiring either clipper into the plugin, both were exercised
+in a standalone harness outside JUCE entirely — sweeping drive and input
+amplitude across several orders of magnitude (including deliberately
+extreme values well past any real playing level) and checking for
+NaN/Inf/unbounded output — since a WDF implementation can be subtly wrong
+in ways that still sound plausible; a numerical sweep catches instability
+an ear can't necessarily catch on the first listen. Both clippers' outputs
+are in real circuit units (Bull's is a current in amps, Breaker's a
+voltage) rather than a pre-normalised audio range, so each has its own
+empirically-measured `outputCalibration` constant (documented in-file)
+bringing that back to a sensible level, plus a wide tanh safety rail as a
+backstop — the diode pair itself is what actually limits the level, same
+as in real hardware; the safety rail is insurance against the calibration
+guess being off, not a routine level-setter.
+
+`AmpModule` was **not** included in this pass, on purpose. Its passive
+Bassman/Tone-stack network is already exactly circuit-derived (Yeh & Smith's
+transfer function) — mathematically equivalent to a WDF simulation of the
+same linear network, so re-implementing it as one wouldn't change its
+accuracy, only its cost. The genuinely nonlinear part of a real tube
+preamp stage (grid conduction against the plate curve) is a different
+kind of circuit than a diode clipper and needs its own real reference
+model and per-tube-type research (12AY7 vs 12AX7) before touching it —
+rushing an unvalidated version into the amp in the same pass as the two
+clippers above risked being far harder to catch if wrong. Left as a
+separate, clearly-scoped follow-up rather than done partially here.
 
 ## UI
 

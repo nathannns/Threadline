@@ -1,31 +1,87 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "WDFCore.h"
 
 // Klon-style "transparent" overdrive. The character comes from three things:
 //  1. A pre-emphasis treble boost before the clipper (the Klon's distinctive
 //     upper-mid/treble push, active even at Gain=0).
-//  2. An asinh-shaped diode clip, asymmetric per polarity: asinh(x) is the
-//     closed-form transfer function of a resistor-fed pair of diodes to
-//     ground (solving the diode's exponential I-V law while treating Vout's
-//     own feedback into the diode current as second-order — the standard
-//     real-time simplification for this circuit), which turns on smoothly
-//     like a real diode rather than tanh's more abrupt saturation. The
-//     positive half uses a lower knee (germanium: higher leakage current,
-//     conducts earlier/softer), the negative half a higher one (silicon:
-//     conducts later/harder) — the Klon's actual asymmetric diode pair.
+//  2. A genuine Wave Digital Filter simulation of the real clipping stage's
+//     circuit (KlonClipper below) in place of a curve-fit asinh approximation
+//     -- ported from and verified against jatinchowdhury18/KlonCentaur's own
+//     traced-and-measured Klon Centaur model (ChowCentaur/GainStageProcessors/
+//     ClippingStage.h): the actual C9/R13/C10/47k-bias network feeding a
+//     matched diode pair (Is=15uA, Vt=25.85mV), solved via the closed-form
+//     Wright Omega function rather than an approximated transfer curve.
+//     Note: that traced circuit's diode pair is a single matched Is/Vt for
+//     both diodes -- the popular "germanium + silicon asymmetric pair" story
+//     about the real Klon Centaur isn't what the actual reverse-engineered
+//     circuit (and this model) uses; this now reflects the traced circuit
+//     rather than that story, which the previous asinh version was leaning on.
 //  3. A clean/driven BLEND rather than a simple gain stage — Gain controls
 //     how much clipped signal is mixed back in over the clean buffered
 //     signal, which is what keeps it sounding "transparent" instead of
 //     fuzzy even at higher settings.
 // 2x-oversamples just the nonlinear clip stage: the treble pre-emphasis and
 // clean/driven blend are linear operations (they don't generate new harmonic
-// content), so only the asinh/tanh clip itself needs the higher rate to keep
-// the harmonics it generates from folding back as audible aliasing —
-// AmpModule already does this for the same reason; Klon and TS9 didn't.
+// content), so only the clip itself needs the higher rate to keep the
+// harmonics it generates from folding back as audible aliasing — AmpModule
+// already does this for the same reason; Klon and TS9 didn't.
 class KlonModule
 {
 public:
+    // The Klon Centaur's actual clipping-stage circuit (per KlonCentaur's
+    // traced schematic): input via C9/R13 into a node also fed by C10 to a
+    // 47k bias resistor, clamped by a diode pair, current through C10 taken
+    // as the stage's output. Self-referencing (each adaptor holds
+    // references to its own sibling members) -- never copy or move an
+    // instance once constructed, same restriction the reference
+    // implementation carries.
+    struct KlonClipper
+    {
+        WDF::ResistiveVoltageSource Vin { 1.0e-9f };
+        WDF::Capacitor C9 { 1.0e-6f, 44100.0 };
+        WDF::Resistor R13 { 1000.0f };
+        WDF::PolarityInverter<WDF::ResistiveVoltageSource> I1 { Vin };
+        WDF::Series<WDF::PolarityInverter<WDF::ResistiveVoltageSource>, WDF::Capacitor> S1 { I1, C9 };
+        WDF::Series<decltype (S1), WDF::Resistor> S2 { S1, R13 };
+
+        WDF::Capacitor C10 { 1.0e-6f, 44100.0 };
+        WDF::ResistiveVoltageSource Vbias { 47000.0f };
+        WDF::Series<WDF::Capacitor, WDF::ResistiveVoltageSource> S3 { C10, Vbias };
+
+        WDF::Parallel<decltype (S2), decltype (S3)> P1 { S2, S3 };
+        WDF::DiodePair<decltype (P1)> D23 { P1, 15.0e-6f, 0.02585f };
+
+        KlonClipper() { Vbias.setVoltage (0.0f); }
+
+        void prepare (double wdfSampleRate)
+        {
+            C9.prepare (1.0e-6f, wdfSampleRate);
+            C10.prepare (1.0e-6f, wdfSampleRate);
+            S1.calcImpedance();
+            S2.calcImpedance();
+            S3.calcImpedance();
+            P1.calcImpedance();
+            D23.calcImpedance();
+            reset();
+        }
+
+        void reset()
+        {
+            C9.reset();
+            C10.reset();
+        }
+
+        float processSample (float x) noexcept
+        {
+            Vin.setVoltage (x);
+            D23.incident (P1.reflected());
+            P1.incident (D23.reflected());
+            return WDF::current (C10.wdf);
+        }
+    };
+
     void prepare (const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
@@ -36,6 +92,11 @@ public:
             (size_t) channelCount, 1 /* 1 stage = 2x */,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
+
+        // The clipper runs at the oversampled rate (matches where it's
+        // called in process() below).
+        for (auto& c : clipper)
+            c.prepare (sampleRate * (double) oversampling->getOversamplingFactor());
 
         dryDelay.prepare (spec);
         dryDelay.setMaximumDelayInSamples (64);
@@ -51,6 +112,8 @@ public:
             f.reset();
         if (oversampling != nullptr)
             oversampling->reset();
+        for (auto& c : clipper)
+            c.reset();
         dryDelay.reset();
     }
 
@@ -104,10 +167,19 @@ public:
             for (int i = 0; i < osSamples; ++i)
             {
                 auto x = osBlock.getSample ((int) ch, i) * driveGain;
-                const auto kneeScale = x >= 0.0f ? 0.55f : 1.05f; // germanium : silicon
-                const auto shaped = thermalVoltage * std::asinh (x / kneeScale);
-                auto clipped = ceilingLimit * std::tanh (shaped / ceilingLimit);
-                clipped /= std::max (0.5f, driveGain * 0.30f); // keep loudness sane across gain range
+                // The WDF clipper reads/returns real circuit units (volts
+                // in, amps of current through C10 out), not a pre-normalised
+                // audio range -- outputCalibration is an empirical scalar
+                // bringing that back to a sensible level. A wide tanh safety
+                // rail backstops that calibration guess (the diode pair
+                // itself already self-limits, same as real hardware, and a
+                // standalone test sweeping drive x input amplitude confirmed
+                // it does so gracefully -- the old asinh version's extra
+                // driveGain-dependent divisor isn't needed on top of that
+                // and would only make high-drive settings quieter than they
+                // should be).
+                auto clipped = clipper[ch].processSample (x) * outputCalibration;
+                clipped = safetyCeiling * std::tanh (clipped / safetyCeiling);
                 osBlock.setSample ((int) ch, i, clipped);
             }
         }
@@ -146,8 +218,16 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::dsp::DelayLine<float> dryDelay;
     juce::AudioBuffer<float> preClipBuffer;
-    static constexpr float thermalVoltage = 0.62f;
-    static constexpr float ceilingLimit = 1.05f;
+    KlonClipper clipper[2];
+    // Empirically-tuned, not physically derived -- the WDF stage's raw
+    // output (current through C10, in amps) has no reason to already sit
+    // in a sensible audio-sample range; this brings it there. Measured via
+    // a standalone harness (same topology, swept drive/input amplitude):
+    // raw output sits around 1-3 microamps, so this needed to be large --
+    // chosen so driveGain/input-amplitude extremes land around 0.5-ish
+    // rather than pinning the safety tanh below.
+    static constexpr float outputCalibration = 150000.0f;
+    static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;
     int channelCount = 2;
     float gainAmount = 0.3f;
