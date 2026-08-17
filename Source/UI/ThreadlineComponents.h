@@ -200,6 +200,12 @@ public:
         repaint();
     }
 
+    void setWordmarkCentred (bool shouldCentre)
+    {
+        wordmarkCentred = shouldCentre;
+        repaint();
+    }
+
     void paint (juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (1.0f);
@@ -219,7 +225,8 @@ public:
                                                        (float) getHeight() * 0.46f),
                                           juce::Font::bold));
             g.drawFittedText (getButtonText(), bounds.reduced (3, 0).toNearestInt(),
-                              juce::Justification::centredLeft, 1);
+                              wordmarkCentred ? juce::Justification::centred
+                                              : juce::Justification::centredLeft, 1);
             return;
         }
 
@@ -233,7 +240,6 @@ public:
         {
             const auto side = juce::jmin (bounds.getWidth(), bounds.getHeight());
             auto imageBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
-            if (down) imageBounds.translate (0.0f, 1.0f);
             g.drawImage (image, imageBounds,
                          juce::RectanglePlacement::stretchToFit);
             return;
@@ -265,5 +271,6 @@ public:
 
 private:
     bool wordmarkStyle = false;
+    bool wordmarkCentred = false;
     bool renderedImageStyle = true;
 };

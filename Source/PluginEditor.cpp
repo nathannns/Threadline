@@ -120,6 +120,7 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     gateSection.titleLabel.setVisible (false);
     gateSection.toggle.setButtonText ("GATE");
     gateSection.toggle.setWordmarkStyle (true);
+    gateSection.toggle.setWordmarkCentred (true);
 
     setupUtilityKnob (inputLabel, inputGainKnob, "Input");
     setupUtilityKnob (outputLabel, outputGainKnob, "Output");

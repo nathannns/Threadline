@@ -191,25 +191,31 @@ void Page2Component::resized()
 
     const bool boutique = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load()) == 1;
 
-    // Vintage: Drive / Tone / Volume. Boutique: Drive / Volume.
+    // Drive and Volume never move when the voice changes; Boutique simply
+    // leaves the Vintage Tone position empty.
     auto knobRow = knobArea.removeFromTop (juce::roundToInt (knobArea.getHeight() * 0.56f));
-    auto knobWidth = knobRow.getWidth() / (boutique ? 2 : 3);
+    auto knobWidth = knobRow.getWidth() / 3;
     const auto knobInset = juce::jmax (2, knobWidth / 14);
     ampDriveKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
     if (! boutique)
         ampToneKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
+    else
+        knobRow.removeFromLeft (knobWidth);
     ampOutputKnob.setBounds (knobRow.reduced (knobInset, 0));
     ampDriveKnob.toFront (false);
     ampToneKnob.toFront (false);
     ampOutputKnob.toFront (false);
 
-    // Voice selector, then Boutique's three-band tone stack when selected.
-    knobArea.removeFromTop (juce::jmin (10, knobArea.getHeight() / 6));
-    auto voiceRow = knobArea.removeFromTop (juce::jmin (22, knobArea.getHeight() / 3));
-    const auto voiceButtonWidth = voiceRow.getWidth() / 2;
-    ampVoiceButtons[0].setBounds (voiceRow.removeFromLeft (voiceButtonWidth).reduced (3, 1));
-    ampVoiceButtons[1].setBounds (voiceRow.reduced (3, 1));
+    // Square voice selectors sit outside the amp-knob frame on its left.
+    const auto voiceSize = juce::jlimit (34, 48, ampKnobFrameBounds.getHeight() / 5);
+    const auto voiceX = ampKnobFrameBounds.getX() - voiceSize - 8;
+    const auto voiceTop = ampKnobFrameBounds.getCentreY() - voiceSize - 3;
+    ampVoiceButtons[0].setBounds (voiceX, voiceTop, voiceSize, voiceSize);
+    ampVoiceButtons[1].setBounds (voiceX, voiceTop + voiceSize + 6, voiceSize, voiceSize);
+    ampVoiceButtons[0].toFront (false);
+    ampVoiceButtons[1].toFront (false);
 
+    knobArea.removeFromTop (juce::jmin (32, knobArea.getHeight() / 4));
     knobArea.removeFromTop (juce::jmin (16, knobArea.getHeight() / 6));
     if (boutique)
     {
@@ -225,14 +231,14 @@ void Page2Component::resized()
     }
 
     // Cab A | blend knob | Cab B, left to right.
-    constexpr int blendWidth = 84;
+    constexpr int blendWidth = 116;
     const auto cabWidth = (cabRow.getWidth() - blendWidth) / 2;
     auto cabAArea = cabRow.removeFromLeft (cabWidth);
     auto blendArea = cabRow.removeFromLeft (blendWidth);
     auto cabBArea = cabRow;
 
     auto layoutCabSlot = [] (SectionUI& section, juce::ComboBox& irBox, juce::TextButton& phaseButton,
-                             juce::Rectangle<int> area)
+                             juce::Rectangle<int> area, bool placeMixOnRight)
     {
         section.bounds = area;
         area.reduce (10, 8);
@@ -244,12 +250,15 @@ void Page2Component::resized()
         section.titleLabel.setBounds (header);
 
         area.removeFromTop (juce::jmin (16, area.getHeight() / 10));
-        auto mixKnobArea = area.removeFromLeft (juce::jmin (90, area.getWidth()));
+        // Keep both Mix labels away from the central A/B blend wordmark.
+        auto mixKnobArea = placeMixOnRight
+                         ? area.removeFromRight (juce::jmin (96, area.getWidth()))
+                         : area.removeFromLeft (juce::jmin (96, area.getWidth()));
         if (! section.knobs.empty())
             section.knobs[0]->slider.setBounds (mixKnobArea.reduced (4, 0));
     };
-    layoutCabSlot (cabASection, cabAIRBox, cabAPhaseButton, cabAArea);
-    layoutCabSlot (cabBSection, cabBIRBox, cabBPhaseButton, cabBArea);
+    layoutCabSlot (cabASection, cabAIRBox, cabAPhaseButton, cabAArea, false);
+    layoutCabSlot (cabBSection, cabBIRBox, cabBPhaseButton, cabBArea, true);
 
     blendKnob.setBounds (blendArea.withSizeKeepingCentre (
         juce::jmin (blendArea.getWidth(), 64), juce::jmin (blendArea.getHeight() - 30, 84))
