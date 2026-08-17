@@ -38,9 +38,15 @@ on/off toggle regardless) via the Overdrive Order switch.
   tape wow/flutter, and feedback-linked saturation are fixed characteristics
   here rather than separate Tone/Wobble/Drive knobs it doesn't have. Sustain
   reaches genuine self-oscillation at maximum, same as real hardware.
-- `HallRoomReverbModule` — 3 Lexicon 480L-style convolution spaces (Large
-  Hall, Large Stage, Small Room). Decay re-envelopes the loaded IR's own
-  tail rather than processing the live signal through a synthetic algorithm.
+- `HallRoomReverbModule` — algorithmic (not convolution) hall/room reverb: a
+  classic Freeverb-style parallel-comb + series-allpass tank, tuned per space
+  (Large Hall, Large Stage, Small Room) to emulate the Boss RV-200's
+  size-selectable Room/Hall character rather than a captured space. Tone
+  controls each comb's internal damping (highs decay faster than lows in the
+  tail, real air-absorption behaviour); Decay controls comb feedback within
+  a per-space ceiling, live and continuous rather than a reload. The original
+  Lexicon-480L-captured IRs this module used to convolve against are still in
+  `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
   preset). Ships with 6 factory presets covering clean, edge-of-breakup,

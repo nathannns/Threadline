@@ -1,37 +1,37 @@
 #pragma once
 #include <JuceHeader.h>
-#include <BinaryData.h>
 
-// Hall/Room reverb built from real Lexicon 480L impulse responses (3 spaces:
-// Large Hall, Large Stage, Small Room) rather than a synthesized algorithm.
-// These IRs already contain a complete,
-// natural decay, so there's no tail synthesis — just pre-delay, convolution,
-// damping, and (see setParameters/loadImpulse) decay-time shaping applied to
-// the captured impulse itself.
+// Algorithmic hall/room reverb -- a parallel-comb + series-allpass tank
+// (the classic Schroeder/Moorer "Freeverb" topology: 8 comb filters summed,
+// then 4 series allpass filters for diffusion), tuned to emulate the Boss
+// RV-200's Room vs Hall character rather than convolving against a captured
+// space. The RV-200's Room and Hall algorithms are two genuinely distinct,
+// size-selectable spaces (Room: smaller/denser, Hall: bigger/smoother) --
+// modeled here as three pre-sized tanks (Large Hall, Large Stage as an
+// in-between size, Small Room) rather than one continuously-sized model,
+// matching this module's existing 3-space control surface.
 //
-// Decay is "shaped convolution": since this module convolves a continuous
-// input stream rather than playing back a single triggered impulse, there's
-// no per-sample "time since t=0" to decay a live envelope from — so, like
-// real convolution reverbs that offer an adjustable decay/size control on a
-// fixed captured IR, the Decay knob re-envelopes the loaded impulse itself
-// (keep a leading portion at full level, taper the rest out with a smooth
-// window) rather than shaping the live wet signal. That means changing Decay
-// triggers an impulse reload (async, off the audio thread, same as switching
-// models) rather than being instantaneously live like Tone or Mix — a real,
-// deliberate trade-off: reprocessing convolution partitions on every sample
-// isn't something any convolution engine does.
-class HallRoomReverbModule : private juce::AsyncUpdater
+// All three tanks are pre-allocated in prepare() so switching Model is just
+// an index swap on the audio thread -- no reload, no async, no click (the
+// newly-selected tank is reset first so no stale energy from a previous
+// Model plays back).
+//
+// Tone maps to each comb's internal damping coefficient (a one-pole
+// lowpass in the feedback path, so highs decay faster than lows in the
+// tail -- real air-absorption behaviour, not a post-filter over the whole
+// wet signal). Decay maps to comb feedback within a per-model range (bigger
+// spaces get a higher natural ceiling). A tanh safety rail bounds the tank
+// output regardless of parameter combination, since summed resonant combs
+// can in principle build up gain at coincident frequencies.
+class HallRoomReverbModule
 {
 public:
-    ~HallRoomReverbModule() override { cancelPendingUpdate(); }
-
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
 
-    // preDelay/decay/tone are normalised 0-1 (mapped internally to ms / tail
-    // shape / Hz — decay: 1.0 = the room's full natural captured decay,
-    // lower values trim the tail shorter); mix and width are 0-100 (width:
-    // 50 = the IR's natural stereo image, 0 = mono, 100 = doubled side).
+    // preDelay/decay/tone are normalised 0-1; mix and width are 0-100
+    // (width: 50 = the tank's natural stereo image, 0 = mono, 100 = doubled
+    // side).
     void setParameters (float preDelayNormalised, float decayNormalised, float toneNormalised, float mix,
                         float widthPercent, bool enabled, int modelIndex);
     void process (juce::AudioBuffer<float>& buffer);
@@ -43,34 +43,98 @@ public:
         return names[juce::jlimit (0, numModels - 1, index)];
     }
 
-private:
-    void handleAsyncUpdate() override;
-    void loadImpulse (int index, float decay01);
-    static int decayToStep (float decay01) { return juce::roundToInt (juce::jlimit (0.0f, 1.0f, decay01) * 24.0f); }
+    static constexpr int numCombs = 8;
+    static constexpr int numAllpasses = 4;
 
-    juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 256 } };
-    // Damping (lowpass) uses a TPT filter so it can be modulated per-sample
-    // without zipper artifacts; the rumble filter is a fixed highpass that
-    // keeps the tail from building up mud, independent of the Tone knob.
-    juce::dsp::StateVariableTPTFilter<float> dampingFilter, rumbleFilter;
+private:
+    struct Comb
+    {
+        std::vector<float> buffer;
+        int writeIndex = 0;
+        float feedback = 0.5f;
+        float damp1 = 0.2f, damp2 = 0.8f;
+        float filterStore = 0.0f;
+
+        void setSize (int size)
+        {
+            buffer.assign (static_cast<size_t> (juce::jmax (4, size)), 0.0f);
+            writeIndex = 0;
+        }
+
+        void reset()
+        {
+            std::fill (buffer.begin(), buffer.end(), 0.0f);
+            filterStore = 0.0f;
+        }
+
+        float process (float input)
+        {
+            const auto output = buffer[static_cast<size_t> (writeIndex)];
+            filterStore = output * damp2 + filterStore * damp1;
+            buffer[static_cast<size_t> (writeIndex)] = input + filterStore * feedback;
+            if (++writeIndex >= static_cast<int> (buffer.size())) writeIndex = 0;
+            return output;
+        }
+    };
+
+    struct Allpass
+    {
+        std::vector<float> buffer;
+        int writeIndex = 0;
+        static constexpr float feedback = 0.5f;
+
+        void setSize (int size)
+        {
+            buffer.assign (static_cast<size_t> (juce::jmax (4, size)), 0.0f);
+            writeIndex = 0;
+        }
+
+        void reset() { std::fill (buffer.begin(), buffer.end(), 0.0f); }
+
+        float process (float input)
+        {
+            const auto bufOut = buffer[static_cast<size_t> (writeIndex)];
+            const auto output = -input + bufOut;
+            buffer[static_cast<size_t> (writeIndex)] = input + bufOut * feedback;
+            if (++writeIndex >= static_cast<int> (buffer.size())) writeIndex = 0;
+            return output;
+        }
+    };
+
+    struct Tank
+    {
+        Comb combsL[numCombs], combsR[numCombs];
+        Allpass allpassL[numAllpasses], allpassR[numAllpasses];
+
+        void reset()
+        {
+            for (auto& c : combsL) c.reset();
+            for (auto& c : combsR) c.reset();
+            for (auto& a : allpassL) a.reset();
+            for (auto& a : allpassR) a.reset();
+        }
+    };
+
+    void prepareTank (Tank& tank, int modelIndex);
+
+    Tank tanks[numModels];
+    int activeModel = 0;
+
+    // Fixed rumble cut on the wet tail, independent of the Tone knob --
+    // keeps the tail from building up mud regardless of how bright Tone
+    // is set.
+    juce::dsp::StateVariableTPTFilter<float> rumbleFilter;
     juce::dsp::DelayLine<float> preDelayLine;
     juce::AudioBuffer<float> wetBuffer;
     juce::SmoothedValue<float> wetMix;
 
-    // A true stereo IR captured once is otherwise static/narrow; a slow,
-    // sub-millisecond pre-delay modulation per channel (out of phase L/R)
-    // decorrelates the two sides slightly for a wider, less phasey image
-    // without colouring the captured room's own character.
+    // A slow, sub-millisecond pre-delay modulation per channel (out of
+    // phase L/R) decorrelates the two sides slightly for a wider, less
+    // phasey image on top of the tank's own inherent stereo spread.
     float modPhaseLeft = 0.0f, modPhaseRight = juce::MathConstants<float>::pi;
     float basePreDelaySamples = 0.0f;
+    float widthFactor = 1.0f;
 
-    std::atomic<int> requestedImpulse { 0 };
-    std::atomic<int> requestedDecayStep { 24 };
-    std::atomic<float> requestedDecay01 { 1.0f };
-    int loadedImpulse = -1;
-    int loadedDecayStep = -1;
     int maximumBlockSize = 0, channelCount = 0;
     double sampleRate = 44100.0;
-    float cachedToneHz = -1.0f;
-    float widthFactor = 1.0f; // 1.0 = the IR's own stereo image, unchanged
 };

@@ -1,5 +1,56 @@
 #include "HallRoomReverbModule.h"
 
+namespace
+{
+    // Classic Freeverb (Jezar) tank tuning, in samples at 44.1kHz -- chosen
+    // to avoid coincident resonances between the 8 parallel combs. Scaled
+    // per Model (size) and sample rate in prepareTank().
+    constexpr int combTuningL[HallRoomReverbModule::numCombs] { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+    constexpr int allpassTuningL[HallRoomReverbModule::numAllpasses] { 556, 441, 341, 225 };
+    constexpr int stereoSpread = 23;
+
+    // Model 0 = Large Hall, 1 = Large Stage, 2 = Small Room (matches
+    // getModelName()). Size scales the comb/allpass line lengths (bigger =
+    // sparser early build-up, bigger sense of space); the feedback range
+    // sets each space's natural decay ceiling before the Decay knob is
+    // applied, so a small room can't ring on forever even at Decay = 1.
+    constexpr float modelSizeScale[HallRoomReverbModule::numModels] { 1.45f, 1.0f, 0.55f };
+    constexpr float modelFeedbackMin[HallRoomReverbModule::numModels] { 0.72f, 0.68f, 0.60f };
+    constexpr float modelFeedbackMax[HallRoomReverbModule::numModels] { 0.985f, 0.975f, 0.90f };
+
+    // A comb sum can in principle build gain at coincident resonances even
+    // though each individual comb is stable (feedback < 1) -- this keeps the
+    // tank's output bounded by construction regardless of parameter
+    // combination, the same tanh-rail technique used in EchoModule.
+    float smoothRail (float value, float knee, float ceiling)
+    {
+        const auto magnitude = std::abs (value);
+        if (magnitude <= knee)
+            return value;
+        const auto range = ceiling - knee;
+        return std::copysign (knee + range * std::tanh ((magnitude - knee) / range), value);
+    }
+}
+
+void HallRoomReverbModule::prepareTank (Tank& tank, int modelIndex)
+{
+    const auto srScale = static_cast<float> (sampleRate / 44100.0);
+    const auto scale = srScale * modelSizeScale[modelIndex];
+    const auto spread = juce::roundToInt (static_cast<float> (stereoSpread) * scale);
+
+    for (int i = 0; i < numCombs; ++i)
+    {
+        tank.combsL[i].setSize (juce::roundToInt (static_cast<float> (combTuningL[i]) * scale));
+        tank.combsR[i].setSize (juce::roundToInt (static_cast<float> (combTuningL[i]) * scale) + spread);
+    }
+    for (int i = 0; i < numAllpasses; ++i)
+    {
+        tank.allpassL[i].setSize (juce::roundToInt (static_cast<float> (allpassTuningL[i]) * scale));
+        tank.allpassR[i].setSize (juce::roundToInt (static_cast<float> (allpassTuningL[i]) * scale) + spread);
+    }
+    tank.reset();
+}
+
 void HallRoomReverbModule::prepare (const juce::dsp::ProcessSpec& spec)
 {
     sampleRate = spec.sampleRate;
@@ -7,26 +58,24 @@ void HallRoomReverbModule::prepare (const juce::dsp::ProcessSpec& spec)
     channelCount = static_cast<int> (spec.numChannels);
     wetBuffer.setSize (channelCount, maximumBlockSize);
 
-    convolution.prepare (spec);
-    dampingFilter.prepare (spec);
     rumbleFilter.prepare (spec);
-    dampingFilter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
     rumbleFilter.setType (juce::dsp::StateVariableTPTFilterType::highpass);
     rumbleFilter.setCutoffFrequency (85.0f); // fixed: keeps the tail from building up mud
 
     preDelayLine.prepare (spec);
     preDelayLine.setMaximumDelayInSamples (static_cast<int> (sampleRate * 0.1) + 32); // up to 100ms + modulation headroom
 
-    cachedToneHz = -1.0f;
+    for (int model = 0; model < numModels; ++model)
+        prepareTank (tanks[model], model);
+    activeModel = 0;
+
     wetMix.reset (spec.sampleRate, 0.03);
     reset();
-    triggerAsyncUpdate();
 }
 
 void HallRoomReverbModule::reset()
 {
-    convolution.reset();
-    dampingFilter.reset();
+    for (auto& tank : tanks) tank.reset();
     rumbleFilter.reset();
     preDelayLine.reset();
     modPhaseLeft = 0.0f;
@@ -42,85 +91,34 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayN
     basePreDelaySamples = static_cast<float> (sampleRate)
         * juce::jmap (juce::jlimit (0.0f, 1.0f, preDelayNormalised), 0.0f, 80.0f) * 0.001f;
 
-    const auto toneHz = juce::jmap (juce::jlimit (0.0f, 1.0f, toneNormalised), 1400.0f, 15000.0f);
-    if (std::abs (toneHz - cachedToneHz) > 0.01f)
-    {
-        cachedToneHz = toneHz;
-        dampingFilter.setCutoffFrequency (toneHz);
-    }
-
     wetMix.setTargetValue (enabled ? juce::jlimit (0.0f, 1.0f, mix * 0.01f) : 0.0f);
 
     modelIndex = juce::jlimit (0, numModels - 1, modelIndex);
-    decayNormalised = juce::jlimit (0.0f, 1.0f, decayNormalised);
-    const auto decayStep = decayToStep (decayNormalised);
-    requestedDecay01.store (decayNormalised);
-    const auto impulseChanged = requestedImpulse.exchange (modelIndex) != modelIndex;
-    const auto decayChanged = requestedDecayStep.exchange (decayStep) != decayStep;
-    if (impulseChanged || decayChanged || loadedImpulse != modelIndex || loadedDecayStep != decayStep)
-        triggerAsyncUpdate();
-}
-
-void HallRoomReverbModule::handleAsyncUpdate()
-{
-    const auto impulse = requestedImpulse.load();
-    const auto decay01 = requestedDecay01.load();
-    loadImpulse (impulse, decay01);
-    if (impulse != requestedImpulse.load() || decayToStep (decay01) != requestedDecayStep.load())
-        triggerAsyncUpdate();
-}
-
-void HallRoomReverbModule::loadImpulse (int index, float decay01)
-{
-    const void* data[numModels] {
-        BinaryData::large_hall_wav, BinaryData::large_stage_wav, BinaryData::small_room_wav
-    };
-    const int sizes[numModels] {
-        BinaryData::large_hall_wavSize, BinaryData::large_stage_wavSize, BinaryData::small_room_wavSize
-    };
-
-    juce::WavAudioFormat wav;
-    std::unique_ptr<juce::AudioFormatReader> reader (wav.createReaderFor (
-        new juce::MemoryInputStream (data[index], static_cast<size_t> (sizes[index]), false), true));
-    if (reader != nullptr)
+    if (modelIndex != activeModel)
     {
-        // These Lexicon 480L captures are complete, natural decays — load
-        // the whole thing rather than a short onset plus a synthesized tail.
-        const auto length = static_cast<int> (reader->lengthInSamples);
-        const auto channels = juce::jlimit (1, 2, static_cast<int> (reader->numChannels));
-        juce::AudioBuffer<float> impulse (channels, juce::jmax (1, length));
-        reader->read (&impulse, 0, length, 0, true, channels > 1);
-
-        // Decay shaping ("shaped convolution" — see class comment): keep a
-        // leading fraction of the natural capture at full level, then taper
-        // the rest out with a smooth raised-cosine window (avoids a click at
-        // the cut point) and truncate the buffer there. decay01=1 keeps the
-        // whole thing; lower values keep progressively less. A floor keeps
-        // even decay01=0 from sounding like a gated click rather than a
-        // (very) tight room, and shortening the IR this way is also cheaper
-        // for the convolution engine to run — CPU scales down with Decay.
-        constexpr float minKeepFraction = 0.12f;
-        const auto keepFraction = juce::jmap (juce::jlimit (0.0f, 1.0f, decay01), minKeepFraction, 1.0f);
-        const auto keepSamples = juce::jlimit (256, length, static_cast<int> (length * keepFraction));
-        const auto taperSamples = juce::jlimit (0, length - keepSamples, static_cast<int> (reader->sampleRate * 0.12));
-        for (int n = 0; n < taperSamples; ++n)
-        {
-            const auto progress = static_cast<float> (n) / static_cast<float> (juce::jmax (1, taperSamples));
-            const auto envelope = 0.5f * (1.0f + std::cos (progress * juce::MathConstants<float>::pi));
-            for (int ch = 0; ch < channels; ++ch)
-                impulse.setSample (ch, keepSamples + n, impulse.getSample (ch, keepSamples + n) * envelope);
-        }
-        const auto shapedLength = juce::jmin (length, keepSamples + taperSamples);
-        impulse.setSize (channels, shapedLength, true, false, true);
-
-        // Convolution::Trim removes any near-silent head/tail without
-        // touching the audible decay itself (or the shaping just applied).
-        convolution.loadImpulseResponse (std::move (impulse), reader->sampleRate,
-            juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::yes,
-            juce::dsp::Convolution::Normalise::yes);
+        tanks[modelIndex].reset(); // no stale energy from the previous space
+        activeModel = modelIndex;
     }
-    loadedImpulse = index;
-    loadedDecayStep = decayToStep (decay01);
+
+    decayNormalised = juce::jlimit (0.0f, 1.0f, decayNormalised);
+    const auto feedback = juce::jmap (decayNormalised, modelFeedbackMin[activeModel], modelFeedbackMax[activeModel]);
+
+    // Darker (lower Tone) = more damping = highs decay faster than lows in
+    // the tail, same as real air absorption; kept well short of 1.0 so full
+    // dark still sounds like a darkened room, not a muffled thump.
+    const auto darkness = 1.0f - juce::jlimit (0.0f, 1.0f, toneNormalised);
+    const auto damp1 = juce::jmap (darkness, 0.05f, 0.65f);
+    const auto damp2 = 1.0f - damp1;
+
+    for (auto* combs : { tanks[activeModel].combsL, tanks[activeModel].combsR })
+    {
+        for (int i = 0; i < numCombs; ++i)
+        {
+            combs[i].feedback = feedback;
+            combs[i].damp1 = damp1;
+            combs[i].damp2 = damp2;
+        }
+    }
 }
 
 void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
@@ -166,12 +164,31 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
         if (modPhaseRight >= juce::MathConstants<float>::twoPi) modPhaseRight -= juce::MathConstants<float>::twoPi;
     }
 
+    // The tank itself: 8 parallel combs summed, then 4 series allpasses,
+    // run per-channel so any existing stereo width upstream (e.g. the dual
+    // cab IR blend) carries through rather than being collapsed to mono.
+    constexpr float inputGain = 0.03f;
+    auto& tank = tanks[activeModel];
+    for (int sample = 0; sample < samples; ++sample)
+    {
+        const auto inputL = wetBuffer.getSample (0, sample) * inputGain;
+        const auto inputR = (channels > 1 ? wetBuffer.getSample (1, sample) : wetBuffer.getSample (0, sample)) * inputGain;
+
+        float wetL = 0.0f, wetR = 0.0f;
+        for (auto& c : tank.combsL) wetL += c.process (inputL);
+        for (auto& c : tank.combsR) wetR += c.process (inputR);
+        for (auto& a : tank.allpassL) wetL = a.process (wetL);
+        for (auto& a : tank.allpassR) wetR = a.process (wetR);
+
+        wetBuffer.setSample (0, sample, smoothRail (wetL, 1.2f, 3.5f));
+        if (channels > 1)
+            wetBuffer.setSample (1, sample, smoothRail (wetR, 1.2f, 3.5f));
+    }
+
     juce::dsp::AudioBlock<float> wetBlock (wetBuffer);
     auto activeWet = wetBlock.getSubBlock (0, static_cast<size_t> (samples));
     juce::dsp::ProcessContextReplacing<float> wetContext (activeWet);
-    convolution.process (wetContext);
     rumbleFilter.process (wetContext);
-    dampingFilter.process (wetContext);
 
     // Width: simple M/S scaling of the wet signal only (dry stays untouched),
     // so it reshapes the reverb's own stereo image rather than the guitar's.

@@ -174,13 +174,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         juce::StringArray { "Large Hall", "Large Stage", "Small Room" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbPreDelay"), "Reverb Pre-Delay",
         Range (0.0f, 1.0f, 0.001f), 0.0f));
-    // Shapes the loaded IR's own tail (see HallRoomReverbModule) rather than
-    // the live signal — there's no single "t=0" to decay from in a
-    // continuously-fed convolution, so real convolution reverbs adjust decay
-    // by re-enveloping the captured impulse itself ("shaped convolution").
-    // 1.0 = the room's full natural captured decay; lower values trim the
-    // tail shorter with a smooth taper — this can only shorten the space,
-    // not lengthen it past what was actually recorded.
+    // Maps to the reverb tank's comb feedback (see HallRoomReverbModule) --
+    // 1.0 = each space's own natural decay ceiling, lower values shorten the
+    // tail continuously and live, unlike the old convolution-based design.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbDecay"), "Reverb Decay",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("reverbTone"), "Reverb Tone",
