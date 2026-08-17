@@ -103,7 +103,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         juce::StringArray { CabModule::getBuiltInIRName (0), CabModule::getBuiltInIRName (1),
                              CabModule::getBuiltInIRName (2), CabModule::getBuiltInIRName (3),
                              CabModule::getBuiltInIRName (4), CabModule::getBuiltInIRName (5) },
-        2 /* default: Medium Mix */));
+        2 /* default: Balanced Blend */));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabAMix"), "Cab A Mix",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
     // Onset alignment (CabModule::alignOnset) handles *timing* differences
@@ -116,7 +116,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         juce::StringArray { CabModule::getBuiltInIRName (0), CabModule::getBuiltInIRName (1),
                              CabModule::getBuiltInIRName (2), CabModule::getBuiltInIRName (3),
                              CabModule::getBuiltInIRName (4), CabModule::getBuiltInIRName (5) },
-        0 /* default: Bright Mix — deliberately different from A's default */));
+        0 /* default: Spark Blend — deliberately different from A's default */));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabBMix"), "Cab B Mix",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabBPhase"), "Cab B Phase", false));

@@ -85,8 +85,8 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     cabAPhaseButton.setButtonText ("POLARITY");
     cabBPhaseButton.setButtonText ("POLARITY");
 
-    cabAIRBox.addItemList ({ "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57", "Medium 87", "Medium 160" }, 1);
-    cabBIRBox.addItemList ({ "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57", "Medium 87", "Medium 160" }, 1);
+    cabAIRBox.addItemList ({ "Spark Blend", "Velvet Blend", "Balanced Blend", "Edge 57", "Air 87", "Silk 160" }, 1);
+    cabBIRBox.addItemList ({ "Spark Blend", "Velvet Blend", "Balanced Blend", "Edge 57", "Air 87", "Silk 160" }, 1);
     addAndMakeVisible (cabAIRBox);
     addAndMakeVisible (cabBIRBox);
     cabAIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (

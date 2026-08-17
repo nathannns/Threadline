@@ -26,7 +26,7 @@ public:
     static const char* getBuiltInIRName (int index)
     {
         static const char* names[numBuiltInIRs] = {
-            "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57", "Medium 87", "Medium 160"
+            "Spark Blend", "Velvet Blend", "Balanced Blend", "Edge 57", "Air 87", "Silk 160"
         };
         return names[juce::jlimit (0, numBuiltInIRs - 1, index)];
     }
