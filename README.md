@@ -256,6 +256,29 @@ of the canvas's geometric middle, so it didn't need Vintage's custom pivot
 offset -- the standard centre pivot already used for every non-Vintage
 style works for it too.
 
+`RockerSwitch` no longer takes keyboard focus (it was drawing a white
+focus-ring rectangle around itself whenever clicked, since clicking a
+JUCE button grabs focus by default -- removed by not asking for focus in
+the first place rather than just not drawing the ring). The persistent
+Gate/Input/Output footer is shorter (84px, was 108) with every control
+inside it scaled down by the same ratio rather than clipped, and the page
+content area above it grew into the space that freed up, on top of what
+was already reserved -- the gap right above the footer is 16px now, was
+40. The Amp page's photo is drawn bigger again (1.7x its fitted size, was
+1.5x) with a real gap (28px) between it and the knob bar below, instead of
+them almost touching; the clip region extends a little past the photo
+frame's own bottom edge into that gap so the larger photo has real room to
+spill into without touching the bar.
+
+Klon is displayed as **Bull** throughout the UI and in every one of its
+parameters' DAW-visible display names (`Bull On`, `Bull Gain`, `Bull
+Treble`, `Bull Level`, `odOrder`'s "Bull -> Breaker"/"Breaker -> Bull"
+choices) -- parameter IDs stay `klon*`/`odOrder` internally, and the
+`KlonModule` class keeps its name too, so old presets and any code
+referencing the module are unaffected. Same pattern as Plexer/Copier
+already displaying EchoModule/CarbonCopyModule's real-pedal names while
+keeping their own internal identifiers.
+
 ## Build
 
 You said you've already got JUCE, CMake, and Ninja — but this pins JUCE to

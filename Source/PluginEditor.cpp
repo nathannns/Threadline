@@ -368,25 +368,24 @@ void ThreadlineAudioProcessorEditor::resized()
     logoComponent.setBounds (rect (46, 10, 252, 80));
     logoComponent.toFront (false);
 
-    // Footer frame -- shifted down 100px from Rockalizer's original y
-    // offsets to make room for the taller content area below (see the
-    // `content` rect further down), positions and control sizes otherwise
-    // unchanged.
-    utilityFrameBounds = rect (28, 646, 1144, 108);
-    gateCardBounds = rect (60, 648, 110, 104);
-    inputCardBounds = rect (545, 648, 110, 104);
-    outputCardBounds = rect (1030, 648, 110, 104);
-    gateSection.toggle.setBounds (rect (60, 650, 110, 22));
+    // Footer frame -- shorter than it used to be (84 tall, was 108) so the
+    // persistent strip reads as a slimmer bar; every control inside is
+    // scaled down by the same ~0.78 ratio rather than just clipped.
+    utilityFrameBounds = rect (28, 670, 1144, 84);
+    gateCardBounds = rect (60, 672, 110, 80);
+    inputCardBounds = rect (545, 672, 110, 80);
+    outputCardBounds = rect (1030, 672, 110, 80);
+    gateSection.toggle.setBounds (rect (60, 674, 110, 18));
     if (! gateSection.knobs.empty())
-        gateSection.knobs[0]->slider.setBounds (rect (60, 674, 110, 78));
+        gateSection.knobs[0]->slider.setBounds (rect (60, 692, 110, 60));
     inputLabel.setJustificationType (juce::Justification::centred);
-    inputLabel.setBounds (rect (545, 650, 110, 20));
-    inputGainKnob.setBounds (rect (545, 674, 110, 78));
+    inputLabel.setBounds (rect (545, 674, 110, 18));
+    inputGainKnob.setBounds (rect (545, 692, 110, 60));
     outputLabel.setJustificationType (juce::Justification::centred);
-    outputLabel.setBounds (rect (1030, 650, 110, 20));
-    outputGainKnob.setBounds (rect (1030, 674, 110, 78));
-    inputMeter.setBounds (rect (235, 710, 290, 12));
-    outputMeter.setBounds (rect (720, 710, 290, 12));
+    outputLabel.setBounds (rect (1030, 674, 110, 18));
+    outputGainKnob.setBounds (rect (1030, 692, 110, 60));
+    inputMeter.setBounds (rect (235, 720, 290, 10));
+    outputMeter.setBounds (rect (720, 720, 290, 10));
 
     // Navigation and pages occupy the space between Rockalizer's header/footer.
     // Tab row is 2x its original 42px height (was 88-130) to fit 2x icons;
@@ -418,12 +417,12 @@ void ThreadlineAudioProcessorEditor::resized()
 
     // --- Every page receives the same remaining content rectangle. ---
     // Starts 48px later than the original 660-tall canvas's y=130 to make
-    // room for the taller tab row above. Height extends down into most of
-    // what used to be an empty reserved gap before the footer (was 110px,
-    // now 40px) so every page's own content -- the effects rack, the amp
-    // knobs/cab row, the EQ -- sits closer to the bottom bar instead of
-    // leaving that space unused.
-    auto content = rect (16, 178, 1168, 428);
+    // room for the taller tab row above. Height extends further still now
+    // (476, was 428) -- the footer got shorter and the gap above it got
+    // tighter (16px, was 40px), and that freed space went entirely to
+    // content, so every page's own content -- the effects rack, the amp
+    // knobs/cab row, the EQ -- sits closer to the bottom bar.
+    auto content = rect (16, 178, 1168, 476);
     page1.setBounds (content);
     page2.setBounds (content);
     page3.setBounds (content);

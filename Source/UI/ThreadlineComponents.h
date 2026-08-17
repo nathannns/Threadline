@@ -378,7 +378,6 @@ public:
     RockerSwitch()
     {
         setClickingTogglesState (true);
-        setWantsKeyboardFocus (true);
         setRepaintsOnMouseActivity (true);
     }
 
@@ -419,12 +418,6 @@ public:
         {
             g.setColour (juce::Colour (0xff241912).withAlpha (0.5f));
             g.fillRoundedRectangle (dest, dest.getWidth() * 0.3f);
-        }
-
-        if (hasKeyboardFocus (true))
-        {
-            g.setColour (juce::Colours::white.withAlpha (0.75f));
-            g.drawRoundedRectangle (dest.expanded (2.0f), dest.getWidth() * 0.5f + 2.0f, 1.3f);
         }
     }
 };

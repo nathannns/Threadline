@@ -170,21 +170,26 @@ void Page2Component::paint (juce::Graphics& g)
     {
         // `onlyReduceInSize` capped the photo at its native pixel size once
         // the frame grew past that, so "give the photo more room" stopped
-        // having any visible effect -- draw it explicitly 1.5x the size
-        // that would otherwise fit the frame instead, clipped to the frame
-        // (plus a little spill room) so it can overlap its own margin
-        // without bleeding into the knob bar below.
+        // having any visible effect -- draw it explicitly bigger than the
+        // size that would otherwise fit the frame instead. Clip region
+        // extends a bit past the frame's own bottom edge into the (now
+        // deliberately larger) gap reserved before the knob bar in
+        // resized(), so the boosted photo has real room to spill into
+        // without touching the bar itself.
         const auto frame = ampImageFrameBounds.toFloat().reduced (18.0f);
         const auto imageWidth = static_cast<float> (ampImage.getWidth());
         const auto imageHeight = static_cast<float> (ampImage.getHeight());
         const auto fitScale = juce::jmin (frame.getWidth() / imageWidth, frame.getHeight() / imageHeight);
-        constexpr float sizeBoost = 1.5f;
+        constexpr float sizeBoost = 1.7f;
         const auto drawWidth = imageWidth * fitScale * sizeBoost;
         const auto drawHeight = imageHeight * fitScale * sizeBoost;
         auto imageBounds = juce::Rectangle<float> (drawWidth, drawHeight).withCentre (frame.getCentre());
 
+        auto clipRegion = ampImageFrameBounds;
+        clipRegion.setBottom (ampImageFrameBounds.getBottom() + 22);
+
         g.saveState();
-        g.reduceClipRegion (ampImageFrameBounds);
+        g.reduceClipRegion (clipRegion);
         g.drawImage (ampImage, imageBounds, juce::RectanglePlacement::stretchToFit);
         g.restoreState();
     }
@@ -207,7 +212,9 @@ void Page2Component::resized()
 
     const auto knobBarHeight = juce::jlimit (110, 150, juce::roundToInt (full.getHeight() * 0.26f));
     auto knobBar = full.removeFromBottom (knobBarHeight);
-    full.removeFromBottom (8);
+    // A real gap between the photo and the control bar below it, rather
+    // than them almost touching (was 8px).
+    full.removeFromBottom (28);
     ampImageFrameBounds = full;
     ampKnobFrameBounds = knobBar;
 

@@ -21,7 +21,7 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
     }, false, SectionPlate::Compressor);
     applyKnobStyle (compSection, PhotoKnob::Style::Compressor);
 
-    buildSection (klonSection, *this, processor.apvts, "Klon", "klonOn", {
+    buildSection (klonSection, *this, processor.apvts, "Bull", "klonOn", {
         { "klonGain", "Gain" }, { "klonTreble", "Treble" }, { "klonLevel", "Level" }
     }, false, SectionPlate::Klon);
     applyKnobStyle (klonSection, PhotoKnob::Style::Klon);
@@ -53,7 +53,7 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
         processor.apvts, "ts9Variant", ts9VariantKnob);
 
     odOrderSwitch.setTitle ("Overdrive order");
-    odOrderSwitch.setHelpText ("Klon first or Breaker first ahead of the Amp");
+    odOrderSwitch.setHelpText ("Bull first or Breaker first ahead of the Amp");
     addAndMakeVisible (odOrderSwitch);
     odOrderSwitch.onClick = [this]
     {
@@ -82,7 +82,7 @@ void Page1Component::timerCallback()
     const auto currentOrder = (int) std::round (processor.apvts.getRawParameterValue ("odOrder")->load());
     if (odOrderSwitch.getToggleState() != (currentOrder == 1))
         odOrderSwitch.setToggleState (currentOrder == 1, juce::dontSendNotification);
-    odOrderLabel.setText (currentOrder == 1 ? "BREAKER FIRST" : "KLON FIRST", juce::dontSendNotification);
+    odOrderLabel.setText (currentOrder == 1 ? "BREAKER FIRST" : "BULL FIRST", juce::dontSendNotification);
 }
 
 void Page1Component::paint (juce::Graphics& g)

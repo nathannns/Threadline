@@ -53,20 +53,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("compMakeup"), "Comp Level",
         Range (-12.0f, 12.0f, 0.1f), 0.0f));
 
-    // --- Klon ---
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("klonOn"), "Klon On", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonGain"), "Klon Gain",
+    // --- Bull (Klon-style, param IDs kept as "klon*" internally) ---
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("klonOn"), "Bull On", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonGain"), "Bull Gain",
         Range (0.0f, 1.0f, 0.001f), 0.4f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonTreble"), "Klon Treble",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonTreble"), "Bull Treble",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonLevel"), "Klon Level",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonLevel"), "Bull Level",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
 
-    // --- Overdrive stage order: Klon and TS9 (Breaker) can run in either
-    // order ahead of the Amp. Each stage keeps its own on/off toggle either
-    // way — this only decides which one the guitar signal hits first.
+    // --- Overdrive stage order: Bull (Klon-style) and TS9 (Breaker) can run
+    // in either order ahead of the Amp. Each stage keeps its own on/off
+    // toggle either way — this only decides which one the guitar signal
+    // hits first. Parameter ID stays "klonOn"/"odOrder" etc -- only the
+    // user-facing display name changed (Klon -> Bull), same as Plexer/
+    // Copier keeping their EchoModule/CarbonCopyModule internals.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("odOrder"), "Overdrive Order",
-        juce::StringArray { "Klon -> Breaker", "Breaker -> Klon" }, 0));
+        juce::StringArray { "Bull -> Breaker", "Breaker -> Bull" }, 0));
 
     // --- TS9 ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("ts9On"), "TS9 On", false));
