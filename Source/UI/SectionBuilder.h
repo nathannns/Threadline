@@ -113,7 +113,11 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
     {
         g.saveState();
         g.reduceClipRegion (section.bounds);
-        g.drawImage (plates[index], bounds, juce::RectanglePlacement::fillDestination);
+        // The generated plates include raised 3D rims and shadows near all
+        // four edges. Stretch the complete source into the rack slot rather
+        // than using fillDestination, which enlarged it and cropped those
+        // details above and below the short horizontal frame.
+        g.drawImage (plates[index], bounds, juce::RectanglePlacement::stretchToFit);
         g.setColour (juce::Colours::black.withAlpha (0.10f));
         g.fillRoundedRectangle (bounds, 9.0f);
         g.restoreState();
