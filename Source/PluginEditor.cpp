@@ -412,11 +412,13 @@ void ThreadlineAudioProcessorEditor::resized()
                                   juce::roundToInt (106 * scaleX), juce::roundToInt (32 * scaleY));
 
     // --- Every page receives the same remaining content rectangle. ---
-    // Starts 48px later than the original 660-tall canvas's y=130 (and is
-    // 48px shorter) to make room for the taller tab row above -- its
-    // bottom edge (y=536) is unchanged, so the gap before the footer and
-    // everything below is unaffected by the bigger tab icons.
-    auto content = rect (16, 178, 1168, 358);
+    // Starts 48px later than the original 660-tall canvas's y=130 to make
+    // room for the taller tab row above. Height extends down into most of
+    // what used to be an empty reserved gap before the footer (was 110px,
+    // now 40px) so every page's own content -- the effects rack, the amp
+    // knobs/cab row, the EQ -- sits closer to the bottom bar instead of
+    // leaving that space unused.
+    auto content = rect (16, 178, 1168, 428);
     page1.setBounds (content);
     page2.setBounds (content);
     page3.setBounds (content);

@@ -96,13 +96,16 @@ void Page1Component::resized()
     const auto klonBounds = klonSection.bounds;
     // Order rocker switch sits in the same reserved title-row space the
     // Breaker variant switch below uses -- switch on top, label under it,
-    // same arrangement as the Amp page's Voice switch.
+    // same arrangement as the Amp page's Voice switch. Height capped at 40
+    // (was 54) *and* at whatever's actually available, same fix as the Amp
+    // page's Voice switch (that fixed ceiling alone could exceed the real
+    // available height and render cropped at the top).
     auto orderArea = juce::Rectangle<int> (klonBounds.getX() + 210,
-                                           klonBounds.getY() + 10, 126,
-                                           klonBounds.getHeight() - 20);
-    auto orderLabelArea = orderArea.removeFromBottom (16);
+                                           klonBounds.getY() + 14, 110,
+                                           klonBounds.getHeight() - 28);
+    auto orderLabelArea = orderArea.removeFromBottom (juce::jmin (16, orderArea.getHeight() / 4));
     odOrderSwitch.setBounds (orderArea.withSizeKeepingCentre (
-        juce::jmin (26, orderArea.getWidth()), juce::jmin (54, orderArea.getHeight())));
+        juce::jmin (22, orderArea.getWidth()), juce::jmin (40, orderArea.getHeight())));
     odOrderLabel.setBounds (orderLabelArea);
 
     const auto breakerBounds = ts9Section.bounds;

@@ -72,11 +72,25 @@ void Page4Component::paint (juce::Graphics& g)
 {
     static const auto eqPlate = juce::ImageCache::getFromMemory (
         BinaryData::plate_eq_png, BinaryData::plate_eq_pngSize);
+    const auto bounds = cardBounds.toFloat();
+
+    // Every other rack plate (paintSectionPlate) fills a solid dark-brown
+    // backing and clips to the rounded corners *before* drawing the plate
+    // image -- this card was missing both, so plate_eq.png's own edge
+    // pixels (near-black at the very border) showed through as a stray
+    // black fringe around/behind the gold panel instead of blending into a
+    // consistent backing colour like every other page's plate does.
+    g.saveState();
+    g.reduceClipRegion (cardBounds);
+    g.setColour (juce::Colour (0xff211b17));
+    g.fillRoundedRectangle (bounds, 10.0f);
     drawWideRackPlate (g, eqPlate, cardBounds);
     g.setColour (juce::Colours::black.withAlpha (0.12f));
-    g.fillRoundedRectangle (cardBounds.toFloat(), 10.0f);
+    g.fillRoundedRectangle (bounds, 10.0f);
+    g.restoreState();
+
     g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.drawRoundedRectangle (cardBounds.toFloat(), 10.0f, 1.2f);
+    g.drawRoundedRectangle (bounds, 10.0f, 1.2f);
 }
 
 void Page4Component::resized()

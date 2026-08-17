@@ -160,10 +160,11 @@ versions.
 ## UI
 
 The editor window is a taller 1200x760 canvas (was 1200x660). Every existing
-element keeps its original absolute size — nothing was scaled up — the
-extra 100px is a genuinely empty reserved gap between the page content and
-the footer strip (was a fixed 10px gap, now 110px), deliberate headroom for
-a future control row rather than making anything already there bigger.
+element keeps its original absolute size — nothing was scaled up. Most of
+the extra 100px went to the page content area (the effects rack, the amp
+knobs/cab row, the EQ) so every page's content sits closer to the footer
+strip instead of leaving a big empty gap above it (was a fixed 10px gap,
+briefly 110px, now 40px).
 
 The 4 tab icons (Pre-FX / Amp / Wet FX / EQ) do double duty: a single click
 switches which page is visible, same as always; double-pressing one bypasses
@@ -181,27 +182,49 @@ module's toggle — it previously had none, since it was treated as
 always-in-the-chain.
 
 Page 2 (Amp) is laid out photo-on-top now, not photo-left/knobs-right: the
-amp photo spans the full width, with a single horizontal control bar below
-it (Voice switch, knobs, bypass) and the two Cab slots below that — pattern
-borrowed from Neural DSP's Archetype line (photo big, one compact control
-dock underneath). The knob bar reserves 5 fixed-width slots; Drive and
-Volume always land in slots 0 and 1 regardless of voice, so they never
-visibly move when switching Vintage/Boutique — only the remaining 3 slots'
-contents change (Tone centred among them for Vintage, Bass/Mid/Treble
-filling all 3 for Boutique). The knob-bar/cab-row heights were trimmed down
-(and pinned to the bottom) specifically to give the photo more room, rather
-than splitting the page evenly.
+amp photo spans the full width (drawn 1.5x the size that would otherwise
+just fit the frame, clipped so it can't bleed into the bar below), with a
+single horizontal control bar below it (Voice switch, knobs, bypass) and
+the two Cab slots below that — pattern borrowed from Neural DSP's Archetype
+line (photo big, one compact control dock underneath). The knob bar
+reserves 5 fixed-width slots; Drive and Volume always land in slots 0 and
+1 regardless of voice, so they never visibly move when switching Vintage/
+Boutique -- Tone (Vintage) lands in slot 2, the same slot Boutique's Bass
+uses, rather than centred among the remaining 3 slots. The knob-bar/cab-row
+heights were trimmed down (and pinned to the bottom) specifically to give
+the photo more room, rather than splitting the page evenly, and the knob
+bar itself is taller than its first pass.
 
 Two controls that used to be a stacked or side-by-side button pair are now
-a `RockerSwitch` (`Source/UI/ThreadlineComponents.h`) — a narrow vertical
-toggle styled after a physical amp-panel switch (à la a Bright switch),
-with a caption label below reading out the current selection since the
-switch itself only shows on/off: the Amp page's Vintage/Boutique voice
+a `RockerSwitch` (`Source/UI/ThreadlineComponents.h`) — a physical toggle
+switch, rendered from two photographed reference images (off/on) rather
+than drawn in vector, with a caption label below reading out the current
+selection since the switch photo itself only shows on/off. Each photo's
+actual pill content is tight-cropped in code (the two source photos have
+very different canvas padding, and the "on" shot has an amber glow baked
+in around the pill, so drawing either whole canvas into the same bounds
+would make the switch visibly resize between states) and both states are
+sized to fit the same target height, so the switch is a consistent size
+regardless of which one is showing: the Amp page's Vintage/Boutique voice
 switch, and Page 1's Klon-first/Breaker-first overdrive order switch.
 
 The 9-band graphic EQ's faders are visibly wider now (track capped at 12px
 instead of 7px, cap proportionally wider, and each band's reserved slot
 keeps more of its width instead of two-fifths of it getting inset away).
+Its rack plate was also missing the solid dark-brown backing fill and
+rounded-corner clip every other page's plate has before drawing the plate
+image (`paintSectionPlate` in `SectionBuilder.h`) -- without it, the plate
+photo's own near-black edge pixels showed through as a stray black fringe
+instead of blending into a consistent backing colour like every other
+plate does.
+
+`PhotoKnob`'s value readout (toggled globally by the eye icon) no longer
+permanently reserves a bottom row for the number, which had made every
+knob smaller than it used to be to make room for a value that's blank
+most of the time. It now uses JUCE's own popup display instead -- a
+floating value bubble that only exists while a knob is actively being
+dragged, positioned on the desktop rather than inside the knob's own tiny
+bounds -- so knobs draw at full size all the time.
 
 ## Build
 

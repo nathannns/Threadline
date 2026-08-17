@@ -50,26 +50,29 @@ public:
     explicit PhotoKnob (Style initialStyle) : style (initialStyle)
     {
         setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        // The value readout is drawn by this class's own paint() (see
-        // valuesVisible below), not JUCE's built-in text box -- that let the
-        // reserved space (and so the knob graphic's size/position) change
-        // depending on whether the box was currently shown, which is exactly
-        // what made the knob appear to jump when the eye-icon toggle fired.
-        // valueRowHeight is reserved unconditionally instead, whether or not
-        // the value is actually drawn this frame.
+        // No built-in text box -- the value readout instead uses JUCE's
+        // popup display (see setValueVisible below), a floating bubble that
+        // only exists while actively dragging. That reserves no layout
+        // space at all, so the knob graphic draws at its full component
+        // size all the time rather than a permanently-shrunk one to make
+        // room for a value row that's blank most of the time.
         setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
     }
 
     void setStyle (Style newStyle) { style = newStyle; repaint(); }
 
     // Toggled globally by the eye icon in the editor header (see
-    // ThreadlineAudioProcessorEditor::setAllKnobValuesVisible).
+    // ThreadlineAudioProcessorEditor::setAllKnobValuesVisible). Shows the
+    // value in a floating popup bubble while the knob is being dragged
+    // (JUCE's own Slider popup, positioned on the desktop so it isn't
+    // clipped by this knob's own small bounds or its parent card), rather
+    // than a permanent readout under the knob.
     void setValueVisible (bool visible)
     {
         if (valuesVisible == visible)
             return;
         valuesVisible = visible;
-        repaint();
+        setPopupDisplayEnabled (visible, false, nullptr);
     }
 
     void paint (juce::Graphics& g) override
@@ -79,7 +82,6 @@ public:
             return;
 
         auto bounds = getLocalBounds().toFloat();
-        auto valueArea = bounds.removeFromBottom (valueRowHeight);
 
         // Keep rotated photo corners and the lower shadow inside the component.
         // Vintage chicken-heads need a little more rotational clearance.
@@ -119,14 +121,6 @@ public:
         g.drawImageTransformed (image, transform.translated (2.5f, 3.5f), true);
 
         g.drawImageTransformed (image, transform);
-
-        if (valuesVisible)
-        {
-            g.setColour (juce::Colours::white.withAlpha (0.85f));
-            g.setFont (juce::FontOptions (juce::jmax (8.5f, valueRowHeight * 0.8f)));
-            g.drawFittedText (getTextFromValue (getValue()), valueArea.toNearestInt(),
-                              juce::Justification::centred, 1);
-        }
     }
 
     static const juce::Image& getVintageImage()
@@ -145,9 +139,6 @@ private:
     // Measured shaft centre in the 279x417 crop. The previous 0.665 pivot was
     // below the physical shaft and made the knob orbit like a wiper.
     static constexpr float vintagePivotYRatio = 222.0f / 417.0f;
-    // Always subtracted from the drawing area, whether or not a value is
-    // actually drawn there this frame -- see setValueVisible().
-    static constexpr float valueRowHeight = 13.0f;
 
     Style style;
     bool valuesVisible = false;
@@ -318,38 +309,47 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto bounds = getLocalBounds().toFloat();
+        static const auto offImage = juce::ImageCache::getFromMemory (
+            BinaryData::rocker_off_png, BinaryData::rocker_off_pngSize);
+        static const auto onImage = juce::ImageCache::getFromMemory (
+            BinaryData::rocker_on_png, BinaryData::rocker_on_pngSize);
+
         const auto on = getToggleState();
-        const auto hovered = isMouseOverOrDragging();
+        const auto& fullImage = on ? onImage : offImage;
+        if (! fullImage.isValid())
+            return;
 
-        const auto trackWidth = juce::jmin (20.0f, bounds.getWidth());
-        auto track = bounds.withSizeKeepingCentre (trackWidth, bounds.getHeight());
+        // The two source photos have very different canvas padding (and the
+        // "on" shot has an amber glow baked in around the pill), so drawing
+        // each whole canvas into the same bounds would make the switch
+        // visibly change size between states. These are a one-time tight
+        // crop (ImageMagick `-fuzz 10% -trim`) of each photo's actual pill
+        // content in its own pixel coordinates; getClippedImage() extracts
+        // just that region so both states draw the pill at a consistent
+        // size regardless of the source canvases' differing padding/glow.
+        const auto source = on ? juce::Rectangle<int> (225, 117, 574, 1261)
+                                : juce::Rectangle<int> (630, 57, 399, 822);
+        const auto image = fullImage.getClippedImage (source);
 
-        g.setColour (juce::Colour (0xff1a1512));
-        g.fillRoundedRectangle (track, trackWidth * 0.5f);
-        // Matches ThreadlineColours::cardBorder -- can't reference that
-        // namespace directly here, since SectionBuilder.h (where it's
-        // defined) includes this file first, not the other way around.
-        g.setColour (juce::Colour (0x997a5228));
-        g.drawRoundedRectangle (track, trackWidth * 0.5f, 1.2f);
+        auto bounds = getLocalBounds().toFloat();
+        const auto sourceAspect = static_cast<float> (source.getWidth()) / static_cast<float> (source.getHeight());
+        auto dest = juce::Rectangle<float> (bounds.getHeight() * sourceAspect, bounds.getHeight());
+        if (dest.getWidth() > bounds.getWidth())
+            dest = juce::Rectangle<float> (bounds.getWidth(), bounds.getWidth() / sourceAspect);
+        dest = dest.withCentre (bounds.getCentre());
 
-        const auto thumbSize = trackWidth - 5.0f;
-        const auto thumbInset = 2.5f;
-        const auto thumbTop = on ? track.getBottom() - thumbSize - thumbInset : track.getY() + thumbInset;
-        juce::Rectangle<float> thumb (thumbSize, thumbSize);
-        thumb.setPosition (track.getCentreX() - thumbSize * 0.5f, thumbTop);
+        g.drawImage (image, dest, juce::RectanglePlacement::stretchToFit);
 
-        // Matches ThreadlineColours::accentBright (see note above).
-        auto thumbColour = on ? juce::Colour (0xffd9a25a) : juce::Colour (0xff8c8078);
-        if (hovered && isEnabled()) thumbColour = thumbColour.brighter (0.15f);
-        if (! isEnabled()) thumbColour = thumbColour.withAlpha (0.4f);
-        g.setColour (thumbColour);
-        g.fillEllipse (thumb);
+        if (! isEnabled())
+        {
+            g.setColour (juce::Colour (0xff241912).withAlpha (0.5f));
+            g.fillRoundedRectangle (dest, dest.getWidth() * 0.3f);
+        }
 
         if (hasKeyboardFocus (true))
         {
             g.setColour (juce::Colours::white.withAlpha (0.75f));
-            g.drawRoundedRectangle (track.expanded (2.0f), trackWidth * 0.5f + 2.0f, 1.3f);
+            g.drawRoundedRectangle (dest.expanded (2.0f), dest.getWidth() * 0.5f + 2.0f, 1.3f);
         }
     }
 };

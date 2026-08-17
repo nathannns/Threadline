@@ -165,10 +165,25 @@ void Page2Component::paint (juce::Graphics& g)
 {
     if (ampImage.isValid() && ! ampImageFrameBounds.isEmpty())
     {
-        auto placement = juce::RectanglePlacement (juce::RectanglePlacement::centred
-                                                   | juce::RectanglePlacement::onlyReduceInSize);
-        auto ampArea = ampImageFrameBounds.toFloat().reduced (18.0f);
-        g.drawImage (ampImage, ampArea, placement);
+        // `onlyReduceInSize` capped the photo at its native pixel size once
+        // the frame grew past that, so "give the photo more room" stopped
+        // having any visible effect -- draw it explicitly 1.5x the size
+        // that would otherwise fit the frame instead, clipped to the frame
+        // (plus a little spill room) so it can overlap its own margin
+        // without bleeding into the knob bar below.
+        const auto frame = ampImageFrameBounds.toFloat().reduced (18.0f);
+        const auto imageWidth = static_cast<float> (ampImage.getWidth());
+        const auto imageHeight = static_cast<float> (ampImage.getHeight());
+        const auto fitScale = juce::jmin (frame.getWidth() / imageWidth, frame.getHeight() / imageHeight);
+        constexpr float sizeBoost = 1.5f;
+        const auto drawWidth = imageWidth * fitScale * sizeBoost;
+        const auto drawHeight = imageHeight * fitScale * sizeBoost;
+        auto imageBounds = juce::Rectangle<float> (drawWidth, drawHeight).withCentre (frame.getCentre());
+
+        g.saveState();
+        g.reduceClipRegion (ampImageFrameBounds);
+        g.drawImage (ampImage, imageBounds, juce::RectanglePlacement::stretchToFit);
+        g.restoreState();
     }
 
     paintCard (g, ampKnobFrameBounds);
@@ -187,7 +202,7 @@ void Page2Component::resized()
     auto cabRow = full.removeFromBottom (cabRowHeight);
     full.removeFromBottom (10);
 
-    const auto knobBarHeight = juce::jlimit (85, 120, juce::roundToInt (full.getHeight() * 0.22f));
+    const auto knobBarHeight = juce::jlimit (110, 150, juce::roundToInt (full.getHeight() * 0.26f));
     auto knobBar = full.removeFromBottom (knobBarHeight);
     full.removeFromBottom (8);
     ampImageFrameBounds = full;
@@ -195,12 +210,17 @@ void Page2Component::resized()
 
     auto bar = ampKnobFrameBounds.reduced (14, 10);
 
-    // Voice rocker switch on the left, with its own caption below it.
+    // Voice rocker switch on the left, with its own caption below it. The
+    // switch's height is capped at 40 (was 54) *and* at whatever's actually
+    // left in voiceArea after the label -- it was previously clamped only
+    // against the fixed ceiling, which could exceed the real available
+    // height on a shorter bar and render cropped at the top.
     auto voiceArea = bar.removeFromLeft (juce::jmin (70, bar.getWidth() / 8));
     bar.removeFromLeft (14);
-    auto voiceLabelArea = voiceArea.removeFromBottom (16);
+    auto voiceLabelArea = voiceArea.removeFromBottom (juce::jmin (16, voiceArea.getHeight() / 4));
+    const auto voiceSwitchHeight = juce::jmin (40, voiceArea.getHeight());
     ampVoiceSwitch.setBounds (voiceArea.withSizeKeepingCentre (
-        juce::jmin (26, voiceArea.getWidth()), juce::jmin (54, voiceArea.getHeight())));
+        juce::jmin (22, voiceArea.getWidth()), voiceSwitchHeight));
     ampVoiceLabel.setBounds (voiceLabelArea);
     ampVoiceSwitch.toFront (false);
 
@@ -212,8 +232,9 @@ void Page2Component::resized()
     // Knobs fill the remaining middle space in 5 fixed-width slots. Drive
     // (slot 0) and Volume (slot 1) always land in the same two slots
     // regardless of voice -- they never move when Vintage/Boutique is
-    // switched. Vintage's Tone sits centred in the 3 remaining slots (slot
-    // 3); Boutique fills all 3 (Bass/Mid/Treble).
+    // switched. Vintage's Tone sits in slot 2 -- the same slot Boutique's
+    // Bass uses -- rather than centred among the 3 remaining slots, so the
+    // first knob after Volume lands in the same spot either way.
     bar.removeFromTop (juce::jmin (20, bar.getHeight() / 6));
     const bool boutique = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load()) == 1;
     constexpr int numSlots = 5;
@@ -234,7 +255,7 @@ void Page2Component::resized()
     placeInSlot (ampDriveKnob, 0);
     placeInSlot (ampOutputKnob, 1);
     if (! boutique)
-        placeInSlot (ampToneKnob, 3);
+        placeInSlot (ampToneKnob, 2);
     else
     {
         placeInSlot (ampBassKnob, 2);
