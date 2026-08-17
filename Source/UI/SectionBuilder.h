@@ -219,6 +219,23 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.drawRoundedRectangle (bounds.reduced (0.75f), 9.0f, 1.25f);
 
+        static const auto rackFoot = juce::ImageCache::getFromMemory (
+            BinaryData::rack_foot_png, BinaryData::rack_foot_pngSize);
+        if (rackFoot.isValid())
+        {
+            const auto footHeight = juce::jlimit (8.0f, 14.0f, bounds.getHeight() * 0.11f);
+            const auto footWidth = footHeight * (float) rackFoot.getWidth() / (float) rackFoot.getHeight();
+            const auto footY = bounds.getBottom() - 2.0f;
+            g.drawImage (rackFoot,
+                         { bounds.getX() + bounds.getWidth() * 0.16f - footWidth * 0.5f,
+                           footY, footWidth, footHeight },
+                         juce::RectanglePlacement::stretchToFit);
+            g.drawImage (rackFoot,
+                         { bounds.getRight() - bounds.getWidth() * 0.16f - footWidth * 0.5f,
+                           footY, footWidth, footHeight },
+                         juce::RectanglePlacement::stretchToFit);
+        }
+
         return;
     }
 

@@ -219,23 +219,16 @@ public:
 
         static const auto off = juce::ImageCache::getFromMemory (
             BinaryData::button_off_png, BinaryData::button_off_pngSize);
-        static const auto offHover = juce::ImageCache::getFromMemory (
-            BinaryData::button_off_hover_png, BinaryData::button_off_hover_pngSize);
-        static const auto offPressed = juce::ImageCache::getFromMemory (
-            BinaryData::button_off_pressed_png, BinaryData::button_off_pressed_pngSize);
         static const auto onImage = juce::ImageCache::getFromMemory (
             BinaryData::button_on_png, BinaryData::button_on_pngSize);
-        static const auto onHover = juce::ImageCache::getFromMemory (
-            BinaryData::button_on_hover_png, BinaryData::button_on_hover_pngSize);
-        static const auto onPressed = juce::ImageCache::getFromMemory (
-            BinaryData::button_on_pressed_png, BinaryData::button_on_pressed_pngSize);
 
-        const auto& image = on ? (down ? onPressed : (hovered ? onHover : onImage))
-                               : (down ? offPressed : (hovered ? offHover : off));
+        const auto& image = on ? onImage : off;
         if (image.isValid())
         {
             const auto side = juce::jmin (bounds.getWidth(), bounds.getHeight());
-            g.drawImage (image, juce::Rectangle<float> (side, side).withCentre (bounds.getCentre()),
+            auto imageBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
+            if (down) imageBounds.translate (0.0f, 1.0f);
+            g.drawImage (image, imageBounds,
                          juce::RectanglePlacement::stretchToFit);
             return;
         }
