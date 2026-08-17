@@ -21,8 +21,15 @@ on/off toggle regardless) via the Overdrive Order switch.
 - `AmpModule` — dynamic, oversampled 5E3-inspired model (Rob Robinette's 5E3
   circuit writeup): input/interstage coupling caps, a two-stage 12AY7 preamp
   with grid-bias-shift memory (blocking distortion -- sustained heavy drive
-  shifts the operating point, causing a momentary "gasp" and recovery), a
-  cathodyne-style phase inverter, a genuinely differential push-pull power
+  shifts the operating point, causing a momentary "gasp" and recovery). The
+  Tone/Bassman-stack network sits between those two preamp stages, matching
+  the real 5E3's actual V1 -> Tone -> V2A signal order (confirmed against
+  Robinette's own annotated schematic: a shared 1M tone pot and 0.005uF tone
+  cap feeding V2A's grid, not a filter tacked on after both preamp stages --
+  it used to sit there, so the second stage now clips whatever harmonic
+  content Tone left behind rather than clipping the full-bandwidth signal
+  and only filtering the already-clipped result). Then a cathodyne-style
+  phase inverter, a genuinely differential push-pull power
   stage (two tubes driven by +V/-V from the cathodyne, subtracted at the
   output transformer -- for a matched pair this cancels even-order harmonics
   exactly, leaving only odd-order content doubled; a small same-direction

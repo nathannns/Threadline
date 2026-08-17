@@ -5,10 +5,17 @@
 // Dynamic, oversampled 5E3-inspired model. Gain and memory are distributed
 // through the circuit's major functional stages instead of one static
 // clipper: input/interstage coupling caps, a two-stage 12AY7 preamp with
-// grid-bias-shift memory (blocking distortion), a cathodyne-style phase
-// inverter, an asymmetric push-pull power stage with a bass-weighted sag
-// detector, and output-transformer core saturation distinct from sag —
-// per Rob Robinette's 5E3 circuit writeup (robrobinette.com).
+// grid-bias-shift memory (blocking distortion), a Tone/Bassman-stack network
+// sitting between the two preamp stages (matching the real 5E3's V1 -> Tone
+// -> V2A signal order, confirmed against Rob Robinette's own annotated 5E3
+// schematic: shared 1M tone pot, 0.005uF tone cap, feeding V2A's grid — not
+// after both preamp stages), a cathodyne-style phase inverter, a genuinely
+// differential push-pull power stage (two tubes driven by +V/-V from the
+// cathodyne and subtracted at the output transformer, the actual mechanism
+// that cancels even-order harmonics for a matched pair) with a bass-weighted
+// sag detector, and output-transformer core saturation distinct from sag —
+// per Rob Robinette's 5E3 circuit writeup and annotated schematic
+// (robrobinette.com).
 
 class AmpModule
 {
@@ -134,16 +141,28 @@ public:
                 auto triode1 = std::tanh (x * stage1Gain + bias1) - std::tanh (bias1);
                 triode1 = interstageCoupling[ch].processSample (triode1);
                 biasMemory[(size_t) ch] += 0.00055f * (triode1 - biasMemory[(size_t) ch]);
-                constexpr float bias2 = -0.10f;
                 auto stage2Input = triode1 - 0.13f * biasMemory[(size_t) ch];
-                auto triode2 = std::tanh (stage2Input * stage2Gain + bias2) - std::tanh (bias2);
+
+                // The real 5E3's Tone control sits between the two preamp
+                // gain stages -- V1 (this plugin's stage 1) feeds the shared
+                // Tone pot/cap network, which then drives V2A's grid (stage
+                // 2), not after both stages as this used to model it (per
+                // the annotated schematic: V1 -> Tone -> V2A -> V2B phase
+                // inverter). That matters for more than bookkeeping: stage 2
+                // now clips whatever harmonic content Tone left behind
+                // rather than clipping the full-bandwidth signal and only
+                // filtering the result, so Tone changes what stage 2 has to
+                // work with, not just the final brightness.
                 float toned;
                 if (voice == Voice::vintage5E3)
-                    toned = toneFilter[ch].processSample (triode2);
+                    toned = toneFilter[ch].processSample (stage2Input);
                 else
-                    toned = bassmanStack.processSample (ch, triode2);
-                auto cathodyne = toned >= 0.0f ? std::tanh (toned * 1.18f)
-                                               : 0.94f * std::tanh (toned * 1.32f);
+                    toned = bassmanStack.processSample (ch, stage2Input);
+
+                constexpr float bias2 = -0.10f;
+                auto triode2 = std::tanh (toned * stage2Gain + bias2) - std::tanh (bias2);
+                auto cathodyne = triode2 >= 0.0f ? std::tanh (triode2 * 1.18f)
+                                                 : 0.94f * std::tanh (triode2 * 1.32f);
                 phaseInverterOut[(size_t) ch] = cathodyne;
 
                 auto& bassTap = sagDetectorLP[(size_t) ch];
