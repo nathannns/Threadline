@@ -29,7 +29,9 @@ private:
     juce::Label ts9VariantLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ts9VariantAttachment;
 
-    // Klon/Breaker order ahead of the Amp — same radio-group + timer-sync
-    // pattern as the variant switch above.
-    juce::TextButton odOrderButtons[2] { juce::TextButton ("Klon -> Breaker"), juce::TextButton ("Breaker -> Klon") };
+    // Klon/Breaker order ahead of the Amp — a rocker switch (off = Klon
+    // first, on = Breaker first), same component as the Amp page's Voice
+    // switch; odOrderLabel reads out which order that currently means.
+    RockerSwitch odOrderSwitch;
+    juce::Label odOrderLabel;
 };

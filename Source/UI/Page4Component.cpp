@@ -111,6 +111,9 @@ void Page4Component::resized()
         auto slot = area.removeFromLeft (bandWidth);
         band->freqLabel.setBounds (slot.removeFromBottom (16));
         slot.removeFromBottom (4);
-        band->slider.setBounds (slot.reduced (juce::jmax (2, bandWidth / 5), 0));
+        // Wider inset reduction than before (was /5) so each band's fader
+        // track/cap has more room to actually read as wide, not just more
+        // empty gap between thin faders.
+        band->slider.setBounds (slot.reduced (juce::jmax (2, bandWidth / 10), 0));
     }
 }

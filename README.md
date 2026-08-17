@@ -172,10 +172,36 @@ switches which page is visible, same as always; double-pressing one bypasses
 pages and independent of each module's own on/off toggle inside that page —
 double-press again to restore it. A bypassed tab shows a diagonal strike
 through its icon (works whether or not that page is the one currently
-visible) so it stays legible while you're looking at another tab. The Amp
-itself also gained its own on/off toggle (`ampOn`, defaults on) in the
-knob card's top-right corner, matching every other module's toggle — it
-previously had none, since it was treated as always-in-the-chain.
+visible) so it stays legible while you're looking at another tab. The icons
+themselves are 2x their original size, with the tab row and page content
+area both re-split to fit (bottom edges unchanged, so the footer's position
+is unaffected). The Amp itself also gained its own on/off toggle (`ampOn`,
+defaults on) in the knob card's top-right corner, matching every other
+module's toggle — it previously had none, since it was treated as
+always-in-the-chain.
+
+Page 2 (Amp) is laid out photo-on-top now, not photo-left/knobs-right: the
+amp photo spans the full width, with a single horizontal control bar below
+it (Voice switch, knobs, bypass) and the two Cab slots below that — pattern
+borrowed from Neural DSP's Archetype line (photo big, one compact control
+dock underneath). The knob bar reserves 5 fixed-width slots; Drive and
+Volume always land in slots 0 and 1 regardless of voice, so they never
+visibly move when switching Vintage/Boutique — only the remaining 3 slots'
+contents change (Tone centred among them for Vintage, Bass/Mid/Treble
+filling all 3 for Boutique). The knob-bar/cab-row heights were trimmed down
+(and pinned to the bottom) specifically to give the photo more room, rather
+than splitting the page evenly.
+
+Two controls that used to be a stacked or side-by-side button pair are now
+a `RockerSwitch` (`Source/UI/ThreadlineComponents.h`) — a narrow vertical
+toggle styled after a physical amp-panel switch (à la a Bright switch),
+with a caption label below reading out the current selection since the
+switch itself only shows on/off: the Amp page's Vintage/Boutique voice
+switch, and Page 1's Klon-first/Breaker-first overdrive order switch.
+
+The 9-band graphic EQ's faders are visibly wider now (track capped at 12px
+instead of 7px, cap proportionally wider, and each band's reserved slot
+keeps more of its width instead of two-fifths of it getting inset away).
 
 ## Build
 

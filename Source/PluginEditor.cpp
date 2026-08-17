@@ -384,11 +384,14 @@ void ThreadlineAudioProcessorEditor::resized()
     outputMeter.setBounds (rect (720, 710, 290, 12));
 
     // Navigation and pages occupy the space between Rockalizer's header/footer.
-    auto tabRow = rect (28, 88, 1144, 42);
-    const auto pillWidth = juce::roundToInt (46 * scaleX);
-    const auto pillGap = juce::roundToInt (8 * scaleX);
+    // Tab row is 2x its original 42px height (was 88-130) to fit 2x icons;
+    // the content rect below (see `content` further down) starts that same
+    // 48px later so nothing overlaps and the footer's position is unchanged.
+    auto tabRow = rect (28, 88, 1144, 90);
+    const auto pillWidth = juce::roundToInt (92 * scaleX);
+    const auto pillGap = juce::roundToInt (16 * scaleX);
     const auto groupWidth = 4 * pillWidth + 3 * pillGap;
-    auto tabArea = tabRow.withSizeKeepingCentre (groupWidth, tabRow.getHeight()).reduced (0, 6);
+    auto tabArea = tabRow.withSizeKeepingCentre (groupWidth, tabRow.getHeight()).reduced (0, 15);
     for (auto& pill : tabPills)
     {
         pill.setBounds (tabArea.removeFromLeft (pillWidth));
@@ -409,14 +412,11 @@ void ThreadlineAudioProcessorEditor::resized()
                                   juce::roundToInt (106 * scaleX), juce::roundToInt (32 * scaleY));
 
     // --- Every page receives the same remaining content rectangle. ---
-    // Same 406 height as the original 660-tall canvas -- every page's
-    // internal layout is untouched (several pages split their bounds by
-    // percentage, so growing this rect would have stretched their existing
-    // knobs/cards bigger, not just added space). The +100px instead lands
-    // as a genuinely empty gap between this and the footer below (was a
-    // fixed 10px gap, now 110px) -- real reserved room for a future control
-    // row, not anything existing being scaled up.
-    auto content = rect (16, 130, 1168, 406);
+    // Starts 48px later than the original 660-tall canvas's y=130 (and is
+    // 48px shorter) to make room for the taller tab row above -- its
+    // bottom edge (y=536) is unchanged, so the gap before the footer and
+    // everything below is unaffected by the bigger tab icons.
+    auto content = rect (16, 178, 1168, 358);
     page1.setBounds (content);
     page2.setBounds (content);
     page3.setBounds (content);

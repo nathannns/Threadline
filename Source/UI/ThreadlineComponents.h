@@ -169,7 +169,7 @@ public:
     {
         auto bounds = getLocalBounds().toFloat();
 
-        const auto trackWidth = juce::jmin (bounds.getWidth() * 0.22f, 7.0f);
+        const auto trackWidth = juce::jmin (bounds.getWidth() * 0.32f, 12.0f);
         auto track = juce::Rectangle<float> (trackWidth, bounds.getHeight()).withCentre (bounds.getCentre());
         g.setColour (juce::Colour (0xff171411));
         g.fillRoundedRectangle (track, trackWidth * 0.5f);
@@ -194,7 +194,7 @@ public:
         static const auto capImage = juce::ImageCache::getFromMemory (
             BinaryData::eq_slider_cap_png, BinaryData::eq_slider_cap_pngSize);
         const auto capHeight = juce::jmin (bounds.getWidth() * 0.96f, 34.0f);
-        const auto capWidth = juce::jlimit (9.0f, 15.0f, capHeight / 3.0f);
+        const auto capWidth = juce::jlimit (14.0f, 22.0f, trackWidth + 8.0f);
         auto cap = juce::Rectangle<float> (capWidth, capHeight).withCentre ({ bounds.getCentreX(), capY });
         g.setColour (juce::Colour (0xff211a16));
         g.fillRoundedRectangle (cap, 3.0f);
@@ -298,4 +298,58 @@ private:
     bool wordmarkStyle = false;
     bool wordmarkCentred = false;
     bool renderedImageStyle = true;
+};
+
+// Narrow vertical rocker switch, styled after a physical amp-panel toggle
+// (e.g. a Bright switch) rather than a wide labeled button pair -- a small
+// pill track with a thumb that slides between its two ends to show state.
+// Doesn't draw its own caption; pair it with a Label naming the current
+// selection, since a bare on/off dot alone doesn't say what the two throws
+// mean for a 2-way *selector* (as opposed to a plain effect on/off).
+class RockerSwitch : public juce::ToggleButton
+{
+public:
+    RockerSwitch()
+    {
+        setClickingTogglesState (true);
+        setWantsKeyboardFocus (true);
+        setRepaintsOnMouseActivity (true);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat();
+        const auto on = getToggleState();
+        const auto hovered = isMouseOverOrDragging();
+
+        const auto trackWidth = juce::jmin (20.0f, bounds.getWidth());
+        auto track = bounds.withSizeKeepingCentre (trackWidth, bounds.getHeight());
+
+        g.setColour (juce::Colour (0xff1a1512));
+        g.fillRoundedRectangle (track, trackWidth * 0.5f);
+        // Matches ThreadlineColours::cardBorder -- can't reference that
+        // namespace directly here, since SectionBuilder.h (where it's
+        // defined) includes this file first, not the other way around.
+        g.setColour (juce::Colour (0x997a5228));
+        g.drawRoundedRectangle (track, trackWidth * 0.5f, 1.2f);
+
+        const auto thumbSize = trackWidth - 5.0f;
+        const auto thumbInset = 2.5f;
+        const auto thumbTop = on ? track.getBottom() - thumbSize - thumbInset : track.getY() + thumbInset;
+        juce::Rectangle<float> thumb (thumbSize, thumbSize);
+        thumb.setPosition (track.getCentreX() - thumbSize * 0.5f, thumbTop);
+
+        // Matches ThreadlineColours::accentBright (see note above).
+        auto thumbColour = on ? juce::Colour (0xffd9a25a) : juce::Colour (0xff8c8078);
+        if (hovered && isEnabled()) thumbColour = thumbColour.brighter (0.15f);
+        if (! isEnabled()) thumbColour = thumbColour.withAlpha (0.4f);
+        g.setColour (thumbColour);
+        g.fillEllipse (thumb);
+
+        if (hasKeyboardFocus (true))
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.75f));
+            g.drawRoundedRectangle (track.expanded (2.0f), trackWidth * 0.5f + 2.0f, 1.3f);
+        }
+    }
 };

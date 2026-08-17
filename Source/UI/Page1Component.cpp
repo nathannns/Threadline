@@ -35,26 +35,18 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
     ts9VariantAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, "ts9Variant", ts9VariantKnob);
 
-    constexpr int odOrderRadioGroup = 9002;
-    const char* odOrderLabels[2] { "Klon First", "Breaker First" };
-    for (int i = 0; i < 2; ++i)
+    odOrderSwitch.setTitle ("Overdrive order");
+    odOrderSwitch.setHelpText ("Klon first or Breaker first ahead of the Amp");
+    addAndMakeVisible (odOrderSwitch);
+    odOrderSwitch.onClick = [this]
     {
-        auto& button = odOrderButtons[i];
-        button.setButtonText (odOrderLabels[i]);
-        button.setClickingTogglesState (true);
-        button.setRadioGroupId (odOrderRadioGroup, juce::dontSendNotification);
-        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
-        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
-        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
-        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
-        addAndMakeVisible (button);
-        button.onClick = [this, i]
-        {
-            if (auto* parameter = processor.apvts.getParameter ("odOrder"))
-                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
-        };
-    }
-    odOrderButtons[0].setToggleState (true, juce::dontSendNotification);
+        if (auto* parameter = processor.apvts.getParameter ("odOrder"))
+            parameter->setValueNotifyingHost (odOrderSwitch.getToggleState() ? 1.0f : 0.0f);
+    };
+    odOrderLabel.setJustificationType (juce::Justification::centred);
+    odOrderLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    odOrderLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    addAndMakeVisible (odOrderLabel);
 
     startTimerHz (10);
 }
@@ -71,9 +63,9 @@ void Page1Component::timerCallback()
     ts9VariantLabel.setText (variantNames[currentVariant], juce::dontSendNotification);
 
     const auto currentOrder = (int) std::round (processor.apvts.getRawParameterValue ("odOrder")->load());
-    for (int i = 0; i < 2; ++i)
-        if (odOrderButtons[i].getToggleState() != (i == currentOrder))
-            odOrderButtons[i].setToggleState (i == currentOrder, juce::dontSendNotification);
+    if (odOrderSwitch.getToggleState() != (currentOrder == 1))
+        odOrderSwitch.setToggleState (currentOrder == 1, juce::dontSendNotification);
+    odOrderLabel.setText (currentOrder == 1 ? "BREAKER FIRST" : "KLON FIRST", juce::dontSendNotification);
 }
 
 void Page1Component::paint (juce::Graphics& g)
@@ -102,17 +94,16 @@ void Page1Component::resized()
     layoutHorizontalRackSection (ts9Section, area, 294);
 
     const auto klonBounds = klonSection.bounds;
-    // Order toggle sits in the same reserved title-row space the Breaker
-    // variant switch below uses, just with 2 rows instead of 3.
+    // Order rocker switch sits in the same reserved title-row space the
+    // Breaker variant switch below uses -- switch on top, label under it,
+    // same arrangement as the Amp page's Voice switch.
     auto orderArea = juce::Rectangle<int> (klonBounds.getX() + 210,
                                            klonBounds.getY() + 10, 126,
                                            klonBounds.getHeight() - 20);
-    const auto orderRowHeight = juce::jmax (20, (orderArea.getHeight() - 4) / 2);
-    for (int i = 0; i < 2; ++i)
-    {
-        odOrderButtons[i].setBounds (orderArea.removeFromTop (orderRowHeight).reduced (2, 1));
-        orderArea.removeFromTop (2);
-    }
+    auto orderLabelArea = orderArea.removeFromBottom (16);
+    odOrderSwitch.setBounds (orderArea.withSizeKeepingCentre (
+        juce::jmin (26, orderArea.getWidth()), juce::jmin (54, orderArea.getHeight())));
+    odOrderLabel.setBounds (orderLabelArea);
 
     const auto breakerBounds = ts9Section.bounds;
     // Fixed-position rotary selector, immediately to the right of BREAKER,

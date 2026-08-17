@@ -47,24 +47,21 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     ampOutputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, "ampOutput", ampOutputKnob);
 
-    constexpr int ampVoiceRadioGroup = 9003;
-    for (int i = 0; i < 2; ++i)
+    // Voice rocker switch: off = Vintage 5E3, on = Boutique. The switch
+    // itself only shows on/off; ampVoiceLabel (updated in
+    // updateAmpVoiceControls) reads out which one that currently means.
+    ampVoiceSwitch.setTitle ("Amp voice");
+    ampVoiceSwitch.setHelpText ("Vintage 5E3 or Boutique amp voice");
+    addAndMakeVisible (ampVoiceSwitch);
+    ampVoiceSwitch.onClick = [this]
     {
-        auto& button = ampVoiceButtons[i];
-        button.setClickingTogglesState (true);
-        button.setRadioGroupId (ampVoiceRadioGroup, juce::dontSendNotification);
-        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
-        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
-        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
-        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
-        addAndMakeVisible (button);
-        button.onClick = [this, i]
-        {
-            if (auto* parameter = processor.apvts.getParameter ("ampVoice"))
-                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
-        };
-    }
-    ampVoiceButtons[0].setToggleState (true, juce::dontSendNotification);
+        if (auto* parameter = processor.apvts.getParameter ("ampVoice"))
+            parameter->setValueNotifyingHost (ampVoiceSwitch.getToggleState() ? 1.0f : 0.0f);
+    };
+    ampVoiceLabel.setJustificationType (juce::Justification::centred);
+    ampVoiceLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    ampVoiceLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    addAndMakeVisible (ampVoiceLabel);
 
     setupAmpKnob (ampBassLabel, ampBassKnob, "Bass");
     setupAmpKnob (ampMidLabel, ampMidKnob, "Mid");
@@ -132,12 +129,11 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
 
 void Page2Component::timerCallback()
 {
-    // Keeps the Voice buttons in sync with the actual parameter — it can
+    // Keeps the Voice switch in sync with the actual parameter — it can
     // also change via preset load or automation, not just a click here.
     const auto current = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load());
-    for (int i = 0; i < 2; ++i)
-        if (ampVoiceButtons[i].getToggleState() != (i == current))
-            ampVoiceButtons[i].setToggleState (i == current, juce::dontSendNotification);
+    if (ampVoiceSwitch.getToggleState() != (current == 1))
+        ampVoiceSwitch.setToggleState (current == 1, juce::dontSendNotification);
 
     updateAmpVoiceControls();
 }
@@ -150,6 +146,8 @@ void Page2Component::updateAmpVoiceControls()
 
     lastAmpVoice = voice;
     const bool boutique = voice == 1;
+
+    ampVoiceLabel.setText (boutique ? "BOUTIQUE" : "VINTAGE 5E3", juce::dontSendNotification);
 
     ampToneKnob.setVisible (! boutique);
     ampToneLabel.setVisible (! boutique);
@@ -182,62 +180,66 @@ void Page2Component::resized()
 {
     auto full = getLocalBounds().reduced (20, 16);
 
-    // Cab A/B get a full-width row at the bottom rather than being confined
-    // to the (narrower) knob column, so there's real room for two cards.
-    const auto cabRowHeight = juce::roundToInt (full.getHeight() * 0.34f);
+    // Cab A/B and the knob bar are kept compact and pinned to the bottom,
+    // so the amp photo above gets as much of the remaining height as
+    // possible rather than the three areas splitting it evenly.
+    const auto cabRowHeight = juce::jlimit (80, 140, juce::roundToInt (full.getHeight() * 0.24f));
     auto cabRow = full.removeFromBottom (cabRowHeight);
-    full.removeFromBottom (14);
+    full.removeFromBottom (10);
 
-    constexpr int columnGap = 14;
-    const auto leftWidth = juce::roundToInt (static_cast<float> (full.getWidth() - columnGap) * 0.55f);
-    ampImageFrameBounds = full.removeFromLeft (leftWidth);
-    full.removeFromLeft (columnGap);
-    ampKnobFrameBounds = full;
+    const auto knobBarHeight = juce::jlimit (85, 120, juce::roundToInt (full.getHeight() * 0.22f));
+    auto knobBar = full.removeFromBottom (knobBarHeight);
+    full.removeFromBottom (8);
+    ampImageFrameBounds = full;
+    ampKnobFrameBounds = knobBar;
 
-    auto knobArea = ampKnobFrameBounds.reduced (juce::jmax (6, ampKnobFrameBounds.getWidth() / 28), 8);
-    auto ampToggleRow = knobArea.removeFromTop (22);
-    ampToggle.setBounds (ampToggleRow.removeFromRight (50));
-    knobArea.removeFromTop (juce::jmin (18, knobArea.getHeight() / 8));
+    auto bar = ampKnobFrameBounds.reduced (14, 10);
 
+    // Voice rocker switch on the left, with its own caption below it.
+    auto voiceArea = bar.removeFromLeft (juce::jmin (70, bar.getWidth() / 8));
+    bar.removeFromLeft (14);
+    auto voiceLabelArea = voiceArea.removeFromBottom (16);
+    ampVoiceSwitch.setBounds (voiceArea.withSizeKeepingCentre (
+        juce::jmin (26, voiceArea.getWidth()), juce::jmin (54, voiceArea.getHeight())));
+    ampVoiceLabel.setBounds (voiceLabelArea);
+    ampVoiceSwitch.toFront (false);
+
+    // Bypass toggle on the right.
+    auto toggleArea = bar.removeFromRight (60);
+    bar.removeFromRight (14);
+    ampToggle.setBounds (toggleArea.withSizeKeepingCentre (50, 24));
+
+    // Knobs fill the remaining middle space in 5 fixed-width slots. Drive
+    // (slot 0) and Volume (slot 1) always land in the same two slots
+    // regardless of voice -- they never move when Vintage/Boutique is
+    // switched. Vintage's Tone sits centred in the 3 remaining slots (slot
+    // 3); Boutique fills all 3 (Bass/Mid/Treble).
+    bar.removeFromTop (juce::jmin (20, bar.getHeight() / 6));
     const bool boutique = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load()) == 1;
-
-    // Drive and Volume never move when the voice changes; Boutique simply
-    // leaves the Vintage Tone position empty.
-    auto knobRow = knobArea.removeFromTop (juce::roundToInt (knobArea.getHeight() * 0.56f));
-    auto knobWidth = knobRow.getWidth() / 3;
-    const auto knobInset = juce::jmax (2, knobWidth / 14);
-    ampDriveKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
-    if (! boutique)
-        ampToneKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
-    else
-        knobRow.removeFromLeft (knobWidth);
-    ampOutputKnob.setBounds (knobRow.reduced (knobInset, 0));
-    ampDriveKnob.toFront (false);
-    ampToneKnob.toFront (false);
-    ampOutputKnob.toFront (false);
-
-    // Square voice selectors sit outside the amp-knob frame on its left.
-    const auto voiceSize = juce::jlimit (34, 48, ampKnobFrameBounds.getHeight() / 5);
-    const auto voiceX = ampKnobFrameBounds.getX() - voiceSize - 8;
-    const auto voiceTop = ampKnobFrameBounds.getCentreY() - voiceSize - 3;
-    ampVoiceButtons[0].setBounds (voiceX, voiceTop, voiceSize, voiceSize);
-    ampVoiceButtons[1].setBounds (voiceX, voiceTop + voiceSize + 6, voiceSize, voiceSize);
-    ampVoiceButtons[0].toFront (false);
-    ampVoiceButtons[1].toFront (false);
-
-    knobArea.removeFromTop (juce::jmin (32, knobArea.getHeight() / 4));
-    knobArea.removeFromTop (juce::jmin (16, knobArea.getHeight() / 6));
-    if (boutique)
+    constexpr int numSlots = 5;
+    std::array<juce::Rectangle<int>, numSlots> slots;
     {
-        auto knobRow2 = knobArea;
-        auto knobWidth2 = knobRow2.getWidth() / 3;
-        const auto knobInset2 = juce::jmax (2, knobWidth2 / 14);
-        ampBassKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
-        ampMidKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
-        ampTrebleKnob.setBounds (knobRow2.reduced (knobInset2, 0));
-        ampBassKnob.toFront (false);
-        ampMidKnob.toFront (false);
-        ampTrebleKnob.toFront (false);
+        auto slotsArea = bar;
+        const auto slotWidth = slotsArea.getWidth() / numSlots;
+        for (int i = 0; i < numSlots; ++i)
+            slots[(size_t) i] = slotsArea.removeFromLeft (i == numSlots - 1 ? slotsArea.getWidth() : slotWidth);
+    }
+    const auto placeInSlot = [&slots] (PhotoKnob& knob, int slotIndex)
+    {
+        auto cell = slots[(size_t) slotIndex];
+        const auto inset = juce::jmax (2, cell.getWidth() / 10);
+        knob.setBounds (cell.reduced (inset, 0));
+        knob.toFront (false);
+    };
+    placeInSlot (ampDriveKnob, 0);
+    placeInSlot (ampOutputKnob, 1);
+    if (! boutique)
+        placeInSlot (ampToneKnob, 3);
+    else
+    {
+        placeInSlot (ampBassKnob, 2);
+        placeInSlot (ampMidKnob, 3);
+        placeInSlot (ampTrebleKnob, 4);
     }
 
     // Cab A | blend knob | Cab B, left to right.

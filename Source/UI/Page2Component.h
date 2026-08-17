@@ -3,8 +3,10 @@
 #include "SectionBuilder.h"
 #include "../PluginProcessor.h"
 
-// Page 2 — Amp (big centered tweed photo) + Cab/IR (two parallel-blended
-// slots, side by side).
+// Page 2 — Amp (full-width photo on top) + a single horizontal control bar
+// below it (Voice switch, knobs, bypass) + Cab/IR (two parallel-blended
+// slots) along the bottom, stacked top to bottom rather than photo-left/
+// knobs-right.
 class Page2Component : public juce::Component, private juce::Timer
 {
 public:
@@ -21,9 +23,10 @@ private:
     juce::Image ampImage;
     juce::Rectangle<int> ampImageFrameBounds;
 
-    // Amp: image-free rack toggle in the knob card's top-right corner (same
-    // style as Cab A/B's "ON"), plus 3 knobs drawn along the bottom edge of
-    // the photo like the real panel's knob row.
+    // Amp control bar: Voice switch, then Drive/Volume in two fixed slots
+    // that never move between voices, then Tone (Vintage) or Bass/Mid/
+    // Treble (Boutique) in the remaining slots, then the on/off toggle --
+    // one horizontal row below the photo instead of a separate side card.
     ToggleFootswitch ampToggle;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ampToggleAttachment;
     juce::Label ampDriveLabel, ampToneLabel, ampOutputLabel;
@@ -36,8 +39,14 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampDriveAttachment, ampToneAttachment, ampOutputAttachment;
     juce::Rectangle<int> ampKnobFrameBounds;
 
-    // Voice: Vintage 5E3 uses Tone; Boutique uses Bass/Mid/Treble.
-    juce::TextButton ampVoiceButtons[2] { juce::TextButton ("Vintage 5E3"), juce::TextButton ("Boutique") };
+    // Voice: a narrow rocker switch (off = Vintage 5E3, on = Boutique),
+    // matching a physical amp-panel toggle rather than a wide button pair --
+    // ampVoiceLabel below it is updated with the current selection's name
+    // in updateAmpVoiceControls(), since the switch itself only shows
+    // on/off, not which option that means. Vintage uses Tone; Boutique
+    // swaps that for Bass/Mid/Treble.
+    RockerSwitch ampVoiceSwitch;
+    juce::Label ampVoiceLabel;
     juce::Label ampBassLabel, ampMidLabel, ampTrebleLabel;
     PhotoKnob ampBassKnob, ampMidKnob, ampTrebleKnob;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampBassAttachment, ampMidAttachment, ampTrebleAttachment;
