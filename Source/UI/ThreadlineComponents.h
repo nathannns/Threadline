@@ -194,6 +194,12 @@ public:
         repaint();
     }
 
+    void setRenderedImageStyle (bool shouldUseImages)
+    {
+        renderedImageStyle = shouldUseImages;
+        repaint();
+    }
+
     void paint (juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (1.0f);
@@ -223,7 +229,7 @@ public:
             BinaryData::button_on_png, BinaryData::button_on_pngSize);
 
         const auto& image = on ? onImage : off;
-        if (image.isValid())
+        if (renderedImageStyle && image.isValid())
         {
             const auto side = juce::jmin (bounds.getWidth(), bounds.getHeight());
             auto imageBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
@@ -259,4 +265,5 @@ public:
 
 private:
     bool wordmarkStyle = false;
+    bool renderedImageStyle = true;
 };

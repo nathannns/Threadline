@@ -29,7 +29,6 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/led_effect_on.png
     Resources/Images/Buttons/button_off.png
     Resources/Images/Buttons/button_on.png
-    Resources/Images/rack_foot.png
     Resources/Images/RackPlates/plate_compressor.png
     Resources/Images/RackPlates/plate_klon.png
     Resources/Images/RackPlates/plate_ts9.png

@@ -15,6 +15,7 @@ public:
 
 private:
     void timerCallback() override;
+    void updateAmpVoiceControls();
 
     ThreadlineAudioProcessor& processor;
     juce::Image ampImage;
@@ -32,15 +33,12 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampDriveAttachment, ampToneAttachment, ampOutputAttachment;
     juce::Rectangle<int> ampKnobFrameBounds;
 
-    // Voice: Vintage 5E3 (single Tone knob above) vs. Modern 3-Band (an
-    // independent Bass/Mid/Treble stack — see AmpModule::Voice). Bass/Mid/
-    // Treble stay visible either way, same as the Breaker variant buttons on
-    // Page1 stay visible regardless of on/off state — they just only affect
-    // the sound when Modern voice is selected.
-    juce::TextButton ampVoiceButtons[2] { juce::TextButton ("Vintage 5E3"), juce::TextButton ("Modern 3-Band") };
+    // Voice: Vintage 5E3 uses Tone; Boutique uses Bass/Mid/Treble.
+    juce::TextButton ampVoiceButtons[2] { juce::TextButton ("Vintage 5E3"), juce::TextButton ("Boutique") };
     juce::Label ampBassLabel, ampMidLabel, ampTrebleLabel;
     PhotoKnob ampBassKnob, ampMidKnob, ampTrebleKnob;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampBassAttachment, ampMidAttachment, ampTrebleAttachment;
+    int lastAmpVoice = -1;
 
     // Two IR slots processed in parallel and blended (like two mics on one
     // cab) — each independently on/off with its own IR choice and mix.

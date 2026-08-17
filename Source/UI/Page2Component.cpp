@@ -24,7 +24,7 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     ampImage = juce::ImageCache::getFromMemory (BinaryData::tweed_amp_png, BinaryData::tweed_amp_pngSize);
     setupAmpKnob (ampDriveLabel, ampDriveKnob, "Drive");
     setupAmpKnob (ampToneLabel, ampToneKnob, "Tone");
-    setupAmpKnob (ampOutputLabel, ampOutputKnob, "Output");
+    setupAmpKnob (ampOutputLabel, ampOutputKnob, "Volume");
     addAndMakeVisible (ampDriveKnob);
     addAndMakeVisible (ampToneKnob);
     addAndMakeVisible (ampOutputKnob);
@@ -78,6 +78,12 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     // the same cab rather than two cabs chained one after another.
     setupCabSlot (cabASection, *this, processor.apvts, "Cab A", "cabAOn", "cabAMix", SectionPlate::Cab);
     setupCabSlot (cabBSection, *this, processor.apvts, "Cab B", "cabBOn", "cabBMix", SectionPlate::Cab);
+    cabASection.toggle.setRenderedImageStyle (false);
+    cabBSection.toggle.setRenderedImageStyle (false);
+    cabASection.toggle.setButtonText ("ON");
+    cabBSection.toggle.setButtonText ("ON");
+    cabAPhaseButton.setButtonText ("POLARITY");
+    cabBPhaseButton.setButtonText ("POLARITY");
 
     cabAIRBox.addItemList ({ "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57", "Medium 87", "Medium 160" }, 1);
     cabBIRBox.addItemList ({ "Bright Mix", "Dark Mix", "Medium Mix", "Medium 57", "Medium 87", "Medium 160" }, 1);
@@ -112,6 +118,7 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, "cabBlend", blendKnob);
 
+    updateAmpVoiceControls();
     startTimerHz (10);
 }
 
@@ -123,6 +130,29 @@ void Page2Component::timerCallback()
     for (int i = 0; i < 2; ++i)
         if (ampVoiceButtons[i].getToggleState() != (i == current))
             ampVoiceButtons[i].setToggleState (i == current, juce::dontSendNotification);
+
+    updateAmpVoiceControls();
+}
+
+void Page2Component::updateAmpVoiceControls()
+{
+    const auto voice = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load());
+    if (voice == lastAmpVoice)
+        return;
+
+    lastAmpVoice = voice;
+    const bool boutique = voice == 1;
+
+    ampToneKnob.setVisible (! boutique);
+    ampToneLabel.setVisible (! boutique);
+    const std::array<juce::Component*, 6> boutiqueControls {
+        &ampBassKnob, &ampMidKnob, &ampTrebleKnob, &ampBassLabel, &ampMidLabel, &ampTrebleLabel
+    };
+    for (auto* component : boutiqueControls)
+        component->setVisible (boutique);
+
+    resized();
+    repaint (ampKnobFrameBounds);
 }
 
 void Page2Component::paint (juce::Graphics& g)
@@ -159,22 +189,21 @@ void Page2Component::resized()
     auto knobArea = ampKnobFrameBounds.reduced (juce::jmax (6, ampKnobFrameBounds.getWidth() / 28), 8);
     knobArea.removeFromTop (juce::jmin (18, knobArea.getHeight() / 8));
 
-    // Row 1: Drive / Tone / Output — the Vintage 5E3 voice's own 3 knobs,
-    // always present since Tone still does something even in Modern voice
-    // (it feeds the same tone-filter point when Vintage is selected).
+    const bool boutique = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load()) == 1;
+
+    // Vintage: Drive / Tone / Volume. Boutique: Drive / Volume.
     auto knobRow = knobArea.removeFromTop (juce::roundToInt (knobArea.getHeight() * 0.56f));
-    auto knobWidth = knobRow.getWidth() / 3;
+    auto knobWidth = knobRow.getWidth() / (boutique ? 2 : 3);
     const auto knobInset = juce::jmax (2, knobWidth / 14);
     ampDriveKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
-    ampToneKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
+    if (! boutique)
+        ampToneKnob.setBounds (knobRow.removeFromLeft (knobWidth).reduced (knobInset, 0));
     ampOutputKnob.setBounds (knobRow.reduced (knobInset, 0));
     ampDriveKnob.toFront (false);
     ampToneKnob.toFront (false);
     ampOutputKnob.toFront (false);
 
-    // Voice toggle, then row 2: Bass / Mid / Treble — only audible when
-    // Modern 3-Band voice is selected, but always visible/adjustable, same
-    // as the Breaker variant buttons on Page1.
+    // Voice selector, then Boutique's three-band tone stack when selected.
     knobArea.removeFromTop (juce::jmin (10, knobArea.getHeight() / 6));
     auto voiceRow = knobArea.removeFromTop (juce::jmin (22, knobArea.getHeight() / 3));
     const auto voiceButtonWidth = voiceRow.getWidth() / 2;
@@ -182,15 +211,18 @@ void Page2Component::resized()
     ampVoiceButtons[1].setBounds (voiceRow.reduced (3, 1));
 
     knobArea.removeFromTop (juce::jmin (16, knobArea.getHeight() / 6));
-    auto knobRow2 = knobArea;
-    auto knobWidth2 = knobRow2.getWidth() / 3;
-    const auto knobInset2 = juce::jmax (2, knobWidth2 / 14);
-    ampBassKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
-    ampMidKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
-    ampTrebleKnob.setBounds (knobRow2.reduced (knobInset2, 0));
-    ampBassKnob.toFront (false);
-    ampMidKnob.toFront (false);
-    ampTrebleKnob.toFront (false);
+    if (boutique)
+    {
+        auto knobRow2 = knobArea;
+        auto knobWidth2 = knobRow2.getWidth() / 3;
+        const auto knobInset2 = juce::jmax (2, knobWidth2 / 14);
+        ampBassKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
+        ampMidKnob.setBounds (knobRow2.removeFromLeft (knobWidth2).reduced (knobInset2, 0));
+        ampTrebleKnob.setBounds (knobRow2.reduced (knobInset2, 0));
+        ampBassKnob.toFront (false);
+        ampMidKnob.toFront (false);
+        ampTrebleKnob.toFront (false);
+    }
 
     // Cab A | blend knob | Cab B, left to right.
     constexpr int blendWidth = 84;
@@ -205,8 +237,8 @@ void Page2Component::resized()
         section.bounds = area;
         area.reduce (10, 8);
         auto header = area.removeFromTop (24);
-        section.toggle.setBounds (header.removeFromRight (36).reduced (2, 0));
-        phaseButton.setBounds (header.removeFromRight (26).reduced (1, 0));
+        section.toggle.setBounds (header.removeFromRight (48).reduced (2, 0));
+        phaseButton.setBounds (header.removeFromRight (78).reduced (2, 0));
         header.removeFromRight (4);
         irBox.setBounds (header.removeFromRight (130).reduced (4, 0));
         section.titleLabel.setBounds (header);

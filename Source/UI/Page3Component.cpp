@@ -10,8 +10,14 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
         { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusWidth", "Width" },
         { "chorusTone", "Tone" }, { "chorusMix", "Mix" }
     }, false, SectionPlate::Chorus);
-    flangerMode1Button.setButtonText ("I");
-    flangerMode2Button.setButtonText ("II");
+    flangerMode1Button.setButtonText ("1");
+    flangerMode2Button.setButtonText ("2");
+    flangerMode1Button.setRenderedImageStyle (false);
+    flangerMode2Button.setRenderedImageStyle (false);
+    flangerLabel.setText ("FLANGER", juce::dontSendNotification);
+    flangerLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    flangerLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    flangerLabel.setJustificationType (juce::Justification::centredRight);
     flangerMode1Button.setTooltip ("Flanger I: independent warm sweep; enable I + II together for Mode III");
     flangerMode2Button.setTooltip ("Flanger II: independent faster sweep; enable I + II together for Mode III");
     const auto toggleFlangerBit = [this] (int bit)
@@ -28,6 +34,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     flangerMode2Button.onClick = [toggleFlangerBit] { toggleFlangerBit (2); };
     addAndMakeVisible (flangerMode1Button);
     addAndMakeVisible (flangerMode2Button);
+    addAndMakeVisible (flangerLabel);
 
     buildSection (echoSection, *this, processor.apvts, "Delay", "echoOn", {
         { "echoTime", "Time" }, { "echoRepeats", "Repeats" }, { "echoTone", "Tone" },
@@ -85,8 +92,9 @@ void Page3Component::resized()
     layoutHorizontalRackSection (chorusSection, area.removeFromTop (cardHeight), 224);
     auto chorusBounds = chorusSection.bounds;
     chorusSection.toggle.setBounds (chorusBounds.getX() + 78, chorusBounds.getY() + 9, 128, 32);
-    flangerMode1Button.setBounds (chorusBounds.getX() + 112, chorusBounds.getBottom() - 30, 42, 22);
-    flangerMode2Button.setBounds (chorusBounds.getX() + 160, chorusBounds.getBottom() - 30, 42, 22);
+    flangerLabel.setBounds (chorusBounds.getX() + 76, chorusBounds.getBottom() - 30, 72, 22);
+    flangerMode1Button.setBounds (chorusBounds.getX() + 152, chorusBounds.getBottom() - 30, 32, 22);
+    flangerMode2Button.setBounds (chorusBounds.getX() + 188, chorusBounds.getBottom() - 30, 32, 22);
     area.removeFromTop (gap);
     layoutHorizontalRackSection (echoSection, area.removeFromTop (cardHeight), 310);
     auto echoBounds = echoSection.bounds;

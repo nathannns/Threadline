@@ -28,6 +28,8 @@ namespace
 
 Page4Component::Page4Component (ThreadlineAudioProcessor& p)
 {
+    eqToggle.setRenderedImageStyle (false);
+    eqToggle.setButtonText ("ON");
     addAndMakeVisible (eqToggle);
     eqToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, "eqOn", eqToggle);
@@ -96,8 +98,8 @@ void Page4Component::resized()
     {
         label.setBounds (col.removeFromTop (18));
         col.removeFromTop (6);
-        toggle.setBounds (col.removeFromTop (22).withSizeKeepingCentre (50, 22));
-        col.removeFromTop (10);
+        toggle.setBounds (col.removeFromTop (44).withSizeKeepingCentre (44, 44));
+        col.removeFromTop (4);
         knob.setBounds (col.removeFromTop (juce::jmin (col.getHeight(), 100)));
     };
     layoutFilterColumn (hpfCol, hpfLabel, hpfToggle, hpfKnob);

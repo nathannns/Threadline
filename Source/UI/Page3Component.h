@@ -18,6 +18,7 @@ private:
     SectionUI tremSection, chorusSection, echoSection, reverbSection;
 
     ToggleFootswitch flangerMode1Button, flangerMode2Button;
+    juce::Label flangerLabel;
     juce::ComboBox echoPatternBox, echoDivisionBox;
     juce::ToggleButton echoSyncButton { "SYNC" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> echoPatternAttachment,

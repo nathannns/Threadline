@@ -78,7 +78,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 1.0f, 0.001f), 0.4f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampTone"), "Amp Tone",
         Range (0.0f, 1.0f, 0.001f), 0.6f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampOutput"), "Amp Output",
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampOutput"), "Amp Volume",
         Range (-24.0f, 12.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ampOversampling"), "Amp Oversampling",
         juce::StringArray { "Off", "2x", "4x" }, 2));
@@ -87,7 +87,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // AmpModule::updateModernToneFilters) — same preamp/power-stage circuit
     // underneath, different tone section, not a different amp model.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ampVoice"), "Amp Voice",
-        juce::StringArray { "Vintage 5E3", "Modern 3-Band" }, 0));
+        juce::StringArray { "Vintage 5E3", "Boutique" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampBass"), "Amp Bass",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampMid"), "Amp Mid",
