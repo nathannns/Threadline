@@ -83,7 +83,7 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
         { "reverbPreDelay", "Pre-Delay" }, { "reverbDecay", "Decay" }, { "reverbTone", "Tone" },
         { "reverbMix", "Mix" }, { "reverbWidth", "Width" }
     }, false, SectionPlate::Reverb);
-    reverbModelBox.addItemList ({ "Large Hall", "Large Stage", "Small Room" }, 1);
+    reverbModelBox.addItemList ({ "Room", "Hall", "Plate", "Shimmer" }, 1);
     addAndMakeVisible (reverbModelBox);
     reverbModelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "reverbModel", reverbModelBox);

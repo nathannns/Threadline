@@ -9,14 +9,20 @@ namespace
     constexpr int allpassTuningL[HallRoomReverbModule::numAllpasses] { 556, 441, 341, 225 };
     constexpr int stereoSpread = 23;
 
-    // Model 0 = Large Hall, 1 = Large Stage, 2 = Small Room (matches
+    // Model 0 = Room, 1 = Hall, 2 = Plate, 3 = Shimmer (matches
     // getModelName()). Size scales the comb/allpass line lengths (bigger =
     // sparser early build-up, bigger sense of space); the feedback range
     // sets each space's natural decay ceiling before the Decay knob is
-    // applied, so a small room can't ring on forever even at Decay = 1.
-    constexpr float modelSizeScale[HallRoomReverbModule::numModels] { 1.45f, 1.0f, 0.55f };
-    constexpr float modelFeedbackMin[HallRoomReverbModule::numModels] { 0.72f, 0.68f, 0.60f };
-    constexpr float modelFeedbackMax[HallRoomReverbModule::numModels] { 0.985f, 0.975f, 0.90f };
+    // applied. Plate runs a higher allpass feedback (denser diffusion) and
+    // a brighter fixed damping bias, matching the real RV-6's "metallic,
+    // extended high-frequency range" description. Shimmer reuses Hall's
+    // tank -- its character comes from the external pitch-shift feedback
+    // loop in process(), not from the tank tuning itself.
+    constexpr float modelSizeScale[HallRoomReverbModule::numModels]      { 0.55f, 1.3f, 0.4f, 1.3f };
+    constexpr float modelFeedbackMin[HallRoomReverbModule::numModels]    { 0.60f, 0.72f, 0.68f, 0.70f };
+    constexpr float modelFeedbackMax[HallRoomReverbModule::numModels]    { 0.90f, 0.985f, 0.95f, 0.98f };
+    constexpr float modelAllpassFeedback[HallRoomReverbModule::numModels] { 0.5f, 0.5f, 0.65f, 0.5f };
+    constexpr float modelDamp1Bias[HallRoomReverbModule::numModels]      { 0.0f, 0.0f, -0.15f, 0.0f };
 
     // A comb sum can in principle build gain at coincident resonances even
     // though each individual comb is stable (feedback < 1) -- this keeps the
@@ -37,6 +43,7 @@ void HallRoomReverbModule::prepareTank (Tank& tank, int modelIndex)
     const auto srScale = static_cast<float> (sampleRate / 44100.0);
     const auto scale = srScale * modelSizeScale[modelIndex];
     const auto spread = juce::roundToInt (static_cast<float> (stereoSpread) * scale);
+    const auto allpassFeedback = modelAllpassFeedback[modelIndex];
 
     for (int i = 0; i < numCombs; ++i)
     {
@@ -46,7 +53,9 @@ void HallRoomReverbModule::prepareTank (Tank& tank, int modelIndex)
     for (int i = 0; i < numAllpasses; ++i)
     {
         tank.allpassL[i].setSize (juce::roundToInt (static_cast<float> (allpassTuningL[i]) * scale));
+        tank.allpassL[i].feedback = allpassFeedback;
         tank.allpassR[i].setSize (juce::roundToInt (static_cast<float> (allpassTuningL[i]) * scale) + spread);
+        tank.allpassR[i].feedback = allpassFeedback;
     }
     tank.reset();
 }
@@ -69,6 +78,13 @@ void HallRoomReverbModule::prepare (const juce::dsp::ProcessSpec& spec)
         prepareTank (tanks[model], model);
     activeModel = 0;
 
+    // ~70ms grains: long enough to sound smooth/ambient rather than choppy,
+    // short enough to track pitch changes reasonably promptly.
+    const auto grainSamples = static_cast<float> (sampleRate) * 0.07f;
+    const auto shifterBufferSize = juce::roundToInt (grainSamples) + 16;
+    shimmerShifterL.prepare (shifterBufferSize, grainSamples);
+    shimmerShifterR.prepare (shifterBufferSize, grainSamples);
+
     wetMix.reset (spec.sampleRate, 0.03);
     reset();
 }
@@ -76,6 +92,9 @@ void HallRoomReverbModule::prepare (const juce::dsp::ProcessSpec& spec)
 void HallRoomReverbModule::reset()
 {
     for (auto& tank : tanks) tank.reset();
+    shimmerShifterL.reset();
+    shimmerShifterR.reset();
+    previousWetL = previousWetR = 0.0f;
     rumbleFilter.reset();
     preDelayLine.reset();
     modPhaseLeft = 0.0f;
@@ -97,6 +116,9 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayN
     if (modelIndex != activeModel)
     {
         tanks[modelIndex].reset(); // no stale energy from the previous space
+        shimmerShifterL.reset();
+        shimmerShifterR.reset();
+        previousWetL = previousWetR = 0.0f;
         activeModel = modelIndex;
     }
 
@@ -105,9 +127,12 @@ void HallRoomReverbModule::setParameters (float preDelayNormalised, float decayN
 
     // Darker (lower Tone) = more damping = highs decay faster than lows in
     // the tail, same as real air absorption; kept well short of 1.0 so full
-    // dark still sounds like a darkened room, not a muffled thump.
+    // dark still sounds like a darkened room, not a muffled thump. Plate's
+    // fixed negative bias keeps its extended-highs character even at
+    // matched Tone settings, per the real RV-6's Plate description.
     const auto darkness = 1.0f - juce::jlimit (0.0f, 1.0f, toneNormalised);
-    const auto damp1 = juce::jmap (darkness, 0.05f, 0.65f);
+    const auto damp1 = juce::jlimit (0.02f, 0.9f,
+        juce::jmap (darkness, 0.05f, 0.65f) + modelDamp1Bias[activeModel]);
     const auto damp2 = 1.0f - damp1;
 
     for (auto* combs : { tanks[activeModel].combsL, tanks[activeModel].combsR })
@@ -167,12 +192,22 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
     // The tank itself: 8 parallel combs summed, then 4 series allpasses,
     // run per-channel so any existing stereo width upstream (e.g. the dual
     // cab IR blend) carries through rather than being collapsed to mono.
+    // Shimmer additionally pitch-shifts its own previous output up an
+    // octave and feeds a portion back into this sample's tank input, so
+    // the tail cascades upward on top of the normal reverberant decay.
     constexpr float inputGain = 0.03f;
+    constexpr float shimmerFeedback = 0.5f;
     auto& tank = tanks[activeModel];
     for (int sample = 0; sample < samples; ++sample)
     {
-        const auto inputL = wetBuffer.getSample (0, sample) * inputGain;
-        const auto inputR = (channels > 1 ? wetBuffer.getSample (1, sample) : wetBuffer.getSample (0, sample)) * inputGain;
+        auto inputL = wetBuffer.getSample (0, sample) * inputGain;
+        auto inputR = (channels > 1 ? wetBuffer.getSample (1, sample) : wetBuffer.getSample (0, sample)) * inputGain;
+
+        if (activeModel == shimmerModel)
+        {
+            inputL += shimmerShifterL.process (previousWetL) * shimmerFeedback;
+            inputR += shimmerShifterR.process (previousWetR) * shimmerFeedback;
+        }
 
         float wetL = 0.0f, wetR = 0.0f;
         for (auto& c : tank.combsL) wetL += c.process (inputL);
@@ -180,9 +215,14 @@ void HallRoomReverbModule::process (juce::AudioBuffer<float>& buffer)
         for (auto& a : tank.allpassL) wetL = a.process (wetL);
         for (auto& a : tank.allpassR) wetR = a.process (wetR);
 
-        wetBuffer.setSample (0, sample, smoothRail (wetL, 1.2f, 3.5f));
+        wetL = smoothRail (wetL, 1.2f, 3.5f);
+        wetR = smoothRail (wetR, 1.2f, 3.5f);
+        wetBuffer.setSample (0, sample, wetL);
         if (channels > 1)
-            wetBuffer.setSample (1, sample, smoothRail (wetR, 1.2f, 3.5f));
+            wetBuffer.setSample (1, sample, wetR);
+
+        previousWetL = wetL;
+        previousWetR = wetR;
     }
 
     juce::dsp::AudioBlock<float> wetBlock (wetBuffer);

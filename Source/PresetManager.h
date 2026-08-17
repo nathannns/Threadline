@@ -169,7 +169,7 @@ private:
             { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
             { "chorusRate", 0.30f }, { "chorusDepth", 20.0f }, { "chorusLag", 25.0f },
             { "chorusDCV", 1.0f }, // Chorus
-            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.48f },
+            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.48f },
             { "reverbTone", 0.62f }, { "reverbMix", 10.0f }, { "reverbWidth", 58.0f }
         });
         makePreset ("02 Edge of Breakup", {
@@ -202,7 +202,7 @@ private:
             // behind the lead, not self-oscillating.
             { "echoOn", 1.0f }, { "echoMode", 0.0f },
             { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.66f },
+            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.66f },
             { "reverbMix", 12.0f }, { "reverbWidth", 62.0f }
         });
         makePreset ("04 Vibrato Swirl", {
@@ -215,7 +215,7 @@ private:
             { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
             { "chorusRate", 1.80f }, { "chorusDepth", 68.0f }, { "chorusLag", 70.0f },
             { "chorusDCV", 2.0f }, // Vibrato
-            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbPreDelay", 0.15f },
+            { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbPreDelay", 0.15f },
             { "reverbDecay", 0.70f }, { "reverbTone", 0.55f }, { "reverbMix", 18.0f },
             { "reverbWidth", 80.0f }
         });
@@ -235,7 +235,7 @@ private:
             // into the reverb tail rather than distinct slapback.
             { "echoOn", 1.0f }, { "echoMode", 1.0f },
             { "echoTime", 450.0f }, { "echoSustain", 55.0f }, { "echoVolume", 26.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbPreDelay", 0.18f },
+            { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbPreDelay", 0.18f },
             { "reverbDecay", 0.82f }, { "reverbTone", 0.50f }, { "reverbMix", 29.0f },
             { "reverbWidth", 92.0f }
         });
@@ -256,7 +256,7 @@ private:
             { "eqBand8", 0.8f }, { "eqBand9", -1.8f },
             { "eqHpfOn", 1.0f }, { "eqHpfFreq", 76.0f },
             { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9000.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.38f },
+            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.38f },
             { "reverbMix", 6.0f }, { "reverbWidth", 48.0f }
         });
 
