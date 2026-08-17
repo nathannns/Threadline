@@ -37,9 +37,16 @@ namespace SectionGrid
 // paint as their base background, so the whole window reads as one surface.
 inline void paintThreadlineBackground (juce::Graphics& g, juce::Rectangle<int> bounds)
 {
-    juce::ColourGradient gradient (ThreadlineColours::bgTop, (float) bounds.getX(), (float) bounds.getY(),
-                                    ThreadlineColours::bgBottom, (float) bounds.getX(), (float) bounds.getBottom(), false);
-    g.setGradientFill (gradient);
+    static const auto background = juce::ImageCache::getFromMemory (
+        BinaryData::plugin_background_subtle_png, BinaryData::plugin_background_subtle_pngSize);
+    if (background.isValid())
+        g.drawImage (background, bounds.toFloat(), juce::RectanglePlacement::fillDestination);
+    else
+        g.fillAll (ThreadlineColours::background);
+
+    // A restrained tint keeps the generated texture subordinate to controls
+    // and makes every page share exactly the same warm-charcoal colour cast.
+    g.setColour (juce::Colour (0xff241912).withAlpha (0.18f));
     g.fillRect (bounds);
 }
 

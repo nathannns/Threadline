@@ -24,8 +24,7 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/ImpulseResponses/Optimized/spring_9100_clean.wav
     Resources/ImpulseResponses/Optimized/spring_echomixer_clean.wav
     Resources/Images/tweed_amp.png
-    Resources/Images/amp_section_background.png
-    Resources/Images/amp_controls_cab_background.png
+    Resources/Images/plugin_background_subtle.png
     Resources/Images/knob_pointer.png
     Resources/Images/knob_effects.png
     Resources/Images/eq_slider_cap.png

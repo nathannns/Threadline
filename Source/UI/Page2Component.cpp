@@ -16,11 +16,6 @@ namespace
 Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
 {
     ampImage = juce::ImageCache::getFromMemory (BinaryData::tweed_amp_png, BinaryData::tweed_amp_pngSize);
-    ampSectionBackground = juce::ImageCache::getFromMemory (BinaryData::amp_section_background_png,
-                                                            BinaryData::amp_section_background_pngSize);
-    ampControlsBackground = juce::ImageCache::getFromMemory (
-        BinaryData::amp_controls_cab_background_png, BinaryData::amp_controls_cab_background_pngSize);
-
     setupAmpKnob (ampDriveLabel, ampDriveKnob, "Drive");
     setupAmpKnob (ampToneLabel, ampToneKnob, "Tone");
     setupAmpKnob (ampOutputLabel, ampOutputKnob, "Output");
@@ -53,9 +48,6 @@ void Page2Component::paint (juce::Graphics& g)
 {
     paintThreadlineBackground (g, getLocalBounds());
 
-    if (ampSectionBackground.isValid())
-        g.drawImage (ampSectionBackground, getLocalBounds().toFloat(), juce::RectanglePlacement::stretchToFit);
-
     if (ampImage.isValid() && ! ampImageFrameBounds.isEmpty())
     {
         auto placement = juce::RectanglePlacement (juce::RectanglePlacement::centred
@@ -64,16 +56,11 @@ void Page2Component::paint (juce::Graphics& g)
         g.drawImage (ampImage, ampArea, placement);
     }
 
-    const auto controlsAndCab = ampKnobFrameBounds.getUnion (cabSection.bounds);
-    if (ampControlsBackground.isValid())
-        g.drawImage (ampControlsBackground, controlsAndCab.toFloat(), juce::RectanglePlacement::fillDestination);
-    for (const auto panel : { ampKnobFrameBounds, cabSection.bounds })
-    {
-        g.setColour (juce::Colours::black.withAlpha (0.10f));
-        g.fillRoundedRectangle (panel.toFloat(), 9.0f);
-        g.setColour (ThreadlineColours::cardBorder);
-        g.drawRoundedRectangle (panel.toFloat(), 9.0f, 1.2f);
-    }
+    // Two clean translucent cards over the global background. There is no
+    // baked-in divider or oversized decorative frame competing with the
+    // actual amp/cab geometry.
+    paintCard (g, ampKnobFrameBounds);
+    paintCard (g, cabSection.bounds);
 }
 
 void Page2Component::resized()
