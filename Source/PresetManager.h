@@ -70,7 +70,16 @@ public:
         if (! tree.isValid())
             return false;
 
+        // Hardware/session choices are global, not tone-preset parameters.
+        // Preserve them across every preset load, including prev/next and
+        // the automatic load following deletion.
+        const auto masterBypass = apvts.getRawParameterValue ("masterBypass")->load();
+        const auto oversampling = apvts.getRawParameterValue ("ampOversampling")->load();
+        const auto inputSource = apvts.getRawParameterValue ("inputSource")->load();
         apvts.replaceState (tree);
+        restoreGlobalParameter ("masterBypass", masterBypass);
+        restoreGlobalParameter ("ampOversampling", oversampling);
+        restoreGlobalParameter ("inputSource", inputSource);
         currentPresetName = file.getFileNameWithoutExtension();
         return true;
     }
@@ -122,6 +131,12 @@ public:
     }
 
 private:
+    void restoreGlobalParameter (const char* id, float value)
+    {
+        if (auto* parameter = apvts.getParameter (id))
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+    }
+
     void ensureTestingPresets()
     {
         const auto original = apvts.copyState();

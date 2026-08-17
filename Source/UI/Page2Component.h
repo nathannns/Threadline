@@ -16,6 +16,7 @@ private:
     ThreadlineAudioProcessor& processor;
     juce::Image ampImage;
     juce::Image ampSectionBackground;
+    juce::Image ampControlsBackground;
     juce::Rectangle<int> ampImageFrameBounds;
 
     // Amp: no on/off toggle (always in the chain), 3 knobs drawn along the

@@ -30,6 +30,13 @@ void Page1Component::resized()
     constexpr int gap = 8;
     const auto cardHeight = (area.getHeight() - 2 * gap) / 3;
     layoutHorizontalRackSection (compSection, area.removeFromTop (cardHeight));
+    // The five-knob compressor reads better with slightly smaller controls
+    // and more breathing room than the three-knob drive racks.
+    for (auto& knob : compSection.knobs)
+    {
+        const auto current = knob->slider.getBounds();
+        knob->slider.setBounds (current.reduced (current.getWidth() / 10, current.getHeight() / 12));
+    }
     area.removeFromTop (gap);
     layoutHorizontalRackSection (klonSection, area.removeFromTop (cardHeight));
     area.removeFromTop (gap);

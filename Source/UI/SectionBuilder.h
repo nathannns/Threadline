@@ -90,6 +90,30 @@ namespace SectionPlate
     enum { Gate = 0, Compressor, Klon, TS9, Tremolo, Chorus, Delay, Reverb, count, Cab = Compressor };
 }
 
+// Preserve the photographed rim and end hardware while allowing the quiet
+// centre material to span a very wide rack slot. This is the same principle
+// as CSS nine-slice scaling, applied horizontally.
+inline void drawWideRackPlate (juce::Graphics& g, const juce::Image& image,
+                               juce::Rectangle<int> destination)
+{
+    if (! image.isValid() || destination.isEmpty())
+        return;
+
+    const auto sourceWidth = image.getWidth();
+    const auto sourceHeight = image.getHeight();
+    const auto sourceCap = juce::jmax (1, juce::roundToInt ((float) sourceWidth * 0.16f));
+    const auto destinationCap = juce::roundToInt (juce::jmin ((float) destination.getWidth() * 0.22f,
+        (float) destination.getHeight() * (float) sourceCap / (float) sourceHeight));
+    const auto centreWidth = juce::jmax (0, destination.getWidth() - destinationCap * 2);
+
+    g.drawImage (image, destination.getX(), destination.getY(), destinationCap, destination.getHeight(),
+                 0, 0, sourceCap, sourceHeight);
+    g.drawImage (image, destination.getX() + destinationCap, destination.getY(), centreWidth, destination.getHeight(),
+                 sourceCap, 0, sourceWidth - sourceCap * 2, sourceHeight);
+    g.drawImage (image, destination.getRight() - destinationCap, destination.getY(), destinationCap, destination.getHeight(),
+                 sourceWidth - sourceCap, 0, sourceCap, sourceHeight);
+}
+
 // Shared image-independent module card. Keeping this vector-first makes every
 // page coherent before a future optional skin is applied; the old plate assets
 // remain available but no longer define geometry or readability.
@@ -113,11 +137,7 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
     {
         g.saveState();
         g.reduceClipRegion (section.bounds);
-        // The generated plates include raised 3D rims and shadows near all
-        // four edges. Stretch the complete source into the rack slot rather
-        // than using fillDestination, which enlarged it and cropped those
-        // details above and below the short horizontal frame.
-        g.drawImage (plates[index], bounds, juce::RectanglePlacement::stretchToFit);
+        drawWideRackPlate (g, plates[index], section.bounds);
         g.setColour (juce::Colours::black.withAlpha (0.10f));
         g.fillRoundedRectangle (bounds, 9.0f);
         g.restoreState();

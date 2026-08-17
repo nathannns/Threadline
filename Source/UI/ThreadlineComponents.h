@@ -71,6 +71,15 @@ public:
         auto side = juce::jmin (bounds.getWidth(), bounds.getHeight());
         auto knobBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
 
+        // The source PNGs contain transparent pixels around and within the
+        // photographed hardware. A solid backing keeps light rack artwork
+        // from showing through the compressor and other effect knobs.
+        if (style == Style::Modern)
+        {
+            g.setColour (juce::Colour (0xff211a16));
+            g.fillEllipse (knobBounds.reduced (side * 0.08f));
+        }
+
         const auto rotary = getRotaryParameters();
         const auto normalised = (float) getNormalisableRange().convertTo0to1 ((float) getValue());
         const auto angle = rotary.startAngleRadians + normalised * (rotary.endAngleRadians - rotary.startAngleRadians);
@@ -154,6 +163,8 @@ public:
         const auto capWidth = juce::jmin (bounds.getWidth() * 0.96f, 34.0f);
         const auto capHeight = juce::jlimit (9.0f, 15.0f, capWidth / 3.0f);
         auto cap = juce::Rectangle<float> (capWidth, capHeight).withCentre ({ bounds.getCentreX(), capY });
+        g.setColour (juce::Colour (0xff211a16));
+        g.fillRoundedRectangle (cap, 3.0f);
         g.drawImage (capImage, cap, juce::RectanglePlacement::stretchToFit);
     }
 };

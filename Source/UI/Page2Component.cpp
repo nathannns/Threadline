@@ -18,6 +18,8 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     ampImage = juce::ImageCache::getFromMemory (BinaryData::tweed_amp_png, BinaryData::tweed_amp_pngSize);
     ampSectionBackground = juce::ImageCache::getFromMemory (BinaryData::amp_section_background_png,
                                                             BinaryData::amp_section_background_pngSize);
+    ampControlsBackground = juce::ImageCache::getFromMemory (
+        BinaryData::amp_controls_cab_background_png, BinaryData::amp_controls_cab_background_pngSize);
 
     setupAmpKnob (ampDriveLabel, ampDriveKnob, "Drive");
     setupAmpKnob (ampToneLabel, ampToneKnob, "Tone");
@@ -62,8 +64,16 @@ void Page2Component::paint (juce::Graphics& g)
         g.drawImage (ampImage, ampArea, placement);
     }
 
-    paintCard (g, ampKnobFrameBounds); // frame around Drive/Tone/Output, same size as the Cabinet card below it
-    paintCard (g, cabSection.bounds); // plain card, no photo texture per your last request
+    const auto controlsAndCab = ampKnobFrameBounds.getUnion (cabSection.bounds);
+    if (ampControlsBackground.isValid())
+        g.drawImage (ampControlsBackground, controlsAndCab.toFloat(), juce::RectanglePlacement::fillDestination);
+    for (const auto panel : { ampKnobFrameBounds, cabSection.bounds })
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.10f));
+        g.fillRoundedRectangle (panel.toFloat(), 9.0f);
+        g.setColour (ThreadlineColours::cardBorder);
+        g.drawRoundedRectangle (panel.toFloat(), 9.0f, 1.2f);
+    }
 }
 
 void Page2Component::resized()
