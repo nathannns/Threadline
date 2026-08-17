@@ -16,6 +16,16 @@ Page1Component::Page1Component (ThreadlineAudioProcessor& p) : processor (p)
     }, false, SectionPlate::TS9);
 
     ts9VariantKnob.setRange (0.0, 2.0, 1.0);
+    // Fixed layout: TS9 (value 0) bottom-left, TS808 (value 1) top, TS10
+    // (value 2) bottom-right — the standard "7 o'clock to 5 o'clock through
+    // 12" rotary sweep. Set explicitly (rather than relying on PhotoKnob's
+    // inherited default, even though it happens to match) since the 3
+    // detented stops landing in these exact positions is the whole point.
+    juce::Slider::RotaryParameters variantRotary;
+    variantRotary.startAngleRadians = juce::MathConstants<float>::pi * 1.2f;
+    variantRotary.endAngleRadians = juce::MathConstants<float>::pi * 2.8f;
+    variantRotary.stopAtEnd = true;
+    ts9VariantKnob.setRotaryParameters (variantRotary);
     ts9VariantKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     addAndMakeVisible (ts9VariantKnob);
     ts9VariantLabel.setJustificationType (juce::Justification::centred);
