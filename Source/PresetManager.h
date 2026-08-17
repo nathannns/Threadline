@@ -151,44 +151,81 @@ private:
             savePreset (name);
         };
 
+        // Each factory sound deliberately exercises the current topology:
+        // Diamond optical compressor controls, switchable drive order,
+        // Vintage/Boutique amp voices, parallel dual-cab IRs, RE-201-style
+        // delay patterns, convolution spaces, and the post-effects EQ.
         makePreset ("01 Clean Tweed", {
-            { "compOn", 1.0f }, { "compThreshold", 30.0f }, { "compRatio", 28.0f },
-            { "compAttack", 8.0f }, { "ampDrive", 0.20f }, { "ampTone", 0.64f },
-            { "ampOutput", -1.5f }, { "cabIRSelect", 2.0f }, { "cabMix", 1.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbMix", 12.0f }
+            { "compOn", 1.0f }, { "compThreshold", 28.0f }, { "compRatio", 24.0f },
+            { "compAttack", 6.0f }, { "compRelease", 0.8f }, { "compMakeup", 1.2f },
+            { "ampVoice", 0.0f }, { "ampDrive", 0.22f }, { "ampTone", 0.63f },
+            { "ampOutput", -1.5f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 6.0f }, { "reverbDecay", 0.48f },
+            { "reverbTone", 0.62f }, { "reverbMix", 10.0f }, { "reverbWidth", 58.0f }
         });
         makePreset ("02 Edge of Breakup", {
-            { "klonOn", 1.0f }, { "klonGain", 0.16f }, { "klonTreble", 0.53f },
-            { "klonLevel", 0.62f }, { "ampDrive", 0.48f }, { "ampTone", 0.54f },
-            { "ampOutput", -3.0f }, { "cabIRSelect", 0.0f }, { "reverbOn", 1.0f },
-            { "reverbModel", 1.0f }, { "reverbMix", 10.0f }
+            { "odOrder", 0.0f }, { "klonOn", 1.0f }, { "klonGain", 0.14f },
+            { "klonTreble", 0.52f }, { "klonLevel", 0.61f },
+            { "ampVoice", 0.0f }, { "ampDrive", 0.48f }, { "ampTone", 0.54f },
+            { "ampOutput", -3.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 1.0f }, { "cabBIRSelect", 1.0f }, { "cabBMix", 1.0f },
+            { "cabBlend", 30.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 5.0f }, { "reverbDecay", 0.56f },
+            { "reverbTone", 0.55f }, { "reverbMix", 9.0f }, { "reverbWidth", 54.0f }
         });
         makePreset ("03 Driven Lead", {
-            { "compOn", 1.0f }, { "compThreshold", 52.0f }, { "compRatio", 42.0f },
-            { "ts9On", 1.0f }, { "ts9Variant", 1.0f }, { "ts9Drive", 0.24f },
-            { "ts9Tone", 0.46f }, { "ts9Level", 0.68f }, { "ampDrive", 0.66f },
-            { "ampTone", 0.58f }, { "ampOutput", -4.0f }, { "cabIRSelect", 3.0f },
-            { "echoOn", 1.0f }, { "echoTime", 340.0f }, { "echoRepeats", 18.0f },
-            { "echoTone", 4800.0f }, { "echoMix", 14.0f }, { "reverbOn", 1.0f },
-            { "reverbModel", 6.0f }, { "reverbMix", 14.0f }
+            { "compOn", 1.0f }, { "compThreshold", 42.0f }, { "compRatio", 34.0f },
+            { "compAttack", 12.0f }, { "compRelease", 1.5f }, { "compMakeup", 1.0f },
+            { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 1.0f },
+            { "ts9Drive", 0.22f }, { "ts9Tone", 0.47f }, { "ts9Level", 0.70f },
+            { "klonOn", 1.0f }, { "klonGain", 0.10f }, { "klonTreble", 0.56f },
+            { "klonLevel", 0.58f },
+            { "ampVoice", 1.0f }, { "ampDrive", 0.62f }, { "ampBass", 0.56f },
+            { "ampMid", 0.66f }, { "ampTreble", 0.54f }, { "ampOutput", -4.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 1.0f }, { "cabBIRSelect", 4.0f }, { "cabBMix", 1.0f },
+            { "cabBlend", 42.0f },
+            { "echoOn", 1.0f }, { "echoSync", 0.0f }, { "echoPattern", 1.0f },
+            { "echoTime", 330.0f }, { "echoRepeats", 20.0f }, { "echoTone", 4700.0f },
+            { "echoWobble", 18.0f }, { "echoDrive", 24.0f }, { "echoMix", 13.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 4.0f }, { "reverbDecay", 0.66f },
+            { "reverbMix", 12.0f }, { "reverbWidth", 62.0f }
         });
         makePreset ("04 Ambient Hall", {
-            { "ampDrive", 0.30f }, { "ampTone", 0.60f }, { "cabIRSelect", 2.0f },
-            { "chorusOn", 1.0f }, { "chorusRate", 0.22f }, { "chorusDepth", 34.0f },
-            { "chorusWidth", 92.0f }, { "chorusTone", 7200.0f }, { "chorusMix", 18.0f },
+            { "ampVoice", 0.0f }, { "ampDrive", 0.28f }, { "ampTone", 0.61f },
+            { "ampOutput", -3.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
+            { "cabBlend", 35.0f },
+            { "chorusOn", 1.0f }, { "chorusFlangerMode", 3.0f },
+            { "chorusRate", 0.20f }, { "chorusDepth", 31.0f }, { "chorusWidth", 94.0f },
+            { "chorusTone", 7000.0f }, { "chorusMix", 20.0f },
             { "echoOn", 1.0f }, { "echoSync", 1.0f }, { "echoPattern", 4.0f },
-            { "echoDivision", 3.0f }, { "echoRepeats", 42.0f }, { "echoMix", 24.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 3.0f }, { "reverbDecay", 0.64f },
-            { "reverbTone", 0.52f }, { "reverbMix", 30.0f }, { "reverbWidth", 88.0f }
+            { "echoDivision", 3.0f }, { "echoRepeats", 40.0f }, { "echoTone", 5200.0f },
+            { "echoWobble", 34.0f }, { "echoDrive", 20.0f }, { "echoMix", 23.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbPreDelay", 0.18f },
+            { "reverbDecay", 0.82f }, { "reverbTone", 0.50f }, { "reverbMix", 29.0f },
+            { "reverbWidth", 92.0f }
         });
         makePreset ("05 Tight Rhythm", {
-            { "gateOn", 1.0f }, { "gateAmount", 32.0f }, { "ts9On", 1.0f },
-            { "ts9Variant", 2.0f }, { "ts9Drive", 0.12f }, { "ts9Tone", 0.58f },
-            { "ts9Level", 0.72f }, { "ampDrive", 0.56f }, { "ampTone", 0.48f },
-            { "ampOutput", -4.5f }, { "cabIRSelect", 4.0f }, { "eqOn", 1.0f },
-            { "eqBand1", -2.0f }, { "eqBand2", -1.0f }, { "eqBand5", 1.5f },
-            { "eqBand8", 1.0f }, { "eqBand9", -1.5f }, { "eqHpfOn", 1.0f },
-            { "eqHpfFreq", 72.0f }, { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9200.0f }
+            { "gateOn", 1.0f }, { "gateAmount", 30.0f },
+            { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 2.0f },
+            { "ts9Drive", 0.10f }, { "ts9Tone", 0.57f }, { "ts9Level", 0.73f },
+            { "ampVoice", 1.0f }, { "ampDrive", 0.55f }, { "ampBass", 0.43f },
+            { "ampMid", 0.60f }, { "ampTreble", 0.58f }, { "ampOutput", -4.5f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 4.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 1.0f }, { "cabBIRSelect", 0.0f }, { "cabBMix", 1.0f },
+            { "cabBlend", 24.0f },
+            { "eqOn", 1.0f }, { "eqBand1", -2.5f }, { "eqBand2", -1.5f },
+            { "eqBand3", -0.8f }, { "eqBand5", 1.4f }, { "eqBand6", 1.0f },
+            { "eqBand8", 0.8f }, { "eqBand9", -1.8f },
+            { "eqHpfOn", 1.0f }, { "eqHpfFreq", 76.0f },
+            { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9000.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 6.0f }, { "reverbDecay", 0.38f },
+            { "reverbMix", 6.0f }, { "reverbWidth", 48.0f }
         });
 
         apvts.replaceState (original);
