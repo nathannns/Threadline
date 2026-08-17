@@ -199,6 +199,23 @@ public:
         setTitle (labelText);
     }
 
+    // Double-pressing the icon bypasses/restores that whole page's section
+    // (see ThreadlineAudioProcessor's *SectionOn parameters) — separate
+    // from onClick, which just switches the visible page.
+    std::function<void()> onDoubleClick;
+
+    void mouseDoubleClick (const juce::MouseEvent&) override
+    {
+        if (onDoubleClick) onDoubleClick();
+    }
+
+    void setSectionBypassed (bool shouldBeBypassed)
+    {
+        if (bypassed == shouldBeBypassed) return;
+        bypassed = shouldBeBypassed;
+        repaint();
+    }
+
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (2.0f);
@@ -220,7 +237,12 @@ public:
 
         auto glyph = bounds.withSizeKeepingCentre (bounds.getHeight(), bounds.getHeight())
                            .reduced (bounds.getHeight() * 0.25f);
-        g.setColour (selected ? juce::Colours::white.withAlpha (0.95f) : ThreadlineColours::textDim);
+        // Bypassed overrides the selected/highlighted glyph colour with the
+        // same muted amber-brown PowerButton uses for its own bypassed
+        // state, so "this whole page is off" reads consistently regardless
+        // of whether you're currently looking at that page.
+        g.setColour (bypassed ? juce::Colour (0xff6a5a4e)
+                               : (selected ? juce::Colours::white.withAlpha (0.95f) : ThreadlineColours::textDim));
 
         switch (icon)
         {
@@ -274,6 +296,15 @@ public:
                 break;
             }
         }
+        // A diagonal strike over the glyph, same idea as EyeButton's slash
+        // -- unambiguous even at this icon's small size, where a colour
+        // change alone could read as just "unfocused" rather than "off."
+        if (bypassed)
+        {
+            g.setColour (juce::Colour (0xffb0453a).withAlpha (0.85f));
+            g.drawLine (glyph.getX() - 1.0f, glyph.getBottom() + 1.0f,
+                        glyph.getRight() + 1.0f, glyph.getY() - 1.0f, 2.0f);
+        }
         if (hasKeyboardFocus (true))
         {
             g.setColour (juce::Colours::white.withAlpha (0.75f));
@@ -283,6 +314,7 @@ public:
 
 private:
     Icon icon;
+    bool bypassed = false;
 };
 
 class ThreadlineAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer

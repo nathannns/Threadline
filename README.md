@@ -157,6 +157,26 @@ significantly — July and Plexer in particular are now built around specific
 real pedals' control surfaces rather than Rockalizer's more generic
 versions.
 
+## UI
+
+The editor window is a taller 1200x760 canvas (was 1200x660). Every existing
+element keeps its original absolute size — nothing was scaled up — the
+extra 100px is a genuinely empty reserved gap between the page content and
+the footer strip (was a fixed 10px gap, now 110px), deliberate headroom for
+a future control row rather than making anything already there bigger.
+
+The 4 tab icons (Pre-FX / Amp / Wet FX / EQ) do double duty: a single click
+switches which page is visible, same as always; double-pressing one bypasses
+*that whole page's section* (a `preFxSectionOn`/`ampSectionOn`/
+`wetFxSectionOn`/`eqSectionOn` APVTS bool per tab), independent of switching
+pages and independent of each module's own on/off toggle inside that page —
+double-press again to restore it. A bypassed tab shows a diagonal strike
+through its icon (works whether or not that page is the one currently
+visible) so it stays legible while you're looking at another tab. The Amp
+itself also gained its own on/off toggle (`ampOn`, defaults on) in the
+knob card's top-right corner, matching every other module's toggle — it
+previously had none, since it was treated as always-in-the-chain.
+
 ## Build
 
 You said you've already got JUCE, CMake, and Ninja — but this pins JUCE to

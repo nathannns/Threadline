@@ -26,6 +26,15 @@ namespace
             walkForKnobs (*child, visible);
         }
     }
+
+    // Index-matched to tabPills / TabPill::Icon (Dirt=Pre-FX, Amp, Wet, EQ)
+    // -- the page-level bypass parameter each tab's icon double-press
+    // toggles, on top of that page's individual module toggles.
+    const char* sectionBypassParamId (int pageIndex)
+    {
+        static const char* ids[4] { "preFxSectionOn", "ampSectionOn", "wetFxSectionOn", "eqSectionOn" };
+        return ids[juce::jlimit (0, 3, pageIndex)];
+    }
 }
 
 ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor& p)
@@ -127,6 +136,13 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     {
         addAndMakeVisible (tabPills[(size_t) i]);
         tabPills[(size_t) i].onClick = [this, i] { switchToPage (i); };
+        // Double-pressing a tab icon bypasses (or restores) that whole
+        // page's section, independent of switching which page is visible.
+        tabPills[(size_t) i].onDoubleClick = [this, i]
+        {
+            if (auto* parameter = processor.apvts.getParameter (sectionBypassParamId (i)))
+                parameter->setValueNotifyingHost (parameter->getValue() > 0.5f ? 0.0f : 1.0f);
+        };
     }
     tabPills[0].setToggleState (true, juce::dontSendNotification);
 
@@ -198,10 +214,18 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     switchToPage (0);
 
     // Same reference canvas and resize policy as Rockalizer.
-    setSize (1200, 660);
+    // Taller than Rockalizer's original 1200x660 canvas. Every existing
+    // element keeps its original absolute size (see the `content` rect and
+    // footer y-offsets in resized()) -- the extra 100px becomes a genuinely
+    // empty reserved gap between the page content and the footer, headroom
+    // for future controls rather than scaling anything already there.
+    setSize (1200, 760);
     setResizable (true, true);
-    setResizeLimits (900, 495, 1600, 880);
-    getConstrainer()->setFixedAspectRatio (1200.0 / 660.0);
+    // Same 900-1600 width range as before; height limits recomputed for the
+    // new 1200:760 aspect ratio (were tuned for 1200:660) so min/max zoom
+    // still land at the same relative width bounds.
+    setResizeLimits (900, 570, 1600, 1013);
+    getConstrainer()->setFixedAspectRatio (1200.0 / 760.0);
 
     startTimerHz (30);
 }
@@ -299,12 +323,22 @@ void ThreadlineAudioProcessorEditor::timerCallback()
 {
     inputMeter.setLevel (processor.getInputLevel());
     outputMeter.setLevel (processor.getOutputLevel());
+
+    // Keeps each tab icon's bypassed strike in sync with the actual
+    // parameter -- it can change via preset load or automation, not just a
+    // double-press here.
+    for (int i = 0; i < (int) tabPills.size(); ++i)
+    {
+        const auto* raw = processor.apvts.getRawParameterValue (sectionBypassParamId (i));
+        if (raw != nullptr)
+            tabPills[(size_t) i].setSectionBypassed (raw->load() < 0.5f);
+    }
 }
 
 void ThreadlineAudioProcessorEditor::resized()
 {
     const auto scaleX = static_cast<float> (getWidth()) / 1200.0f;
-    const auto scaleY = static_cast<float> (getHeight()) / 660.0f;
+    const auto scaleY = static_cast<float> (getHeight()) / 760.0f;
     const auto rect = [scaleX, scaleY] (int x, int y, int w, int h)
     {
         return juce::Rectangle<int> (juce::roundToInt (static_cast<float> (x) * scaleX),
@@ -329,22 +363,25 @@ void ThreadlineAudioProcessorEditor::resized()
     logoComponent.setBounds (rect (46, 10, 252, 80));
     logoComponent.toFront (false);
 
-    // Exact Rockalizer footer frame, positions and control sizes.
-    utilityFrameBounds = rect (28, 546, 1144, 108);
-    gateCardBounds = rect (60, 548, 110, 104);
-    inputCardBounds = rect (545, 548, 110, 104);
-    outputCardBounds = rect (1030, 548, 110, 104);
-    gateSection.toggle.setBounds (rect (60, 550, 110, 22));
+    // Footer frame -- shifted down 100px from Rockalizer's original y
+    // offsets to make room for the taller content area below (see the
+    // `content` rect further down), positions and control sizes otherwise
+    // unchanged.
+    utilityFrameBounds = rect (28, 646, 1144, 108);
+    gateCardBounds = rect (60, 648, 110, 104);
+    inputCardBounds = rect (545, 648, 110, 104);
+    outputCardBounds = rect (1030, 648, 110, 104);
+    gateSection.toggle.setBounds (rect (60, 650, 110, 22));
     if (! gateSection.knobs.empty())
-        gateSection.knobs[0]->slider.setBounds (rect (60, 574, 110, 78));
+        gateSection.knobs[0]->slider.setBounds (rect (60, 674, 110, 78));
     inputLabel.setJustificationType (juce::Justification::centred);
-    inputLabel.setBounds (rect (545, 550, 110, 20));
-    inputGainKnob.setBounds (rect (545, 574, 110, 78));
+    inputLabel.setBounds (rect (545, 650, 110, 20));
+    inputGainKnob.setBounds (rect (545, 674, 110, 78));
     outputLabel.setJustificationType (juce::Justification::centred);
-    outputLabel.setBounds (rect (1030, 550, 110, 20));
-    outputGainKnob.setBounds (rect (1030, 574, 110, 78));
-    inputMeter.setBounds (rect (235, 610, 290, 12));
-    outputMeter.setBounds (rect (720, 610, 290, 12));
+    outputLabel.setBounds (rect (1030, 650, 110, 20));
+    outputGainKnob.setBounds (rect (1030, 674, 110, 78));
+    inputMeter.setBounds (rect (235, 710, 290, 12));
+    outputMeter.setBounds (rect (720, 710, 290, 12));
 
     // Navigation and pages occupy the space between Rockalizer's header/footer.
     auto tabRow = rect (28, 88, 1144, 42);
@@ -372,6 +409,13 @@ void ThreadlineAudioProcessorEditor::resized()
                                   juce::roundToInt (106 * scaleX), juce::roundToInt (32 * scaleY));
 
     // --- Every page receives the same remaining content rectangle. ---
+    // Same 406 height as the original 660-tall canvas -- every page's
+    // internal layout is untouched (several pages split their bounds by
+    // percentage, so growing this rect would have stretched their existing
+    // knobs/cards bigger, not just added space). The +100px instead lands
+    // as a genuinely empty gap between this and the footer below (was a
+    // fixed 10px gap, now 110px) -- real reserved room for a future control
+    // row, not anything existing being scaled up.
     auto content = rect (16, 130, 1168, 406);
     page1.setBounds (content);
     page2.setBounds (content);

@@ -21,8 +21,11 @@ private:
     juce::Image ampImage;
     juce::Rectangle<int> ampImageFrameBounds;
 
-    // Amp: no on/off toggle (always in the chain), 3 knobs drawn along the
-    // bottom edge of the photo like the real panel's knob row.
+    // Amp: image-free rack toggle in the knob card's top-right corner (same
+    // style as Cab A/B's "ON"), plus 3 knobs drawn along the bottom edge of
+    // the photo like the real panel's knob row.
+    ToggleFootswitch ampToggle;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ampToggleAttachment;
     juce::Label ampDriveLabel, ampToneLabel, ampOutputLabel;
     // The amp's own knobs stay on the vintage chicken-head style — everything
     // else (Gate/Input/Output, Cab, and the other pages) defaults to the

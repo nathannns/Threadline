@@ -32,6 +32,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("input1On"), "Input 1 On", false));
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("input2On"), "Input 2 On", true));
 
+    // --- Pre-FX page bypass: gates Comp/Klon/TS9 together, independent of
+    // each stage's own On toggle -- driven by double-pressing the Pre-FX
+    // tab icon in the UI (see ThreadlineAudioProcessorEditor::TabPill), the
+    // page-level counterpart to each stage's individual bypass.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("preFxSectionOn"), "Pre-FX Section On", true));
+
     // --- Compressor ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("compOn"), "Comp On", false));
     // Keep the legacy IDs so old sessions resolve, while the controls now
@@ -73,7 +79,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ts9Variant"), "TS9 Variant",
         juce::StringArray { "TS9", "TS808", "TS10" }, 0));
 
-    // --- Amp (5E3) ---
+    // --- Amp (5E3) --- defaults true (unlike the stomps above, which
+    // default off): the amp is the plugin's core sound-shaping stage, and
+    // this toggle exists so it can be A/B'd out or bypassed for a DI/reamp
+    // chain, not because it should start disabled the way an optional pedal
+    // does.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("ampOn"), "Amp On", true));
+    // Page-level bypass for the whole Amp tab (Amp + Cab A/B together),
+    // independent of ampOn/cabAOn/cabBOn -- same double-press pattern as
+    // preFxSectionOn above.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("ampSectionOn"), "Amp Section On", true));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampDrive"), "Amp Drive",
         Range (0.0f, 1.0f, 0.001f), 0.4f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampTone"), "Amp Tone",
@@ -123,6 +138,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabBlend"), "Cab A/B Blend",
         Range (0.0f, 100.0f, 0.1f), 50.0f));
+
+    // --- Wet FX page bypass: gates Tremolo/July/Delay/Reverb together,
+    // independent of each effect's own On toggle -- same double-press
+    // pattern as preFxSectionOn above.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("wetFxSectionOn"), "Wet FX Section On", true));
 
     // --- Tremolo ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("tremOn"), "Tremolo On", false));
@@ -209,6 +229,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 100.0f, 0.1f), 50.0f));
 
     // --- 9-Band Graphic EQ (after the wet effects, before output) ---
+    // Page-level bypass for the whole EQ tab (9 bands + HPF/LPF together),
+    // independent of eqOn/eqHpfOn/eqLpfOn -- same double-press pattern as
+    // preFxSectionOn above.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("eqSectionOn"), "EQ Section On", true));
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("eqOn"), "EQ On", false));
     {
         static const char* bandIds[GraphicEQModule::numBands] = {
@@ -343,8 +367,15 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // --- Input Meter (taps signal right here, pre-compressor) ---
     inputLevel.updateFrom (buffer);
 
+    // --- Pre-FX page bypass (double-press the Pre-FX tab icon) ANDs into
+    // each stage's own on/off toggle below, rather than gating this whole
+    // block -- Comp/Klon/TS9 already hard-cut instantly when disabled (no
+    // click-free fade to preserve), so this is exactly equivalent to
+    // wrapping the block, with less duplicated code.
+    const auto preFxSectionOn = pBool ("preFxSectionOn");
+
     // --- Compressor ---
-    compressor.setEnabled (pBool ("compOn"));
+    compressor.setEnabled (preFxSectionOn && pBool ("compOn"));
     compressor.setParameters (p ("compThreshold"), p ("compRatio"), p ("compAttack"),
                                p ("compRelease"), p ("compMakeup"));
     compressor.process (buffer);
@@ -352,9 +383,9 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // --- Klon + TS9 (Breaker): order ahead of the Amp is swappable via
     // odOrder — each stage's own on/off toggle still applies regardless of
     // which one the signal hits first.
-    klon.setEnabled (pBool ("klonOn"));
+    klon.setEnabled (preFxSectionOn && pBool ("klonOn"));
     klon.setParameters (p ("klonGain"), p ("klonTreble"), p ("klonLevel"));
-    ts9.setEnabled (pBool ("ts9On"));
+    ts9.setEnabled (preFxSectionOn && pBool ("ts9On"));
     ts9.setVariant (static_cast<TS9Module::Variant> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
     ts9.setParameters (p ("ts9Drive"), p ("ts9Tone"), p ("ts9Level"));
 
@@ -369,8 +400,14 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         klon.process (buffer);
     }
 
+    // --- Amp page bypass (double-press the Amp tab icon) ANDs into the
+    // Amp's own toggle and both Cab slots' own toggles below, same pattern
+    // as preFxSectionOn above.
+    const auto ampSectionOn = pBool ("ampSectionOn");
+
     // --- Amp ---
     auto& selectedAmp = amps[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))];
+    selectedAmp.setEnabled (ampSectionOn && pBool ("ampOn"));
     selectedAmp.setParameters (p ("ampDrive"), p ("ampTone"), p ("ampOutput"),
         static_cast<AmpModule::Voice> (juce::jlimit (0, 1, (int) p ("ampVoice"))),
         p ("ampBass"), p ("ampMid"), p ("ampTreble"));
@@ -380,7 +417,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // signal (like two mics on one cab, not two cabs chained in series),
     // then blended — each slot's own on/off and internal mix still apply.
     {
-        cabA.setEnabled (pBool ("cabAOn"));
+        cabA.setEnabled (ampSectionOn && pBool ("cabAOn"));
         cabA.setMix (p ("cabAMix"));
         cabA.setPhaseInverted (pBool ("cabAPhase"));
         const auto cabASelection = (int) p ("cabAIRSelect");
@@ -388,7 +425,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             cabA.loadBuiltInIR (cabASelection);
         lastCabAIRSelection = cabASelection;
 
-        cabB.setEnabled (pBool ("cabBOn"));
+        cabB.setEnabled (ampSectionOn && pBool ("cabBOn"));
         cabB.setMix (p ("cabBMix"));
         cabB.setPhaseInverted (pBool ("cabBPhase"));
         const auto cabBSelection = (int) p ("cabBIRSelect");
@@ -411,9 +448,17 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
+    // --- Wet FX page bypass (double-press the Wet FX tab icon) ANDs into
+    // each effect's own "active" check below, rather than gating this whole
+    // block -- Tremolo/July/Delay already have their own click-free
+    // fade-then-reset ("WasActive") state machines for when their own On
+    // toggle flips, so ANDing in here reuses that same machinery instead of
+    // needing a second one for the page-level toggle.
+    const auto wetFxSectionOn = pBool ("wetFxSectionOn");
+
     // --- Tremolo: fades the modulation depth to 0 before resetting, same
     // as Echo/Reverb, instead of snapping the gain state to silence mid-cycle.
-    const auto tremoloActive = pBool ("tremOn") && p ("tremAmount") > 0.001f;
+    const auto tremoloActive = wetFxSectionOn && pBool ("tremOn") && p ("tremAmount") > 0.001f;
     if (tremoloActive)
     {
         tremolo.setAmount (p ("tremAmount"));
@@ -435,7 +480,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // Tremolo above -- calling reset() directly snapped D-C-V's wet mix to
     // 0 instantly, which is a real, audible click at Vibrato (100% wet,
     // no dry reference to soften the cut) if toggled off mid-note.
-    const auto chorusActive = pBool ("chorusOn");
+    const auto chorusActive = wetFxSectionOn && pBool ("chorusOn");
     const auto chorusWaveform = ((int) p ("chorusWaveform")) == 1
         ? ChorusModule::Waveform::triangle : ChorusModule::Waveform::sine;
     if (chorusActive)
@@ -467,7 +512,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // their own independent click-free fade-out, so flipping delayModel
     // while enabled fades the old engine out while the new one fades in
     // rather than cutting either abruptly.
-    const auto delayOn = pBool ("echoOn");
+    const auto delayOn = wetFxSectionOn && pBool ("echoOn");
     const auto plexerSelected = ((int) p ("delayModel")) == 0;
     const auto plexerActive = delayOn && plexerSelected;
     const auto copierActive = delayOn && ! plexerSelected;
@@ -510,7 +555,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     // --- Reverb (Hall/Room only — the spring models are retired) ---
     {
-        const auto reverbEnabled = pBool ("reverbOn");
+        const auto reverbEnabled = wetFxSectionOn && pBool ("reverbOn");
         hallRoomReverb.setParameters (p ("reverbPreDelay"), p ("reverbDecay"), p ("reverbTone"),
                                        p ("reverbMix"), p ("reverbWidth"), reverbEnabled,
                                        (int) p ("reverbModel"));
@@ -519,14 +564,17 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     // --- 9-Band Graphic EQ ---
     {
-        graphicEQ.setEnabled (pBool ("eqOn"));
+        // EQ page bypass (double-press the EQ tab icon) ANDs into eqOn/
+        // eqHpfOn/eqLpfOn, same pattern as the other three page bypasses.
+        const auto eqSectionOn = pBool ("eqSectionOn");
+        graphicEQ.setEnabled (eqSectionOn && pBool ("eqOn"));
         std::array<float, GraphicEQModule::numBands> bandGains {
             p ("eqBand1"), p ("eqBand2"), p ("eqBand3"), p ("eqBand4"), p ("eqBand5"),
             p ("eqBand6"), p ("eqBand7"), p ("eqBand8"), p ("eqBand9")
         };
         graphicEQ.setBandGains (bandGains);
-        graphicEQ.setHighPass (pBool ("eqHpfOn"), p ("eqHpfFreq"));
-        graphicEQ.setLowPass (pBool ("eqLpfOn"), p ("eqLpfFreq"));
+        graphicEQ.setHighPass (eqSectionOn && pBool ("eqHpfOn"), p ("eqHpfFreq"));
+        graphicEQ.setLowPass (eqSectionOn && pBool ("eqLpfOn"), p ("eqLpfFreq"));
         graphicEQ.process (buffer);
     }
 

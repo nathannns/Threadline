@@ -291,7 +291,10 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
 }
 
 // Adds title/toggle/knobs as children of `parent` and wires them to `apvts`.
-// Pass an empty toggleParamId for sections with no on/off switch (e.g. Amp).
+// Pass an empty toggleParamId for a section with no on/off switch of its own
+// (Page2Component's Amp knob card wires a standalone ToggleFootswitch
+// directly instead of going through this helper, since it doesn't otherwise
+// use SectionUI's title/knob layout).
 // plateIndex is retained as semantic metadata for a future optional skin;
 // the base UI intentionally uses one shared vector card.
 inline void buildSection (SectionUI& section, juce::Component& parent,

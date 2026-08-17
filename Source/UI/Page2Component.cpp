@@ -22,6 +22,14 @@ namespace
 Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
 {
     ampImage = juce::ImageCache::getFromMemory (BinaryData::tweed_amp_png, BinaryData::tweed_amp_pngSize);
+    ampToggle.setRenderedImageStyle (false);
+    ampToggle.setButtonText ("ON");
+    ampToggle.setTitle ("Amp bypass");
+    ampToggle.setHelpText ("Enable or bypass the amp stage");
+    addAndMakeVisible (ampToggle);
+    ampToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.apvts, "ampOn", ampToggle);
+
     setupAmpKnob (ampDriveLabel, ampDriveKnob, "Drive");
     setupAmpKnob (ampToneLabel, ampToneKnob, "Tone");
     setupAmpKnob (ampOutputLabel, ampOutputKnob, "Volume");
@@ -187,6 +195,8 @@ void Page2Component::resized()
     ampKnobFrameBounds = full;
 
     auto knobArea = ampKnobFrameBounds.reduced (juce::jmax (6, ampKnobFrameBounds.getWidth() / 28), 8);
+    auto ampToggleRow = knobArea.removeFromTop (22);
+    ampToggle.setBounds (ampToggleRow.removeFromRight (50));
     knobArea.removeFromTop (juce::jmin (18, knobArea.getHeight() / 8));
 
     const bool boutique = (int) std::round (processor.apvts.getRawParameterValue ("ampVoice")->load()) == 1;

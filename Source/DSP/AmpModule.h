@@ -116,9 +116,15 @@ public:
         return oversampling != nullptr ? juce::roundToInt (oversampling->getLatencyInSamples()) : 0;
     }
 
+    // Unlike the stomp modules (Comp/Klon/TS9), this reports latency even
+    // when disabled: the host's PDC needs a stable value regardless of
+    // whether the amp itself is currently in the chain, or every toggle
+    // would shift downstream sample alignment.
+    void setEnabled (bool shouldBeEnabled) { enabled = shouldBeEnabled; }
+
     void process (juce::AudioBuffer<float>& buffer)
     {
-        if (oversampling == nullptr || buffer.getNumSamples() == 0)
+        if (! enabled || oversampling == nullptr || buffer.getNumSamples() == 0)
             return;
 
         auto inputBlock = juce::dsp::AudioBlock<float> (buffer)
@@ -384,4 +390,5 @@ private:
     float targetOutputGain = 1.0f, sagEnvelope = 0.0f;
     float sagAttack = 0.999f, sagRelease = 0.999f;
     float sagDetectorLPCoefficient = 0.01f;
+    bool enabled = true;
 };
