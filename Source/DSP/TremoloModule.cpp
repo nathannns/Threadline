@@ -31,14 +31,21 @@ void TremoloModule::process (juce::AudioBuffer<float>& buffer)
     {
         const auto intensity = amount.getNextValue();
         const auto depth = intensity * 0.78f;
-        // Fender-style bias tremolo: a rounded, slightly compressed sine at a
-        // classic amp speed. It pulses warmly without chopping fully to zero.
-        // The same gain drives both channels, so this can never become autopan.
+        // Classic amp speed. The same gain drives both channels, so this can
+        // never become autopan.
         constexpr auto rateHz = 3.20f;
-        constexpr auto curve = 1.25f;
-        const auto sine = std::sin (phase);
-        const auto wave = 0.5f + 0.5f * std::tanh (curve * sine) / std::tanh (curve);
-        const auto gain = 1.0f - depth * (1.0f - wave);
+        const auto x = std::sin (phase); // -1 (toward cutoff) .. +1 (away from cutoff)
+
+        // Asymmetric halves, same idiom used for the amp's push-pull stage:
+        // toward cutoff (x<0) is shaped with an exponent >1 -- a convex curve
+        // that stays gentle near the zero-crossing then accelerates hard into
+        // the trough, mirroring gm collapsing near cutoff. Away from cutoff
+        // (x>0) uses an exponent <1 -- a concave curve that rises quickly off
+        // zero then flattens out approaching the tube's normal ceiling.
+        const auto fall = x < 0.0f ? -std::pow (-x, 1.6f) : 0.0f;
+        const auto rise = x > 0.0f ?  std::pow ( x, 0.7f) : 0.0f;
+        const auto shapedNormalised = (fall + rise + 1.0f) * 0.5f; // 0 (trough) .. 1 (ceiling)
+        const auto gain = 1.0f - depth * (1.0f - shapedNormalised);
         for (int channel = 0; channel < channels; ++channel)
             buffer.setSample (channel, sample, buffer.getSample (channel, sample) * gain);
 

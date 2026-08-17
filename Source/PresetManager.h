@@ -152,9 +152,12 @@ private:
         };
 
         // Each factory sound deliberately exercises the current topology:
-        // Diamond optical compressor controls, switchable drive order,
-        // Vintage/Boutique amp voices, parallel dual-cab IRs, RE-201-style
-        // delay patterns, convolution spaces, and the post-effects EQ.
+        // Diamond optical compressor (two-stage vactrol release), switchable
+        // drive order, TS9/TS808/TS10 variants, Vintage/Boutique amp voices,
+        // parallel dual-cab IRs (with a phase-invert showcase), RE-201-style
+        // delay patterns including Ping-Pong, the Julia-inspired chorus/
+        // vibrato, the bias-modulation tremolo, convolution spaces, and the
+        // post-effects EQ.
         makePreset ("01 Clean Tweed", {
             { "compOn", 1.0f }, { "compThreshold", 28.0f }, { "compRatio", 24.0f },
             { "compAttack", 6.0f }, { "compRelease", 0.8f }, { "compMakeup", 1.2f },
@@ -162,6 +165,10 @@ private:
             { "ampOutput", -1.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
+            // Julia chorus (Flanger Mode Off) kept light — a shimmer, not a wobble.
+            { "chorusOn", 1.0f }, { "chorusFlangerMode", 0.0f },
+            { "chorusRate", 0.30f }, { "chorusDepth", 20.0f }, { "chorusWidth", 68.0f },
+            { "chorusTone", 8500.0f }, { "chorusMix", 16.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 6.0f }, { "reverbDecay", 0.48f },
             { "reverbTone", 0.62f }, { "reverbMix", 10.0f }, { "reverbWidth", 58.0f }
         });
@@ -173,6 +180,9 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 1.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 30.0f },
+            // Bias-tremolo's asymmetric throb: a fast dip toward cutoff, a
+            // gentler recovery. Kept subtle so it breathes under a chord.
+            { "tremOn", 1.0f }, { "tremAmount", 20.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 5.0f }, { "reverbDecay", 0.56f },
             { "reverbTone", 0.55f }, { "reverbMix", 9.0f }, { "reverbWidth", 54.0f }
         });
@@ -188,20 +198,37 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 4.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 42.0f },
-            { "echoOn", 1.0f }, { "echoSync", 0.0f }, { "echoPattern", 1.0f },
-            { "echoTime", 330.0f }, { "echoRepeats", 20.0f }, { "echoTone", 4700.0f },
-            { "echoWobble", 18.0f }, { "echoDrive", 24.0f }, { "echoMix", 13.0f },
+            // Ping-Pong: the modern bonus mode, not an RE-201 characteristic.
+            { "echoOn", 1.0f }, { "echoSync", 0.0f }, { "echoPattern", 5.0f },
+            { "echoTime", 330.0f }, { "echoRepeats", 22.0f }, { "echoTone", 4800.0f },
+            { "echoWobble", 16.0f }, { "echoDrive", 22.0f }, { "echoMix", 13.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 4.0f }, { "reverbDecay", 0.66f },
             { "reverbMix", 12.0f }, { "reverbWidth", 62.0f }
         });
-        makePreset ("04 Ambient Hall", {
+        makePreset ("04 Vibrato Swirl", {
+            { "ampVoice", 0.0f }, { "ampDrive", 0.25f }, { "ampTone", 0.60f },
+            { "ampOutput", -2.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
+            // Julia's Dry-Chorus-Vibrato spirit: pushing Mix this high with a
+            // brisk Rate reaches genuine full-wet vibrato, not diluted chorus.
+            { "chorusOn", 1.0f }, { "chorusFlangerMode", 0.0f },
+            { "chorusRate", 1.80f }, { "chorusDepth", 68.0f }, { "chorusWidth", 80.0f },
+            { "chorusTone", 7500.0f }, { "chorusMix", 88.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbPreDelay", 0.15f },
+            { "reverbDecay", 0.70f }, { "reverbTone", 0.55f }, { "reverbMix", 18.0f },
+            { "reverbWidth", 80.0f }
+        });
+        makePreset ("05 Ambient Hall", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.28f }, { "ampTone", 0.61f },
             { "ampOutput", -3.0f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 35.0f },
-            { "chorusOn", 1.0f }, { "chorusFlangerMode", 3.0f },
-            { "chorusRate", 0.20f }, { "chorusDepth", 31.0f }, { "chorusWidth", 94.0f },
+            // Gentle Julia chorus this time (low Rate/Mix) — width and air
+            // rather than the pronounced wobble of "04 Vibrato Swirl".
+            { "chorusOn", 1.0f }, { "chorusFlangerMode", 0.0f },
+            { "chorusRate", 0.22f }, { "chorusDepth", 28.0f }, { "chorusWidth", 90.0f },
             { "chorusTone", 7000.0f }, { "chorusMix", 20.0f },
             { "echoOn", 1.0f }, { "echoSync", 1.0f }, { "echoPattern", 4.0f },
             { "echoDivision", 3.0f }, { "echoRepeats", 40.0f }, { "echoTone", 5200.0f },
@@ -210,7 +237,7 @@ private:
             { "reverbDecay", 0.82f }, { "reverbTone", 0.50f }, { "reverbMix", 29.0f },
             { "reverbWidth", 92.0f }
         });
-        makePreset ("05 Tight Rhythm", {
+        makePreset ("06 Tight Rhythm", {
             { "gateOn", 1.0f }, { "gateAmount", 30.0f },
             { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 2.0f },
             { "ts9Drive", 0.10f }, { "ts9Tone", 0.57f }, { "ts9Level", 0.73f },
@@ -218,7 +245,10 @@ private:
             { "ampMid", 0.60f }, { "ampTreble", 0.58f }, { "ampOutput", -4.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 4.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 0.0f }, { "cabBMix", 1.0f },
-            { "cabBlend", 24.0f },
+            // Phase-invert showcase: B's onset is already timing-aligned to A
+            // (automatic), but flipping polarity here still tightens the low
+            // end for this particular IR pairing.
+            { "cabBPhase", 1.0f }, { "cabBlend", 24.0f },
             { "eqOn", 1.0f }, { "eqBand1", -2.5f }, { "eqBand2", -1.5f },
             { "eqBand3", -0.8f }, { "eqBand5", 1.4f }, { "eqBand6", 1.0f },
             { "eqBand8", 0.8f }, { "eqBand9", -1.8f },

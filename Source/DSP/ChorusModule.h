@@ -2,6 +2,13 @@
 
 #include <JuceHeader.h>
 
+// Chorus (Flanger Mode "Off") is Julia-inspired: a single dominant
+// BBD-modeled modulated delay line per channel, sine LFO, compander-driven
+// warmth, and a genuine dry/chorus/vibrato crossfade — turning Mix all the
+// way up reaches true full-wet vibrato (pure pitch-wobbled signal, no dry
+// anchor), the same way Julia's Dry-Chorus-Vibrato knob sweeps through
+// chorus into vibrato territory. Flanger Modes I/II/III are a separate,
+// unrelated multi-tap feedback ensemble — untouched by the Julia retune.
 class ChorusModule
 {
 public:

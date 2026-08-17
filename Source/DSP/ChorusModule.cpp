@@ -46,8 +46,10 @@ void ChorusModule::reset()
 void ChorusModule::setParameters (float rateHz, float depthPercent, float widthPercent,
                                   float toneHz, float mixPercent, bool enabled, int flangerMode)
 {
-    // Dimension-style range: slow, shallow dual modulation creates width and
-    // depth without the obvious pitch sweep of a conventional chorus.
+    // Julia range for Chorus (flange==0): wide enough to cover slow, lush
+    // chorus through to fast vibrato flutter — real BBD chorus/vibrato
+    // pedals like Julia aren't limited to the narrow, deliberately subtle
+    // range a Dimension-D-style ensemble uses.
     const auto normalisedRate = juce::jlimit (0.0f, 1.0f, (rateHz - 0.05f) / 4.95f);
     const auto flange = juce::jlimit (0, 3, flangerMode);
     const auto flangerEnabled = flange > 0;
@@ -55,7 +57,7 @@ void ChorusModule::setParameters (float rateHz, float depthPercent, float widthP
         ? 1.45f + std::pow (normalisedRate, 0.70f) * 2.80f
         : (flange == 2 ? 1.10f + std::pow (normalisedRate, 0.70f) * 2.40f
         : (flange == 1 ? 0.58f + std::pow (normalisedRate, 0.70f) * 1.30f
-                       : 0.08f + std::pow (normalisedRate, 0.72f) * 0.62f)));
+                       : 0.08f + std::pow (normalisedRate, 0.72f) * 3.40f)));
     depthValue.setTargetValue (std::pow (juce::jlimit (0.0f, 1.0f, depthPercent * 0.01f), 0.72f));
     widthValue.setTargetValue (juce::jlimit (0.0f, 1.0f, widthPercent * 0.01f));
     const auto limitedToneHz = juce::jlimit (1800.0f, 16000.0f, toneHz);
@@ -70,8 +72,8 @@ void ChorusModule::setParameters (float rateHz, float depthPercent, float widthP
     // signal for audible comb notches even when the Chorus Mix is set low.
     const auto minimumFlangerMix = flange == 3 ? 0.64f : (flange == 2 ? 0.56f : 0.42f);
     // A perceptual taper makes low settings immediately useful, while 100%
-    // reaches a clearly effected CE/JUNO-like ensemble instead of remaining
-    // mostly dry as the earlier calibration did.
+    // now reaches true full-wet vibrato instead of remaining mostly dry as
+    // the earlier calibration did.
     const auto chorusMix = juce::jmin (1.0f, std::pow (requestedMix, 0.78f) * 1.15f);
     wetMix.setTargetValue (enabled ? (flangerEnabled ? juce::jmax (minimumFlangerMix, requestedMix * 0.82f)
                                                      : chorusMix)
@@ -142,9 +144,12 @@ void ChorusModule::process (juce::AudioBuffer<float>& buffer)
         const auto depth = depthValue.getNextValue();
         const auto width = widthValue.getNextValue();
         const auto mix = wetMix.getNextValue();
+        // Julia-scale excursion at mode 0 (up to ~7.8ms) — big enough for a
+        // genuine, audible pitch wobble rather than the Dimension-D-style
+        // ensemble's deliberately subtle sub-1.5ms movement.
         const auto depthSamples = static_cast<float> (sampleRate)
                                 * juce::jmap (mode,
-                                              0.00010f + depth * 0.00134f,
+                                              0.00030f + depth * 0.00750f,
                                               0.00018f + depth * 0.00135f)
                                 * (1.0f + aggression * 0.20f);
 
@@ -174,12 +179,16 @@ void ChorusModule::process (juce::AudioBuffer<float>& buffer)
             const auto tapC = readDelay (channel, juce::jmax (1.0f, baseDelayC + voiceC * depthSamples * 0.44f));
             const auto tapD = readDelay (channel, juce::jmax (1.0f, baseDelayD
                                                    + voiceD * depthSamples * 0.31f));
-            auto dimensionWet = tapA * juce::jmap (mode, 0.30f, 0.76f)
-                              + tapB * juce::jmap (mode, 0.28f, 0.24f)
-                              + tapC * juce::jmap (mode, 0.23f, 0.0f)
-                              + tapD * juce::jmap (mode, 0.19f, 0.0f);
-            // Gentle BBD/compander rounding adds CE-1 warmth and glues the
-            // three Dimension/JUNO-inspired delay voices into one ensemble.
+            // Julia is a single BBD delay line, not a multi-voice ensemble —
+            // tapA carries almost all of the chorus-mode signal, with just a
+            // trace of the other taps left for subtle stereo drift. Flanger
+            // modes (mode>0) keep their original two-voice blend untouched.
+            auto dimensionWet = tapA * juce::jmap (mode, 0.86f, 0.76f)
+                              + tapB * juce::jmap (mode, 0.10f, 0.24f)
+                              + tapC * juce::jmap (mode, 0.03f, 0.0f)
+                              + tapD * juce::jmap (mode, 0.01f, 0.0f);
+            // Gentle BBD/compander rounding adds the analog warmth a real
+            // bucket-brigade delay line imparts on its own signal path.
             if (mode < 0.5f)
             {
                 const auto rounded = std::tanh (dimensionWet * 1.16f) / 1.16f;
@@ -213,11 +222,12 @@ void ChorusModule::process (juce::AudioBuffer<float>& buffer)
 
         for (int channel = 0; channel < channels; ++channel)
         {
-            // Retain a stable direct anchor as Mix rises. The four decorrelated
-            // wet voices provide density without relying on a loud, phasey
-            // wet path that makes sustained notes breathe in and out.
-            const auto chorusDryGain = 1.0f - mix * 0.18f;
-            const auto chorusWetGain = mix * 1.10f;
+            // Genuine dry/chorus/vibrato crossfade (equal-power) at mode 0:
+            // Mix all the way up reaches true full-wet vibrato — pure
+            // pitch-wobbled signal, no dry anchor held back — the way
+            // Julia's D-C-V knob sweeps past chorus into vibrato territory.
+            const auto chorusDryGain = std::sqrt (1.0f - mix);
+            const auto chorusWetGain = std::sqrt (mix);
             // Near-equal dry/delayed levels deepen the moving comb nulls that
             // define flanging. Output is trimmed to avoid a loudness jump.
             // Keep a stronger direct path in Flanger mode so the moving comb
