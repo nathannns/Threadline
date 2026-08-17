@@ -16,6 +16,7 @@ namespace
 ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p), page1 (p), page2 (p), page3 (p), page4 (p)
 {
+    setLookAndFeel (&buttonLookAndFeel);
     logoImage = juce::ImageCache::getFromMemory (BinaryData::threadline_logo_png, BinaryData::threadline_logo_pngSize);
 
     // --- Preset bar: same control structure and vector icons as Rockalizer ---
@@ -176,6 +177,11 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     getConstrainer()->setFixedAspectRatio (1200.0 / 660.0);
 
     startTimerHz (30);
+}
+
+ThreadlineAudioProcessorEditor::~ThreadlineAudioProcessorEditor()
+{
+    setLookAndFeel (nullptr);
 }
 
 void ThreadlineAudioProcessorEditor::switchToPage (int pageIndex)

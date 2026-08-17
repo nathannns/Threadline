@@ -13,11 +13,18 @@
 class PowerButton : public juce::ToggleButton
 {
 public:
-    PowerButton() { setClickingTogglesState (true); }
+    PowerButton()
+    {
+        setClickingTogglesState (true);
+        setWantsKeyboardFocus (true);
+        setTitle ("Global bypass");
+        setHelpText ("Bypass or enable all Threadline processing");
+    }
 
     void paint (juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (4.0f);
+        if (isDown()) bounds.translate (0.0f, 1.0f);
         auto bypassed = getToggleState();
         auto colour = bypassed ? juce::Colour (0xff6a5a4e) : ThreadlineColours::accentBright;
 
@@ -32,6 +39,8 @@ public:
         g.strokePath (glyph, juce::PathStrokeType (2.5f));
         g.drawLine (glyphBounds.getCentreX(), glyphBounds.getY() - 2.0f,
                     glyphBounds.getCentreX(), glyphBounds.getCentreY(), 2.5f);
+        if (hasKeyboardFocus (true))
+            g.drawEllipse (bounds.expanded (2.0f), 1.4f);
     }
 };
 
@@ -42,7 +51,11 @@ class PresetIconButton final : public juce::Button
 public:
     enum class Icon { add, save, remove };
     PresetIconButton (const juce::String& name, Icon iconToDraw)
-        : juce::Button (name), icon (iconToDraw) {}
+        : juce::Button (name), icon (iconToDraw)
+    {
+        setWantsKeyboardFocus (true);
+        setTitle (name);
+    }
 
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
@@ -75,6 +88,11 @@ public:
                         can.getRight() + 2.0f, can.getY() + can.getHeight() * 0.18f, 2.0f);
             g.drawLine (can.getCentreX() - 4.0f, can.getY(), can.getCentreX() + 4.0f, can.getY(), 2.0f);
         }
+        if (hasKeyboardFocus (true))
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.75f));
+            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 6.0f, 1.3f);
+        }
     }
 
 private:
@@ -84,7 +102,11 @@ private:
 class GearButton final : public juce::Button
 {
 public:
-    GearButton() : juce::Button ("Options") {}
+    GearButton() : juce::Button ("Options")
+    {
+        setWantsKeyboardFocus (true);
+        setTooltip ("Options");
+    }
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
         const auto bounds = getLocalBounds().toFloat().reduced (9.0f);
@@ -101,6 +123,8 @@ public:
         }
         g.drawEllipse (bounds.withSizeKeepingCentre (radius * 2.2f, radius * 2.2f), 3.0f);
         g.fillEllipse (bounds.withSizeKeepingCentre (radius * 0.75f, radius * 0.75f));
+        if (hasKeyboardFocus (true))
+            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 7.0f, 1.3f);
     }
 };
 
@@ -127,11 +151,14 @@ public:
         : juce::Button (labelText), icon (iconToShow)
     {
         setTooltip (labelText);
+        setWantsKeyboardFocus (true);
+        setTitle (labelText);
     }
 
-    void paintButton (juce::Graphics& g, bool highlighted, bool /*down*/) override
+    void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (2.0f);
+        if (down) bounds.translate (0.0f, 1.0f);
         const auto selected = getToggleState();
 
         if (selected)
@@ -203,6 +230,11 @@ public:
                 break;
             }
         }
+        if (hasKeyboardFocus (true))
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.75f));
+            g.drawRoundedRectangle (bounds, 8.0f, 1.3f);
+        }
     }
 
 private:
@@ -213,7 +245,7 @@ class ThreadlineAudioProcessorEditor : public juce::AudioProcessorEditor, privat
 {
 public:
     explicit ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor&);
-    ~ThreadlineAudioProcessorEditor() override = default;
+    ~ThreadlineAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -225,6 +257,8 @@ private:
     void refreshPresetList();
 
     ThreadlineAudioProcessor& processor;
+    // Declared before all controls so it outlives every component using it.
+    ThreadlineButtonLookAndFeel buttonLookAndFeel;
 
     juce::Image logoImage;
     juce::Rectangle<int> presetCardBounds;

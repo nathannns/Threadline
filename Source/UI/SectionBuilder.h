@@ -22,6 +22,70 @@ namespace ThreadlineColours
     static const juce::Colour cardBorder { 0x997a5228 };
 }
 
+// Shared interaction language for every standard JUCE text/toggle button.
+// Custom icon controls mirror these same hover/down/focus rules below.
+class ThreadlineButtonLookAndFeel final : public juce::LookAndFeel_V4
+{
+public:
+    void drawButtonBackground (juce::Graphics& g, juce::Button& button,
+                               const juce::Colour&, bool hovered, bool down) override
+    {
+        auto bounds = button.getLocalBounds().toFloat().reduced (1.5f);
+        if (down) bounds.translate (0.0f, 1.2f);
+        if (! down)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.32f));
+            g.fillRoundedRectangle (bounds.translated (0.0f, 2.0f), 6.0f);
+        }
+
+        auto face = button.getToggleState() ? ThreadlineColours::accent : juce::Colour (0xff28201b);
+        if (hovered && button.isEnabled()) face = face.brighter (0.09f);
+        if (! button.isEnabled()) face = face.withMultipliedSaturation (0.25f).withAlpha (0.45f);
+        g.setColour (face);
+        g.fillRoundedRectangle (bounds, 6.0f);
+        g.setColour ((button.getToggleState() || hovered) ? ThreadlineColours::accentBright
+                                                           : juce::Colour (0xff74563b));
+        g.drawRoundedRectangle (bounds, 6.0f, hovered ? 1.5f : 1.0f);
+        g.setColour (juce::Colours::white.withAlpha (button.getToggleState() ? 0.13f : 0.055f));
+        g.drawLine (bounds.getX() + 6.0f, bounds.getY() + 2.0f,
+                    bounds.getRight() - 6.0f, bounds.getY() + 2.0f, 1.0f);
+        drawFocus (g, button, bounds);
+    }
+
+    void drawButtonText (juce::Graphics& g, juce::TextButton& button,
+                         bool, bool down) override
+    {
+        auto bounds = button.getLocalBounds().reduced (7, 2);
+        if (down) bounds.translate (0, 1);
+        g.setFont (juce::FontOptions (juce::jlimit (9.5f, 12.5f, (float) button.getHeight() * 0.38f),
+                                      juce::Font::bold));
+        auto colour = button.getToggleState() ? juce::Colour (0xff18120f) : ThreadlineColours::textCream;
+        if (! button.isEnabled()) colour = juce::Colour (0xff81776b);
+        g.setColour (colour);
+        g.drawFittedText (button.getButtonText(), bounds, juce::Justification::centred, 1);
+    }
+
+    void drawToggleButton (juce::Graphics& g, juce::ToggleButton& button,
+                           bool hovered, bool down) override
+    {
+        drawButtonBackground (g, button, {}, hovered, down);
+        auto bounds = button.getLocalBounds().reduced (6, 2);
+        if (down) bounds.translate (0, 1);
+        g.setColour (button.getToggleState() ? juce::Colour (0xff18120f) : ThreadlineColours::textCream);
+        g.setFont (juce::FontOptions (juce::jlimit (9.0f, 11.5f, (float) button.getHeight() * 0.36f),
+                                      juce::Font::bold));
+        g.drawFittedText (button.getButtonText(), bounds, juce::Justification::centred, 1);
+    }
+
+private:
+    static void drawFocus (juce::Graphics& g, const juce::Button& button, juce::Rectangle<float> bounds)
+    {
+        if (! button.hasKeyboardFocus (true)) return;
+        g.setColour (juce::Colours::white.withAlpha (0.78f));
+        g.drawRoundedRectangle (bounds.expanded (1.0f), 7.0f, 1.4f);
+    }
+};
+
 namespace SectionGrid
 {
     // Every plated section card — on Page1 or Page3 — is sized off the SAME
@@ -226,6 +290,8 @@ inline void buildSection (SectionUI& section, juce::Component& parent,
     section.toggle.setVisible (section.hasToggle);
     if (section.hasToggle)
     {
+        section.toggle.setTitle (title + " bypass");
+        section.toggle.setHelpText ("Enable or bypass the " + title + " section");
         parent.addAndMakeVisible (section.toggle);
         section.toggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
             apvts, toggleParamId, section.toggle);

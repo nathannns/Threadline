@@ -168,16 +168,37 @@ public:
 class ToggleFootswitch : public juce::ToggleButton
 {
 public:
-    ToggleFootswitch() { setClickingTogglesState (true); }
+    ToggleFootswitch()
+    {
+        setClickingTogglesState (true);
+        setWantsKeyboardFocus (true);
+        setRepaintsOnMouseActivity (true);
+    }
 
     void paint (juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (1.0f);
         const auto on = getToggleState();
-        g.setColour (on ? juce::Colour (0xffb9793c) : juce::Colour (0xff24201d));
+        const auto hovered = isMouseOverOrDragging();
+        const auto down = isDown();
+        if (down) bounds.translate (0.0f, 1.0f);
+        if (! down)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.32f));
+            g.fillRoundedRectangle (bounds.translated (0.0f, 1.5f), 5.0f);
+        }
+        auto face = on ? juce::Colour (0xffb9793c) : juce::Colour (0xff24201d);
+        if (hovered && isEnabled()) face = face.brighter (0.10f);
+        if (! isEnabled()) face = face.withAlpha (0.42f);
+        g.setColour (face);
         g.fillRoundedRectangle (bounds, 5.0f);
-        g.setColour (on ? juce::Colour (0xffe7b46f) : juce::Colour (0xff665a50));
-        g.drawRoundedRectangle (bounds, 5.0f, 1.0f);
+        g.setColour ((on || hovered) ? juce::Colour (0xffe7b46f) : juce::Colour (0xff665a50));
+        g.drawRoundedRectangle (bounds, 5.0f, hovered ? 1.5f : 1.0f);
+        if (hasKeyboardFocus (true))
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.78f));
+            g.drawRoundedRectangle (bounds.expanded (1.0f), 6.0f, 1.4f);
+        }
         g.setColour (on ? juce::Colour (0xff171311) : juce::Colour (0xffc7b89f));
         g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
         const auto label = getButtonText().isNotEmpty() ? getButtonText() : (on ? "ON" : "OFF");
