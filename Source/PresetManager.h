@@ -144,9 +144,6 @@ private:
         const auto makePreset = [this, &original] (const juce::String& name,
                                         std::initializer_list<std::pair<const char*, float>> values)
         {
-            auto file = getPresetsFolder().getChildFile (juce::File::createLegalFileName (name) + ".xml");
-            if (file.existsAsFile())
-                return;
             apvts.replaceState (original);
             for (const auto& value : values)
                 if (auto* parameter = apvts.getParameter (value.first))
@@ -154,11 +151,45 @@ private:
             savePreset (name);
         };
 
-        makePreset ("01 Clean Tweed",   {{ "ampDrive", 0.22f }, { "ampTone", 0.62f }, { "cabIRSelect", 2.0f }});
-        makePreset ("02 Edge of Breakup", {{ "ampDrive", 0.48f }, { "ampTone", 0.56f }, { "cabIRSelect", 0.0f }});
-        makePreset ("03 Driven Lead",   {{ "ts9On", 1.0f }, { "ts9Drive", 0.35f }, { "ampDrive", 0.72f }, { "cabIRSelect", 3.0f }});
-        makePreset ("04 Ambient Hall",  {{ "chorusOn", 1.0f }, { "echoOn", 1.0f }, { "reverbOn", 1.0f }, { "reverbModel", 3.0f }});
-        makePreset ("05 Tight Rhythm",  {{ "gateOn", 1.0f }, { "gateAmount", 28.0f }, { "ts9On", 1.0f }, { "ampDrive", 0.58f }, { "cabIRSelect", 4.0f }});
+        makePreset ("01 Clean Tweed", {
+            { "compOn", 1.0f }, { "compThreshold", 30.0f }, { "compRatio", 28.0f },
+            { "compAttack", 8.0f }, { "ampDrive", 0.20f }, { "ampTone", 0.64f },
+            { "ampOutput", -1.5f }, { "cabIRSelect", 2.0f }, { "cabMix", 1.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbMix", 12.0f }
+        });
+        makePreset ("02 Edge of Breakup", {
+            { "klonOn", 1.0f }, { "klonGain", 0.16f }, { "klonTreble", 0.53f },
+            { "klonLevel", 0.62f }, { "ampDrive", 0.48f }, { "ampTone", 0.54f },
+            { "ampOutput", -3.0f }, { "cabIRSelect", 0.0f }, { "reverbOn", 1.0f },
+            { "reverbModel", 1.0f }, { "reverbMix", 10.0f }
+        });
+        makePreset ("03 Driven Lead", {
+            { "compOn", 1.0f }, { "compThreshold", 52.0f }, { "compRatio", 42.0f },
+            { "ts9On", 1.0f }, { "ts9Variant", 1.0f }, { "ts9Drive", 0.24f },
+            { "ts9Tone", 0.46f }, { "ts9Level", 0.68f }, { "ampDrive", 0.66f },
+            { "ampTone", 0.58f }, { "ampOutput", -4.0f }, { "cabIRSelect", 3.0f },
+            { "echoOn", 1.0f }, { "echoTime", 340.0f }, { "echoRepeats", 18.0f },
+            { "echoTone", 4800.0f }, { "echoMix", 14.0f }, { "reverbOn", 1.0f },
+            { "reverbModel", 6.0f }, { "reverbMix", 14.0f }
+        });
+        makePreset ("04 Ambient Hall", {
+            { "ampDrive", 0.30f }, { "ampTone", 0.60f }, { "cabIRSelect", 2.0f },
+            { "chorusOn", 1.0f }, { "chorusRate", 0.22f }, { "chorusDepth", 34.0f },
+            { "chorusWidth", 92.0f }, { "chorusTone", 7200.0f }, { "chorusMix", 18.0f },
+            { "echoOn", 1.0f }, { "echoSync", 1.0f }, { "echoPattern", 4.0f },
+            { "echoDivision", 3.0f }, { "echoRepeats", 42.0f }, { "echoMix", 24.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 3.0f }, { "reverbDecay", 0.64f },
+            { "reverbTone", 0.52f }, { "reverbMix", 30.0f }, { "reverbWidth", 88.0f }
+        });
+        makePreset ("05 Tight Rhythm", {
+            { "gateOn", 1.0f }, { "gateAmount", 32.0f }, { "ts9On", 1.0f },
+            { "ts9Variant", 2.0f }, { "ts9Drive", 0.12f }, { "ts9Tone", 0.58f },
+            { "ts9Level", 0.72f }, { "ampDrive", 0.56f }, { "ampTone", 0.48f },
+            { "ampOutput", -4.5f }, { "cabIRSelect", 4.0f }, { "eqOn", 1.0f },
+            { "eqBand1", -2.0f }, { "eqBand2", -1.0f }, { "eqBand5", 1.5f },
+            { "eqBand8", 1.0f }, { "eqBand9", -1.5f }, { "eqHpfOn", 1.0f },
+            { "eqHpfFreq", 72.0f }, { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9200.0f }
+        });
 
         apvts.replaceState (original);
         currentPresetName = originalName;

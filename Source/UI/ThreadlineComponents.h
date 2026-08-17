@@ -141,17 +141,27 @@ public:
     {
         auto bounds = getLocalBounds().toFloat();
 
-        const auto trackWidth = juce::jmin (bounds.getWidth() * 0.32f, 10.0f);
+        const auto trackWidth = juce::jmin (bounds.getWidth() * 0.22f, 7.0f);
         auto track = juce::Rectangle<float> (trackWidth, bounds.getHeight()).withCentre (bounds.getCentre());
-        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.setColour (juce::Colour (0xff171411));
         g.fillRoundedRectangle (track, trackWidth * 0.5f);
+
+        g.setColour (juce::Colour (0xff4d443a));
+        for (int tick = 0; tick <= 4; ++tick)
+        {
+            const auto y = juce::jmap ((float) tick, 0.0f, 4.0f, track.getY(), track.getBottom());
+            const auto half = tick == 2 ? bounds.getWidth() * 0.31f : bounds.getWidth() * 0.20f;
+            g.drawLine (bounds.getCentreX() - half, y, bounds.getCentreX() + half, y,
+                        tick == 2 ? 1.35f : 0.8f);
+        }
 
         const auto normalised = (float) getNormalisableRange().convertTo0to1 ((float) getValue());
         const auto centreY = track.getY() + track.getHeight() * 0.5f; // 0 dB reference
         const auto capY = track.getBottom() - normalised * track.getHeight();
 
-        g.setColour (juce::Colours::white.withAlpha (0.3f));
-        g.drawLine (bounds.getX(), centreY, bounds.getRight(), centreY, 1.0f);
+        g.setColour (juce::Colour (0xffc2ab86).withAlpha (0.55f));
+        g.drawLine (bounds.getCentreX() - bounds.getWidth() * 0.34f, centreY,
+                    bounds.getCentreX() + bounds.getWidth() * 0.34f, centreY, 1.0f);
 
         static const auto capImage = juce::ImageCache::getFromMemory (
             BinaryData::eq_slider_cap_png, BinaryData::eq_slider_cap_pngSize);
@@ -201,11 +211,6 @@ public:
                                           juce::Font::bold));
             g.drawFittedText (getButtonText(), bounds.reduced (3, 0).toNearestInt(),
                               juce::Justification::centredLeft, 1);
-            if (hasKeyboardFocus (true))
-            {
-                g.setColour (juce::Colours::white.withAlpha (0.68f));
-                g.drawRoundedRectangle (bounds, 4.0f, 1.2f);
-            }
             return;
         }
 

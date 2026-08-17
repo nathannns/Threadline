@@ -28,12 +28,6 @@ namespace
 
 Page4Component::Page4Component (ThreadlineAudioProcessor& p)
 {
-    titleLabel.setText ("9-Band EQ", juce::dontSendNotification);
-    titleLabel.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-    titleLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
-    titleLabel.setJustificationType (juce::Justification::centredLeft);
-    addAndMakeVisible (titleLabel);
-
     addAndMakeVisible (eqToggle);
     eqToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, "eqOn", eqToggle);
@@ -90,7 +84,6 @@ void Page4Component::resized()
 
     auto header = area.removeFromTop (24);
     eqToggle.setBounds (header.removeFromRight (50));
-    titleLabel.setBounds (header);
     area.removeFromTop (14);
 
     auto hpfCol = area.removeFromLeft (86);

@@ -209,6 +209,8 @@ inline void paintSectionPlate (juce::Graphics& g, const SectionUI& section)
     {
         g.saveState();
         g.reduceClipRegion (section.bounds);
+        g.setColour (juce::Colour (0xff211b17));
+        g.fillRoundedRectangle (bounds, 9.0f);
         drawWideRackPlate (g, plates[index], section.bounds);
         g.setColour (juce::Colours::black.withAlpha (0.10f));
         g.fillRoundedRectangle (bounds, 9.0f);
@@ -276,7 +278,8 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
                                   lightFace ? juce::Colour (0xff352a22) : ThreadlineColours::textCream);
         section.toggle.setColour (juce::ToggleButton::tickDisabledColourId,
                                   lightFace ? juce::Colour (0xff71675d) : juce::Colour (0xff564b40));
-        section.toggle.setBounds (titleArea.reduced (2, juce::jmax (2, titleArea.getHeight() / 5)));
+        section.toggle.setBounds (titleArea.removeFromLeft (juce::jmin (130, titleArea.getWidth()))
+                                           .reduced (2, juce::jmax (2, titleArea.getHeight() / 5)));
     }
 
     area.removeFromLeft (10);

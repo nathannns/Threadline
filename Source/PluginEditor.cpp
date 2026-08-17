@@ -300,7 +300,7 @@ void ThreadlineAudioProcessorEditor::resized()
     savePresetButton.setBounds (rect (754, 28, 40, 36));
     deletePresetButton.setBounds (rect (800, 28, 40, 36));
     optionsMenuButton.setBounds (rect (1004, 18, 56, 56));
-    powerButton.setBounds (rect (1080, 18, 60, 56));
+    powerButton.setBounds (rect (1084, 18, 56, 56));
 
     // Exact Rockalizer footer frame, positions and control sizes.
     utilityFrameBounds = rect (28, 546, 1144, 108);
