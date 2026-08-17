@@ -226,6 +226,17 @@ floating value bubble that only exists while a knob is actively being
 dragged, positioned on the desktop rather than inside the knob's own tiny
 bounds -- so knobs draw at full size all the time.
 
+The EQ page's HPF/LPF knobs use a third `PhotoKnob::Style` (`EQ`) built
+from a user-provided photo of a full knob assembly (metal cap, tick-mark
+bezel, and pointer baked into one image, rotated as a single unit rather
+than a separate static ring + rotating cap). The source photo shipped with
+an opaque white background and a soft drop shadow blended into it, not
+real transparency -- flood-filled transparent from the four corners
+(ImageMagick, high fuzz tolerance to eat the shadow gradient along with
+the flat white, then a touch of alpha blur to soften the cut edge) before
+being registered as `knob_eq.png`, otherwise the knob would have rendered
+with a stray white box behind it against the gold rack plate.
+
 ## Build
 
 You said you've already got JUCE, CMake, and Ninja — but this pins JUCE to

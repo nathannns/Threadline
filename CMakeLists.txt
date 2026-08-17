@@ -24,6 +24,7 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/plugin_background_subtle.png
     Resources/Images/knob_pointer.png
     Resources/Images/knob_effects.png
+    Resources/Images/knob_eq.png
     Resources/Images/eq_slider_cap.png
     Resources/Images/led_effect_off.png
     Resources/Images/led_effect_on.png

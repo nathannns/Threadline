@@ -28,7 +28,7 @@ private:
 
     juce::Label hpfLabel, lpfLabel;
     ToggleFootswitch hpfToggle, lpfToggle;
-    PhotoKnob hpfKnob, lpfKnob;
+    PhotoKnob hpfKnob { PhotoKnob::Style::EQ }, lpfKnob { PhotoKnob::Style::EQ };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> hpfToggleAttachment, lpfToggleAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> hpfKnobAttachment, lpfKnobAttachment;
 

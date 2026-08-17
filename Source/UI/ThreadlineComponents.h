@@ -44,7 +44,7 @@ private:
 class PhotoKnob : public juce::Slider
 {
 public:
-    enum class Style { Vintage, Modern };
+    enum class Style { Vintage, Modern, EQ };
 
     PhotoKnob() : PhotoKnob (Style::Modern) {}
     explicit PhotoKnob (Style initialStyle) : style (initialStyle)
@@ -77,7 +77,9 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto& image = style == Style::Vintage ? getVintageImage() : getModernImage();
+        auto& image = style == Style::Vintage ? getVintageImage()
+                    : style == Style::EQ ? getEQImage()
+                                          : getModernImage();
         if (! image.isValid())
             return;
 
@@ -92,7 +94,7 @@ public:
         // The source PNGs contain transparent pixels around and within the
         // photographed hardware. A solid backing keeps light rack artwork
         // from showing through the compressor and other effect knobs.
-        if (style == Style::Modern)
+        if (style == Style::Modern || style == Style::EQ)
         {
             g.setColour (juce::Colour (0xff211a16));
             g.fillEllipse (knobBounds.reduced (side * 0.08f));
@@ -132,6 +134,12 @@ public:
     static const juce::Image& getModernImage()
     {
         static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_effects_png, BinaryData::knob_effects_pngSize);
+        return image;
+    }
+
+    static const juce::Image& getEQImage()
+    {
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_eq_png, BinaryData::knob_eq_pngSize);
         return image;
     }
 
