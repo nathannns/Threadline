@@ -190,7 +190,13 @@ void ThreadlineAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     ts9.prepare (spec);
     for (int mode = 0; mode < (int) amps.size(); ++mode)
         amps[(size_t) mode].prepare (spec, mode);
-    setLatencySamples (amps.back().getLatencySamples());
+    // Klon and TS9 now also oversample their clip stage (see their headers),
+    // so their latency adds to Amp's in series — all three sit one after
+    // another in the chain. Amp's own latency is pinned to its 4x-mode
+    // instance regardless of the currently selected oversampling setting
+    // (see the comment further down where it's selected), so the reported
+    // total stays constant across a live oversampling-mode switch too.
+    setLatencySamples (klon.getLatencySamples() + ts9.getLatencySamples() + amps.back().getLatencySamples());
     cab.prepare (spec);
     // Load the selected built-in cabinet IR.
     const auto cabSelection = (int) p ("cabIRSelect");

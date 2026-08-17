@@ -30,6 +30,12 @@
 // values (those vary by production run/clone anyway), just a defensible
 // characterization of the three pedals' known family resemblance and
 // differences applied to the same physically-motivated clipper.
+// Like KlonModule, 2x-oversamples just the nonlinear clip stage — the
+// pre-clip highpass and post-clip tone filter are linear (no new harmonic
+// content), only the asinh/tanh clip itself needs the higher rate to avoid
+// aliasing the harmonics it generates. Unlike Klon, TS9 has no dry/wet
+// blend (it's fully wet), so there's no parallel dry path to keep aligned
+// with the oversampler's added latency — one less thing to compensate for.
 class TS9Module
 {
 public:
@@ -46,10 +52,15 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
+        channelCount = juce::jlimit (1, 2, (int) spec.numChannels);
         for (auto& f : preClipHighpass)
             f.prepare (spec);
         for (auto& f : toneFilter)
             f.prepare (spec);
+        oversampling = std::make_unique<juce::dsp::Oversampling<float>> (
+            (size_t) channelCount, 1 /* 1 stage = 2x */,
+            juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
+        oversampling->initProcessing (spec.maximumBlockSize);
         updatePreClipFilter();
         updateToneFilter();
         reset();
@@ -61,6 +72,13 @@ public:
             f.reset();
         for (auto& f : toneFilter)
             f.reset();
+        if (oversampling != nullptr)
+            oversampling->reset();
+    }
+
+    int getLatencySamples() const noexcept
+    {
+        return oversampling != nullptr ? juce::roundToInt (oversampling->getLatencyInSamples()) : 0;
     }
 
     void setEnabled (bool shouldBeEnabled) { enabled = shouldBeEnabled; }
@@ -79,21 +97,33 @@ public:
 
     void process (juce::AudioBuffer<float>& buffer)
     {
-        if (! enabled)
+        if (! enabled || oversampling == nullptr)
             return;
 
-        const auto numChannels = juce::jmin (buffer.getNumChannels(), 2);
+        const auto numChannels = juce::jmin (buffer.getNumChannels(), channelCount);
         const auto numSamples = buffer.getNumSamples();
         const auto driveGain = 1.0f + driveAmount * 40.0f;
 
+        // Bass rolled off before the clipper (linear, stays at base rate) —
+        // see class comment.
+        preClipBuffer.setSize (numChannels, numSamples, false, false, true);
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            auto* data = buffer.getWritePointer (ch);
+            auto* dst = preClipBuffer.getWritePointer (ch);
+            auto* src = buffer.getReadPointer (ch);
             for (int i = 0; i < numSamples; ++i)
+                dst[i] = preClipHighpass[ch].processSample (src[i]);
+        }
+
+        // Only the nonlinear clip runs at 2x.
+        juce::dsp::AudioBlock<float> block (preClipBuffer);
+        auto osBlock = oversampling->processSamplesUp (block);
+        const auto osSamples = (int) osBlock.getNumSamples();
+        for (size_t ch = 0; ch < osBlock.getNumChannels(); ++ch)
+        {
+            for (int i = 0; i < osSamples; ++i)
             {
-                // Bass rolled off before the clipper — see class comment.
-                const auto preShaped = preClipHighpass[ch].processSample (data[i]);
-                auto x = preShaped * driveGain;
+                auto x = osBlock.getSample ((int) ch, i) * driveGain;
 
                 // Diode-physics knee with a tanh safety ceiling (bounds
                 // output across the drive range; asinh defines the actual
@@ -106,9 +136,17 @@ public:
                 const auto shaped = thermalVoltage * std::asinh (x / kneeScale);
                 auto clipped = ceilingLimit * std::tanh (shaped / ceilingLimit);
                 clipped /= std::max (0.4f, std::sqrt (driveGain) * 0.42f);
-
-                data[i] = toneFilter[ch].processSample (clipped) * outputLevel;
+                osBlock.setSample ((int) ch, i, clipped);
             }
+        }
+        oversampling->processSamplesDown (block);
+
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* out = buffer.getWritePointer (ch);
+            auto* clippedPtr = preClipBuffer.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+                out[i] = toneFilter[ch].processSample (clippedPtr[i]) * outputLevel;
         }
     }
 
@@ -141,10 +179,13 @@ private:
     }
 
     juce::dsp::IIR::Filter<float> preClipHighpass[2], toneFilter[2];
+    std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
+    juce::AudioBuffer<float> preClipBuffer;
     static constexpr float thermalVoltage = 0.58f;
     static constexpr float ceilingLimit = 1.0f;
     static constexpr float kneeScaleBase = 0.75f; // matched silicon diodes, baseline symmetric
     double sampleRate = 44100.0;
+    int channelCount = 2;
     float driveAmount = 0.3f;
     float outputLevel = 1.0f;
     float lastTone01 = -1.0f;

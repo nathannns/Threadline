@@ -18,14 +18,29 @@
 //     how much clipped signal is mixed back in over the clean buffered
 //     signal, which is what keeps it sounding "transparent" instead of
 //     fuzzy even at higher settings.
+// 2x-oversamples just the nonlinear clip stage: the treble pre-emphasis and
+// clean/driven blend are linear operations (they don't generate new harmonic
+// content), so only the asinh/tanh clip itself needs the higher rate to keep
+// the harmonics it generates from folding back as audible aliasing —
+// AmpModule already does this for the same reason; Klon and TS9 didn't.
 class KlonModule
 {
 public:
     void prepare (const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
+        channelCount = juce::jlimit (1, 2, (int) spec.numChannels);
         for (auto& f : trebleFilter)
             f.prepare (spec);
+        oversampling = std::make_unique<juce::dsp::Oversampling<float>> (
+            (size_t) channelCount, 1 /* 1 stage = 2x */,
+            juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
+        oversampling->initProcessing (spec.maximumBlockSize);
+
+        dryDelay.prepare (spec);
+        dryDelay.setMaximumDelayInSamples (64);
+        dryDelay.setDelay ((float) getLatencySamples());
+
         updateFilter();
         reset();
     }
@@ -34,6 +49,14 @@ public:
     {
         for (auto& f : trebleFilter)
             f.reset();
+        if (oversampling != nullptr)
+            oversampling->reset();
+        dryDelay.reset();
+    }
+
+    int getLatencySamples() const noexcept
+    {
+        return oversampling != nullptr ? juce::roundToInt (oversampling->getLatencyInSamples()) : 0;
     }
 
     void setEnabled (bool shouldBeEnabled) { enabled = shouldBeEnabled; }
@@ -52,38 +75,58 @@ public:
 
     void process (juce::AudioBuffer<float>& buffer)
     {
-        if (! enabled)
+        if (! enabled || oversampling == nullptr)
             return;
 
-        const auto numChannels = juce::jmin (buffer.getNumChannels(), 2);
+        const auto numChannels = juce::jmin (buffer.getNumChannels(), channelCount);
         const auto numSamples = buffer.getNumSamples();
+        const auto driveGain = 1.0f + gainAmount * 11.0f;
+        const auto wet = juce::jlimit (0.0f, 1.0f, gainAmount);
 
+        // Pre-emphasis treble boost (linear — stays at base rate) feeding
+        // only the drive path; dry is kept untouched for the blend below.
+        preClipBuffer.setSize (numChannels, numSamples, false, false, true);
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            auto* data = buffer.getWritePointer (ch);
+            auto* dst = preClipBuffer.getWritePointer (ch);
+            auto* src = buffer.getReadPointer (ch);
             for (int i = 0; i < numSamples; ++i)
+                dst[i] = trebleFilter[ch].processSample (src[i]);
+        }
+
+        // Only the nonlinear clip itself runs at 2x — that's the stage that
+        // generates the high-order harmonics that can alias.
+        juce::dsp::AudioBlock<float> block (preClipBuffer);
+        auto osBlock = oversampling->processSamplesUp (block);
+        const auto osSamples = (int) osBlock.getNumSamples();
+        for (size_t ch = 0; ch < osBlock.getNumChannels(); ++ch)
+        {
+            for (int i = 0; i < osSamples; ++i)
             {
-                const auto dry = data[i];
-
-                // Pre-emphasis treble boost feeding only the drive path.
-                auto boosted = trebleFilter[ch].processSample (dry);
-
-                // Diode-physics knee (see class comment) with a tanh safety
-                // ceiling so output stays bounded across the whole Gain
-                // range — the ceiling doesn't define the clip character,
-                // asinh's knee shape does.
-                const auto driveGain = 1.0f + gainAmount * 11.0f;
-                auto x = boosted * driveGain;
+                auto x = osBlock.getSample ((int) ch, i) * driveGain;
                 const auto kneeScale = x >= 0.0f ? 0.55f : 1.05f; // germanium : silicon
                 const auto shaped = thermalVoltage * std::asinh (x / kneeScale);
                 auto clipped = ceilingLimit * std::tanh (shaped / ceilingLimit);
                 clipped /= std::max (0.5f, driveGain * 0.30f); // keep loudness sane across gain range
+                osBlock.setSample ((int) ch, i, clipped);
+            }
+        }
+        oversampling->processSamplesDown (block);
 
-                // Blend clean and clipped — the "transparent" part.
-                const auto wet = juce::jlimit (0.0f, 1.0f, gainAmount);
-                auto out = dry * (1.0f - wet) + clipped * wet;
-
-                data[i] = out * outputLevel;
+        // Blend clean and clipped — the "transparent" part. The oversampled
+        // clip path now carries the oversampler's reported latency that the
+        // dry path doesn't, so dry is pushed through a matching delay line
+        // first — otherwise the blend would smear transients (dry and wet
+        // arriving at slightly different times) instead of cleanly mixing.
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* dry = buffer.getWritePointer (ch);
+            auto* clippedPtr = preClipBuffer.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                dryDelay.pushSample (ch, dry[i]);
+                const auto delayedDry = dryDelay.popSample (ch);
+                dry[i] = (delayedDry * (1.0f - wet) + clippedPtr[i] * wet) * outputLevel;
             }
         }
     }
@@ -100,9 +143,13 @@ private:
     }
 
     juce::dsp::IIR::Filter<float> trebleFilter[2];
+    std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
+    juce::dsp::DelayLine<float> dryDelay;
+    juce::AudioBuffer<float> preClipBuffer;
     static constexpr float thermalVoltage = 0.62f;
     static constexpr float ceilingLimit = 1.05f;
     double sampleRate = 44100.0;
+    int channelCount = 2;
     float gainAmount = 0.3f;
     float outputLevel = 1.0f;
     float lastTreble01 = -1.0f;
