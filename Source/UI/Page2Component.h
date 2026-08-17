@@ -36,6 +36,12 @@ private:
     juce::ComboBox cabAIRBox, cabBIRBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cabAIRAttachment, cabBIRAttachment;
 
+    // Manual polarity-invert safety net for the two blended IR slots — onset
+    // alignment (CabModule::alignOnset) fixes timing automatically, but
+    // absolute polarity isn't detectable from the IR data alone.
+    juce::TextButton cabAPhaseButton { "Ø" }, cabBPhaseButton { "Ø" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> cabAPhaseAttachment, cabBPhaseAttachment;
+
     juce::Label blendLabel;
     PhotoKnob blendKnob;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> blendAttachment;

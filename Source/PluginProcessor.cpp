@@ -88,6 +88,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         2 /* default: Medium Mix */));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabAMix"), "Cab A Mix",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
+    // Onset alignment (CabModule::alignOnset) handles *timing* differences
+    // between IRs automatically, but absolute polarity isn't detectable
+    // from the IR data alone — this is the manual safety-net toggle for it.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabAPhase"), "Cab A Phase", false));
 
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabBOn"), "Cab B On", false));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("cabBIRSelect"), "Cab B IR",
@@ -97,6 +101,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         0 /* default: Bright Mix — deliberately different from A's default */));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabBMix"), "Cab B Mix",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabBPhase"), "Cab B Phase", false));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabBlend"), "Cab A/B Blend",
         Range (0.0f, 100.0f, 0.1f), 50.0f));
@@ -316,6 +321,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     {
         cabA.setEnabled (pBool ("cabAOn"));
         cabA.setMix (p ("cabAMix"));
+        cabA.setPhaseInverted (pBool ("cabAPhase"));
         const auto cabASelection = (int) p ("cabAIRSelect");
         if (cabASelection != lastCabAIRSelection && cabASelection < CabModule::numBuiltInIRs)
             cabA.loadBuiltInIR (cabASelection);
@@ -323,6 +329,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
         cabB.setEnabled (pBool ("cabBOn"));
         cabB.setMix (p ("cabBMix"));
+        cabB.setPhaseInverted (pBool ("cabBPhase"));
         const auto cabBSelection = (int) p ("cabBIRSelect");
         if (cabBSelection != lastCabBIRSelection && cabBSelection < CabModule::numBuiltInIRs)
             cabB.loadBuiltInIR (cabBSelection);

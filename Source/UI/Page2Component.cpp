@@ -53,6 +53,20 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     cabBIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "cabBIRSelect", cabBIRBox);
 
+    // Ø polarity-invert safety net — off by default, only needed if the two
+    // blended IRs still sound thin/hollow after automatic onset alignment.
+    for (auto* button : { &cabAPhaseButton, &cabBPhaseButton })
+    {
+        button->setClickingTogglesState (true);
+        button->setTitle ("Invert phase");
+        button->setTooltip ("Flip polarity if blending with the other slot sounds hollow");
+        addAndMakeVisible (*button);
+    }
+    cabAPhaseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.apvts, "cabAPhase", cabAPhaseButton);
+    cabBPhaseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.apvts, "cabBPhase", cabBPhaseButton);
+
     blendLabel.setText ("A / B", juce::dontSendNotification);
     blendLabel.setJustificationType (juce::Justification::centred);
     blendLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
@@ -113,12 +127,15 @@ void Page2Component::resized()
     auto blendArea = cabRow.removeFromLeft (blendWidth);
     auto cabBArea = cabRow;
 
-    auto layoutCabSlot = [] (SectionUI& section, juce::ComboBox& irBox, juce::Rectangle<int> area)
+    auto layoutCabSlot = [] (SectionUI& section, juce::ComboBox& irBox, juce::TextButton& phaseButton,
+                             juce::Rectangle<int> area)
     {
         section.bounds = area;
         area.reduce (10, 8);
         auto header = area.removeFromTop (24);
         section.toggle.setBounds (header.removeFromRight (36).reduced (2, 0));
+        phaseButton.setBounds (header.removeFromRight (26).reduced (1, 0));
+        header.removeFromRight (4);
         irBox.setBounds (header.removeFromRight (130).reduced (4, 0));
         section.titleLabel.setBounds (header);
 
@@ -127,8 +144,8 @@ void Page2Component::resized()
         if (! section.knobs.empty())
             section.knobs[0]->slider.setBounds (mixKnobArea.reduced (4, 0));
     };
-    layoutCabSlot (cabASection, cabAIRBox, cabAArea);
-    layoutCabSlot (cabBSection, cabBIRBox, cabBArea);
+    layoutCabSlot (cabASection, cabAIRBox, cabAPhaseButton, cabAArea);
+    layoutCabSlot (cabBSection, cabBIRBox, cabBPhaseButton, cabBArea);
 
     blendKnob.setBounds (blendArea.withSizeKeepingCentre (
         juce::jmin (blendArea.getWidth(), 64), juce::jmin (blendArea.getHeight() - 30, 84))

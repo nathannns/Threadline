@@ -47,6 +47,14 @@ public:
     // knob is handy for blending in some raw preamp bite.
     void setMix (float mix01) { mixAmount = juce::jlimit (0.0f, 1.0f, mix01); }
 
+    // Manual polarity flip. Onset alignment (see alignOnset()) fixes *timing*
+    // misalignment between two different IR captures automatically, but
+    // absolute polarity (was this particular mic wired in-phase?) isn't
+    // something that's detectable from the IR data alone — if two blended
+    // slots still sound thin/hollow after alignment, this is the escape
+    // hatch, same as the phase button on a mixing console.
+    void setPhaseInverted (bool shouldInvert) { phaseInverted = shouldInvert; }
+
     // Requests one of the 6 embedded Tweed_Combo_1x12 IRs. Non-blocking and
     // safe to call from the audio thread — the actual decode + FFT
     // partition build happens later on the message thread via
@@ -105,6 +113,7 @@ public:
         juce::dsp::ProcessContextReplacing<float> wetContext (wetBlock);
         convolution.process (wetContext);
 
+        const auto polarity = phaseInverted ? -1.0f : 1.0f;
         const auto numSamples = buffer.getNumSamples();
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         {
@@ -119,7 +128,7 @@ public:
                     wetGain *= 1.0f - (float) fadeRemainingForChannel / (float) fadeInTotalSamples;
                     --fadeRemainingForChannel;
                 }
-                dry[i] = dry[i] * (1.0f - wetGain) + w[i] * wetGain;
+                dry[i] = dry[i] * (1.0f - wetGain) + (w[i] * polarity) * wetGain;
             }
         }
         fadeInRemaining = juce::jmax (0, fadeInRemaining - numSamples);
@@ -192,14 +201,67 @@ private:
 
     // Shared by the built-in and custom-file paths: loads the impulse
     // (mono sources duplicated to a genuine 2-channel buffer, per the
-    // Stereo::yes fix below) and arms the fade-in in process().
+    // Stereo::yes fix below), onset-aligned so two different IRs blended
+    // together (Cab A/B) stay phase-coherent, and arms the fade-in in
+    // process().
     void applyImpulse (juce::AudioFormatReader& reader)
     {
-        convolution.loadImpulseResponse (makeGuaranteedStereoImpulse (reader), reader.sampleRate,
+        auto impulse = alignOnset (makeGuaranteedStereoImpulse (reader));
+        convolution.loadImpulseResponse (std::move (impulse), reader.sampleRate,
             juce::dsp::Convolution::Stereo::yes,
             juce::dsp::Convolution::Trim::yes,
             juce::dsp::Convolution::Normalise::yes);
         fadeInRemaining = fadeInTotalSamples;
+    }
+
+    // Different mic'd IRs (close vs. room, different mic models/distances)
+    // naturally start at different points in the buffer — a few samples to
+    // a few dozen samples of pure silence/pre-roll before the transient
+    // actually hits. When two such IRs are convolved and summed (Cab A + Cab
+    // B blend in PluginProcessor), that timing offset is exactly what
+    // produces comb-filtering: the same signal arriving at two slightly
+    // different times cancels at frequencies whose half-period matches the
+    // offset. Trimming every loaded IR down to a small, consistent lead-in
+    // ahead of its detected onset removes that source of misalignment
+    // without needing any cross-instance coordination between cabA/cabB —
+    // each independently normalizes to the same relative reference point.
+    static juce::AudioBuffer<float> alignOnset (juce::AudioBuffer<float> impulse)
+    {
+        const auto numSamples = impulse.getNumSamples();
+        if (numSamples <= 0)
+            return impulse;
+
+        float peak = 0.0f;
+        for (int ch = 0; ch < impulse.getNumChannels(); ++ch)
+        {
+            auto* data = impulse.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+                peak = juce::jmax (peak, std::abs (data[i]));
+        }
+        if (peak <= 0.0f)
+            return impulse;
+
+        const auto threshold = peak * 0.15f; // 15% of peak: standard onset-detection threshold
+        int onset = 0;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            bool crossed = false;
+            for (int ch = 0; ch < impulse.getNumChannels() && ! crossed; ++ch)
+                if (std::abs (impulse.getSample (ch, i)) >= threshold)
+                    crossed = true;
+            if (crossed) { onset = i; break; }
+        }
+
+        constexpr int leadInSamples = 8; // small guard so the attack's rise isn't chopped off
+        const auto trimStart = juce::jmax (0, onset - leadInSamples);
+        if (trimStart <= 0)
+            return impulse;
+
+        const auto trimmedLength = numSamples - trimStart;
+        juce::AudioBuffer<float> trimmed (impulse.getNumChannels(), trimmedLength);
+        for (int ch = 0; ch < impulse.getNumChannels(); ++ch)
+            trimmed.copyFrom (ch, 0, impulse, ch, trimStart, trimmedLength);
+        return trimmed;
     }
 
     // Reads the full IR from `reader` into a genuinely 2-channel buffer —
@@ -228,6 +290,7 @@ private:
     juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 256 } };
     juce::dsp::ProcessSpec currentSpec {};
     bool enabled = true;
+    bool phaseInverted = false;
     bool hasLoadedIR = false;
     bool usingCustomFile = false;
     int loadedBuiltInIndex = -1;
