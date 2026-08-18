@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "Antialiasing.h"
 
 // "Copier" is this plugin's own name for the effect (Carbon Copy is MXR/
 // Dunlop's trademark, kept out of our UI/parameter names) -- modeled on the
@@ -46,6 +47,12 @@ private:
     // each repeat passes through this again, so the tail gets darker with
     // every cycle rather than staying a constant colour.
     juce::dsp::IIR::Filter<float> darkenFilter[2];
+    // ADAA'd (see Antialiasing.h) version of the write-side safety rail --
+    // this pedal's only nonlinearity inside the feedback loop, so it's the
+    // one place aliasing could recirculate and compound across repeats. It
+    // only engages its nonlinear branch near self-oscillation, but that's
+    // exactly the regime where harmonic content peaks.
+    AdaaSmoothRail writeRail[2];
     double sampleRate = 44100.0;
     int writeIndex = 0;
     int validSamples = 0;

@@ -3,7 +3,7 @@ project(Threadline VERSION 0.1.0 LANGUAGES C CXX)
 
 # --- JUCE ---
 # Pinned to 8.0.15 to match the version the reused Rockalizer modules
-# (Chorus/Echo/Spring/Tremolo) were written against.
+# (Chorus/Echo/Tremolo) were written against.
 #
 # You said you already have JUCE installed locally. If you'd rather point at
 # that instead of letting CMake fetch its own copy, comment out the
@@ -99,6 +99,7 @@ target_sources(Threadline
         Source/UI/Page4Component.h
         Source/UI/Page4Component.cpp
         Source/DSP/GraphicEQModule.h
+        Source/DSP/Antialiasing.h
         Source/DSP/ChorusModule.cpp
         Source/DSP/ChorusModule.h
         Source/DSP/EchoModule.cpp

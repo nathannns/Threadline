@@ -17,6 +17,9 @@ private:
     ThreadlineAudioProcessor& processor;
     SectionUI tremSection, chorusSection, echoSection, reverbSection;
 
+    // Tremolo's Bias/Harmonic voice switch.
+    juce::TextButton tremVoiceButtons[2] { juce::TextButton ("Bias"), juce::TextButton ("Harmonic") };
+
     // July's Sine/Triangle mini-toggle switch.
     juce::TextButton waveformButtons[2] { juce::TextButton ("Sine"), juce::TextButton ("Triangle") };
     // D-C-V as 3 explicit stops rather than a knob whose Dry/Chorus/Vibrato

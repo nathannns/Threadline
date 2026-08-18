@@ -22,11 +22,13 @@
 //     how much clipped signal is mixed back in over the clean buffered
 //     signal, which is what keeps it sounding "transparent" instead of
 //     fuzzy even at higher settings.
-// 2x-oversamples just the nonlinear clip stage: the treble pre-emphasis and
-// clean/driven blend are linear operations (they don't generate new harmonic
-// content), so only the clip itself needs the higher rate to keep the
-// harmonics it generates from folding back as audible aliasing — AmpModule
-// already does this for the same reason; Klon and TS9 didn't.
+// Oversamples just the nonlinear clip stage (mode selectable, default 2x):
+// the treble pre-emphasis and clean/driven blend are linear operations (they
+// don't generate new harmonic content), so only the clip itself needs the
+// higher rate to keep the harmonics it generates from folding back as
+// audible aliasing — AmpModule already does this the same way, including
+// the same "keep 3 fully-prepared instances, pick one live" pattern for a
+// hot-switchable mode (see PluginProcessor's klons array).
 class KlonModule
 {
 public:
@@ -82,14 +84,17 @@ public:
         }
     };
 
-    void prepare (const juce::dsp::ProcessSpec& spec)
+    // oversamplingMode: 0 = off (1x), 1 = 2x, 2 = 4x -- same convention as
+    // AmpModule's own oversamplingMode.
+    void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 1)
     {
         sampleRate = spec.sampleRate;
         channelCount = juce::jlimit (1, 2, (int) spec.numChannels);
         for (auto& f : trebleFilter)
             f.prepare (spec);
+        const auto stages = juce::jlimit (0, 2, oversamplingMode);
         oversampling = std::make_unique<juce::dsp::Oversampling<float>> (
-            (size_t) channelCount, 1 /* 1 stage = 2x */,
+            (size_t) channelCount, stages,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
 

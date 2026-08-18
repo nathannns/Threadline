@@ -44,12 +44,13 @@
 // per-variant difference there to model with the same confidence, so that
 // differentiation still lives entirely in the pre-clip highpass corner and
 // post-clip Tone range below, same as before this rewrite.
-// Like KlonModule, 2x-oversamples just the nonlinear clip stage — the
-// pre-clip highpass and post-clip tone filter are linear (no new harmonic
-// content), only the clip itself needs the higher rate to avoid aliasing
-// the harmonics it generates. Unlike Klon, TS9 has no dry/wet blend (it's
-// fully wet), so there's no parallel dry path to keep aligned with the
-// oversampler's added latency — one less thing to compensate for.
+// Like KlonModule, oversamples just the nonlinear clip stage (mode
+// selectable, default 2x) — the pre-clip highpass and post-clip tone filter
+// are linear (no new harmonic content), only the clip itself needs the
+// higher rate to avoid aliasing the harmonics it generates. Unlike Klon,
+// TS9 has no dry/wet blend (it's fully wet), so there's no parallel dry
+// path to keep aligned with the oversampler's added latency — one less
+// thing to compensate for.
 class TS9Module
 {
 public:
@@ -93,7 +94,9 @@ public:
         updatePreClipFilter();
         updateToneFilter();
     }
-    void prepare (const juce::dsp::ProcessSpec& spec)
+    // oversamplingMode: 0 = off (1x), 1 = 2x, 2 = 4x -- same convention as
+    // AmpModule's own oversamplingMode.
+    void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 1)
     {
         sampleRate = spec.sampleRate;
         channelCount = juce::jlimit (1, 2, (int) spec.numChannels);
@@ -101,8 +104,9 @@ public:
             f.prepare (spec);
         for (auto& f : toneFilter)
             f.prepare (spec);
+        const auto stages = juce::jlimit (0, 2, oversamplingMode);
         oversampling = std::make_unique<juce::dsp::Oversampling<float>> (
-            (size_t) channelCount, 1 /* 1 stage = 2x */,
+            (size_t) channelCount, stages,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
         updatePreClipFilter();

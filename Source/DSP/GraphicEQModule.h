@@ -8,17 +8,22 @@
 //
 // Centres follow the classic ISO 1-octave series from 62.5 Hz-16 kHz (the
 // guitar-relevant slice of the standard 10-band series, dropping the
-// 31.5 Hz sub-bass band nothing on guitar lives below). True-octave spacing
-// gives a theoretical Q of ~1.41 ("All About Audio Equalization: Solutions
-// and Frontiers"); Q here is nudged up a bit from that so adjacent bands
-// don't smear together as much when several are boosted at once (the
-// cascaded-filter interaction Liski & Valimaki's graphic-EQ papers
-// describe) — at the cost of the textbook-flat sum a full parallel/
-// corrected design solves for. This implementation compensates that cascade
-// numerically: it measures the complete trial response at all nine centres and
-// iteratively adjusts the internal gains until those responses follow the
-// visible sliders. We retain the low-cost, stable biquad cascade while fixing
-// the most noticeable adjacent-band interaction.
+// 31.5 Hz sub-bass band nothing on guitar lives below).
+//
+// Parallel topology: each band is an independent constant-0dB-peak-gain
+// bandpass filter (JUCE's makeBandPass -- unity gain at its own centre,
+// falling away either side) that always sees the same dry, post-HPF
+// signal, scaled by (linearGain - 1) and summed back onto that signal:
+//   y = x + sum_i bandpass_i(x) * (gain_i - 1)
+// At each band's own centre frequency the other eight bands' bandpass
+// responses are already small, so that band's term contributes (gain_i-1)
+// on top of the dry path's 1, landing on gain_i by construction -- exact,
+// and independent of every other slider. A series biquad cascade (the
+// previous design here) doesn't have that property: every band's setting
+// shifts what every other band's centre actually measures, which is why
+// that version needed an iterative numerical correction pass to stay
+// close to the sliders. Bands left at 0 dB contribute exactly zero, so an
+// all-flat EQ is bit-identical to off.
 class GraphicEQModule
 {
 public:
@@ -35,13 +40,6 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
-        for (auto& ch : channelState)
-        {
-            for (auto& band : ch.bands)
-                band.prepare (spec);
-            ch.hpf.prepare (spec);
-            ch.lpf.prepare (spec);
-        }
         reset();
         updateBandCoefficients();
         updateFilterCoefficients();
@@ -100,63 +98,38 @@ public:
         const auto numChannels = juce::jmin (buffer.getNumChannels(), 2);
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            auto block = juce::dsp::AudioBlock<float> (buffer).getSingleChannelBlock ((size_t) ch);
-            juce::dsp::ProcessContextReplacing<float> context (block);
+            auto* samples = buffer.getWritePointer (ch);
             auto& state = channelState[(size_t) ch];
 
-            if (hpfEnabled)
-                state.hpf.process (context);
-            for (auto& band : state.bands)
-                band.process (context);
-            if (lpfEnabled)
-                state.lpf.process (context);
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                auto x = samples[i];
+                if (hpfEnabled)
+                    x = state.hpf.processSample (x);
+
+                auto wet = x;
+                for (int b = 0; b < numBands; ++b)
+                    wet += state.bands[(size_t) b].processSample (x) * bandGainMinusOne[(size_t) b];
+
+                if (lpfEnabled)
+                    wet = state.lpf.processSample (wet);
+
+                samples[i] = wet;
+            }
         }
     }
 
 private:
     void updateBandCoefficients()
     {
-        std::array<float, numBands> correctedGains = gainsDb;
-        std::array<juce::dsp::IIR::Coefficients<float>::Ptr, numBands> trial;
-
-        // Three Newton-like correction passes are enough at this band count.
-        // Each pass measures the actual sum of all cascaded sections at every
-        // slider centre, then applies the residual error to that band's command.
-        for (int iteration = 0; iteration < 3; ++iteration)
-        {
-            for (int b = 0; b < numBands; ++b)
-            {
-                const auto centre = juce::jmin (getCentreFrequencies()[(size_t) b],
-                                                static_cast<float> (sampleRate * 0.45));
-                trial[(size_t) b] = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
-                    sampleRate, centre, bandQ,
-                    juce::Decibels::decibelsToGain (correctedGains[(size_t) b]));
-            }
-
-            for (int target = 0; target < numBands; ++target)
-            {
-                const auto frequency = juce::jmin (getCentreFrequencies()[(size_t) target],
-                                                   static_cast<float> (sampleRate * 0.45));
-                float actualDb = 0.0f;
-                for (const auto& coefficients : trial)
-                    actualDb += juce::Decibels::gainToDecibels (
-                        static_cast<float> (coefficients->getMagnitudeForFrequency (frequency, sampleRate)), -60.0f);
-
-                const auto residual = gainsDb[(size_t) target] - actualDb;
-                correctedGains[(size_t) target] = juce::jlimit (-18.0f, 18.0f,
-                    correctedGains[(size_t) target] + residual * 0.82f);
-            }
-        }
-
         for (int b = 0; b < numBands; ++b)
         {
             const auto centre = juce::jmin (getCentreFrequencies()[(size_t) b],
                                             static_cast<float> (sampleRate * 0.45));
-            auto coefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
-                sampleRate, centre, bandQ,
-                juce::Decibels::decibelsToGain (correctedGains[(size_t) b]));
+            auto coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, centre, bandQ);
             for (auto& channel : channelState)
                 *channel.bands[(size_t) b].coefficients = *coefficients;
+            bandGainMinusOne[(size_t) b] = juce::Decibels::decibelsToGain (gainsDb[(size_t) b]) - 1.0f;
         }
     }
 
@@ -179,6 +152,7 @@ private:
 
     std::array<ChannelState, 2> channelState;
     std::array<float, numBands> gainsDb {};
+    std::array<float, numBands> bandGainMinusOne {};
     bool enabled = false;
     bool hpfEnabled = false, lpfEnabled = false;
     float hpfHz = 80.0f, lpfHz = 8000.0f;

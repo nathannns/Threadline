@@ -21,7 +21,14 @@ on/off toggle regardless) via the Overdrive Order switch.
   traced circuit's diode pair turned out to be matched (single Is/Vt for
   both diodes), not the popular "germanium + silicon asymmetric pair"
   story this module used to model — corrected to match what the actual
-  reverse-engineered schematic uses.
+  reverse-engineered schematic uses. Oversampling mode (Off/2x/4x, default
+  2x) is now selectable via `klonOversampling`, matching AmpModule -- three
+  fully-prepared instances (one per mode) live in `PluginProcessor::klons`,
+  hot-switchable with no runtime Oversampling-object rebuild, same pattern
+  as Amp's own `amps` array. Latency reported to the host is pinned to the
+  4x instance regardless of the selected mode, so it stays constant across
+  a live switch (most hosts don't tolerate a plugin's reported latency
+  changing without a full reinit).
 - `TS9Module` ("Breaker" in the UI) — switchable TS9/TS808/TS10 variants,
   each sharing a genuine WDF simulation of the real op-amp/diode-pair
   clipping stage (ideal-op-amp limit of Chowdhury-DSP/BYOD's own Tube
@@ -29,7 +36,9 @@ on/off toggle regardless) via the Overdrive Order switch.
   Rf=51k+0-500k from Drive, 1N4148 Is=4.352nA/Vt=25.85mV×1.906) — Drive now
   moves the actual feedback resistor rather than pre-scaling the signal
   into a fixed curve. Per-variant differences still live in the pre-clip
-  highpass corner and post-clip Tone range, same as before.
+  highpass corner and post-clip Tone range, same as before. Same
+  selectable-oversampling treatment as Klon above (`ts9Oversampling`,
+  `PluginProcessor::ts9s`).
 - `AmpModule` — dynamic, oversampled 5E3-inspired model (Rob Robinette's 5E3
   circuit writeup): input/interstage coupling caps, a two-stage 12AY7/12AX7
   preamp whose nonlinearity is a genuine triode current model (`TriodeStage`
@@ -44,13 +53,17 @@ on/off toggle regardless) via the Overdrive Order switch.
   cap feeding V2A's grid, not a filter tacked on after both preamp stages --
   it used to sit there, so the second stage now clips whatever harmonic
   content Tone left behind rather than clipping the full-bandwidth signal
-  and only filtering the already-clipped result). Then a cathodyne-style
-  phase inverter, a genuinely differential push-pull power
-  stage (two tubes driven by +V/-V from the cathodyne, subtracted at the
-  output transformer -- for a matched pair this cancels even-order harmonics
+  and only filtering the already-clipped result). Then a real cathodyne
+  (split-load) phase inverter -- a third `TriodeStage` instance with matched
+  Ra=Rk instead of Ra>>Rk, verified to produce genuinely antiphase,
+  ~equal-amplitude outputs, not a curve-fit approximation -- driving a
+  genuinely differential push-pull power stage of two real 6V6GT beam-
+  tetrode models (`PentodeStage`, Koren's model, real 6V6-GTA parameters --
+  see "Phase inverter and power stage" below), subtracted at the output
+  transformer -- for a matched pair this cancels even-order harmonics
   exactly, leaving only odd-order content doubled; a small same-direction
   bias mismatch between the two tubes breaks that cancellation on purpose,
-  since real 6V6 pairs are never perfectly matched), a bass-weighted sag
+  since real 6V6 pairs are never perfectly matched, a bass-weighted sag
   detector (low chords draw more current and "bloom" more than a bright
   single-note lead at the same peak level), and output-transformer core
   saturation as a second, distinct compression mechanism from sag (sag is
@@ -67,8 +80,32 @@ on/off toggle regardless) via the Overdrive Order switch.
 - `CabModule` — `juce::dsp::Convolution` loading whatever IR file you point
   it at via the in-UI file chooser. No bundled cab IRs. Two parallel IR
   slots (A/B) blend from the same dry signal, like two mics on one cab.
-- `TremoloModule` — bias-modulation tremolo, modeled on the real tube gm
-  curve's asymmetric throb (fast dip, gentler recovery), single Amount knob.
+  `process()` used to build its wet-signal scratch buffer via a fresh local
+  `AudioBuffer` + `makeCopyOf()` every single call -- a default-constructed
+  buffer is always 0-sized, so `setSize()`'s reuse-optimization never had a
+  matching size to skip, meaning a real heap alloc+free on the audio thread
+  every block, doubled since both Cab A and Cab B instances did it. Now a
+  persistent member buffer sized once in `prepare()`, matching how
+  `HallRoomReverbModule`'s own `wetBuffer` already did this correctly.
+- `TremoloModule` — two selectable voices sharing one LFO (Rate/Amount, same
+  phase), so switching voices keeps the same speed and feel:
+  - **Bias** (default) — bias-modulation tremolo, modeled on the real tube
+    gm curve's asymmetric throb (fast dip, gentler recovery). Mono: the same
+    gain drives both channels, so it can never become autopan.
+  - **Harmonic** — the later blackface/brownface mechanism, a genuinely
+    different circuit rather than a variant of the same trick: a
+    `juce::dsp::LinkwitzRileyFilter` crossover (4th-order/24dB-oct, fixed at
+    700Hz, low+high guaranteed to sum flat) splits the signal into low/high
+    bands, and each band's amplitude is modulated by the same LFO but 180°
+    out of phase with the other, so brightness swings between the bands
+    rather than the whole signal's level moving together — hence
+    *harmonic*, not amplitude, tremolo. Genuinely stereo: left assigns the
+    low band the LFO's "gainA" phase and the high band "gainB"; right swaps
+    that assignment, so the two channels' spectral balance swings in
+    opposite directions as the LFO cycles — real width, not dual-mono, and
+    (since Tremolo sits after Amp/Cab, both effectively mono up to this
+    point) the first point of genuine stereo divergence in the whole
+    signal chain.
 - `ChorusModule` ("July" in the UI) — modeled on the Julia pedal's exact
   control surface: Rate, Depth, Lag (LFO center delay time), a Sine/Triangle
   waveform switch, and a Dry/Chorus/Vibrato 3-way switch — plus one addition
@@ -116,6 +153,30 @@ on/off toggle regardless) via the Overdrive Order switch.
     delay-time wobble when switched on. Regen reaches near-self-oscillation
     at maximum, same as real hardware. Mixing is a straightforward
     crossfade, unlike Plexer's additive/always-colored EP-3 behaviour.
+
+  Both engines' feedback-loop nonlinearities (Plexer's always-on saturation
+  stage, and both engines' write-side safety rail, engaged near
+  self-oscillation) used to evaluate tanh() directly once per sample --
+  which aliases, since tanh's own harmonics extend well above what the
+  sample rate can represent whenever consecutive samples move it by very
+  much, and inside a feedback loop that harmonic content recirculates and
+  compounds on every repeat, worst exactly at high Sustain/Regen where the
+  harmonic content is highest to begin with. Oversampling the whole delay
+  line to fix this the way Klon/TS9/Amp oversample their own nonlinearities
+  is awkward here -- the delay buffer's own indexing would need to track the
+  oversampled rate too -- so `Antialiasing.h`'s `AdaaTanh`/`AdaaSmoothRail`
+  use antiderivative antialiasing (ADAA) instead: the exact average slope of
+  the nonlinearity's antiderivative between the previous sample and this
+  one, `(F(x2)-F(x1))/(x2-x1)`, mathematically equivalent to bandlimiting
+  the nonlinearity's output at zero added latency (Parker, Zavalishin,
+  Bilbao, Valimaki, "Antiderivative Antialiasing for Memoryless
+  Nonlinearities," DAFx-16), falling back to a direct evaluation at the
+  analytic midpoint when consecutive samples are too close together for
+  that secant to stay well-conditioned. Verified in a standalone harness (no
+  JUCE dependency) before wiring in: matches the exact secant formula,
+  stays bounded under a stress test of large fast-changing jumps, and shows
+  no discontinuity worth worrying about crossing the epsilon fallback
+  boundary.
 - `HallRoomReverbModule` — algorithmic (not convolution) reverb: a genuine
   **Feedback Delay Network** (FDN, per Jot's original papers), not a bank of
   independent parallel combs. The earlier design (still described in git
@@ -370,12 +431,147 @@ to 0.10 — harness-verified to reach up to ~80% pinned (genuinely heavy,
 fuzz-territory clipping) at max Drive + loud input, still 0% pinned at
 low Drive/quiet playing.
 
-Known, deliberate simplification: both stages are modeled cathode-bypassed
-(a fixed bias point). The real 5E3's V1 is unbypassed, which real hardware
-uses for extra local negative feedback and headroom; this model captures
-the tube's real current-vs-voltage nonlinearity and grid-conduction/
-blocking behaviour, not that specific cathode-degeneration detail — a
-scope boundary, not an oversight.
+V1's cathode is modeled unbypassed, matching the real 5E3 (Robinette
+schematic: 1.5k cathode resistor, no bypass cap on V1, unlike V2A's
+bypassed stage). This was originally a deliberate, documented scope
+boundary — both stages ran cathode-bypassed (a fixed bias point) — since an
+unbypassed stage isn't a fixed operating point anymore: the cathode
+voltage V_k floats with the tube's own instantaneous current, and V_k
+feeds back into the very grid-cathode voltage V_gk that sets that current
+(V_gk = V_g − V_k), a genuine algebraic loop rather than a lookup.
+
+Closing that gap: `TriodeStage::solveBiasPoint()` gets a
+`cathodeUnbypassed` path that solves the DC operating point with a nested
+bisection — the same monotonic plate-voltage search the fixed-bias path
+already used, run inside an outer search over V_k0, since plate current
+(through R_a) and cathode current (through R_k) have to settle
+simultaneously (rising V_k0 always pulls V_gk0 down and therefore total
+cathode current down too, so both searches stay monotonic). At audio rate,
+`processSample()` re-solves V_k every sample via a warm-started
+Newton-Raphson iteration (seeded from the previous sample's V_k, which
+barely moves at audio rates, so a handful of iterations converges tightly)
+against the *previous* sample's plate voltage — the same one-sample delay
+the plate-load network already relies on for its own stability, reused
+here so this stays a 1-D solve instead of a simultaneous 2-unknown one.
+
+Verified with a standalone harness (no JUCE dependency — `TriodeStage`'s
+core math is pure `<cmath>`) before wiring it in: at V1's real operating
+point (R_a=100k, R_k=1.5k, V_b=300V), the solve converges to V_a0≈149.7V,
+V_k0≈2.25V — a realistic self-bias voltage for a 12AY7 — and both Ohm's-law
+checks (`(V_b−V_a0)/R_a` vs `I_a0`, `V_k0/R_k` vs `I_k0`) match to the
+harness's printed precision. A sine sweep at three input levels confirmed
+genuine gain reduction from the added negative feedback versus the old
+fixed-bias model (peak output ran 53–85% of the bypassed stage's,
+strongest in the small-signal region and weakest once both stages are
+current-limited-saturating anyway — exactly the shape real cathode
+degeneration should have), stayed finite across all three levels, and an
+impulse/step stress test held bounded with no blow-up. This genuinely
+changes V1's gain structure (that's the point — lower gain, more headroom,
+matching the real circuit), and that did make the whole amp read as
+noticeably quieter than before at ordinary playing levels once wired in --
+not the intended effect. `v1GainCompensation` fixes that: a fixed
+post-multiply on V1's output, sized to exactly cancel the gain the new
+model loses versus the old one at small signal (measured in the same
+standalone harness -- a low-level 440Hz sine's settled RMS output/input
+ratio, isolating the linear gain from the nonlinear compression a hotter
+sweep would conflate it with: old 35.94x vs new 23.20x, so 1.549x /
++3.80dB restores parity). Being a pure linear post-multiply rather than a
+curve change, it restores the old loudness at normal playing levels
+without touching the new model's extra headroom/compression character at
+hard drive -- so the Drive knob's *feel* (where it starts compressing,
+how hard) should still read close to before, just no longer quieter
+across the board.
+
+## Phase inverter and power stage (AmpModule's cathodyne + 6V6GT)
+
+V1/V2A got the real triode-current treatment above; the phase inverter and
+power stage were still a curve-fit `tanh` (an asymmetric-tanh "cathodyne"
+approximation, and `tanh(±v+mismatch)` per power tube). This closes that
+gap the same way, but the phase inverter and power tube needed two
+different equation families, since they're genuinely different devices.
+
+**Cathodyne (split-load) phase inverter.** Architecturally this is just a
+*third* `TriodeStage` instance -- the same Dempwolf-Zölzer current
+equations already verified for V1/V2A -- not a new struct. A cathodyne is
+a cathode-unbypassed common-cathode stage (the same physics V1 already
+got), except its plate resistor and cathode resistor are matched
+(`R_a=R_k`) instead of `R_a≫R_k`, which is what makes its plate and
+cathode outputs come out roughly equal in amplitude and opposite in phase
+-- the whole point of the stage, driving the two power-tube grids without
+a transformer. `TriodeStage` gained one addition: `getCathodeAc()`,
+exposing the cathode voltage's own AC deviation (`V_k − V_{k0}`, already
+tracked internally by `cathodeUnbypassed` for V1's own purposes) as this
+stage's second output.
+
+Component values (`R_a=56k`, `R_k=56k` plus a `1.5k` bias-balance padding
+resistor, combined here as a single lumped `57.5k`) are the real 5E3 V2B
+values -- cross-confirmed from Rob Robinette's schematic and independent
+tube-amp-DIY sources (ampbooks.com's 5E3 circuit analysis; tdpri.com forum
+threads specifically on 5E3 phase-inverter resistor balancing) rather than
+taken from one source alone.
+
+Verified in a standalone harness before wiring in: the DC bias solve
+converges (`V_a0≈296.9V`, `I_a0≈56µA`, `V_k0≈3.21V`, both Ohm's-law checks
+exact), and — the property that actually matters for a cathodyne — driving
+it with a small sine and measuring the two outputs gave a **0.97:1
+amplitude ratio and a negative cross-correlation** (genuine antiphase),
+measured directly rather than assumed from the topology. Stable under an
+impulse/hot-input stress test.
+
+**6V6GT power tube.** A beam tetrode is different physics from a triode --
+the screen grid shields the control grid from the plate's influence, so
+plate current becomes nearly independent of plate voltage past a knee,
+instead of rising with it via `μ` the way a triode's does. `PentodeStage`
+implements Norman Koren's pentode/beam-tetrode SPICE model (Koren, "Improved
+Vacuum-Tube Models for SPICE Simulations," Glass Audio Vol. 8 No. 5, 1996;
+equations confirmed against an academic source — J. Vanderkooy-style SPICE
+tube-modeling literature — that reproduces Koren's original formulas
+verbatim, cross-checked against Koren's own published SPICE tube library):
+
+- `E1 = (V_{g2}/K_p)·ln(1+exp(K_p·(1/μ + V_{g1}/V_{g2})))`
+- `I_a = E1^{Ex}/K_{g1} · atan(V_a/K_{vb})` — the `atan` term is the actual
+  physical signature of a pentode/tetrode's "knee": once `V_a` clears a few
+  multiples of `K_{vb}`, `atan` saturates toward `π/2` and plate current
+  stops responding to further plate-voltage swing.
+- `I_{g2} = max(0, V_{g2}/μ + V_{g1})^{Ex} / K_{g2}` (screen current, used
+  here only inside the self-bias solve — see scope note below)
+
+Real 6V6-GTA parameters (`μ=10.70, Ex=1.310, K_{g1}=1672.0, K_{g2}=4500,
+K_p=41.16, K_{vb}=12.7`) are Koren's own published fit (his SPICE tube
+library, `Koren_Tubes.cir`, itself sourced from a GE datasheet) — not
+guessed or curve-fit for this project. `V_b=373V` and screen voltage
+`=295V` (held fixed) are Robinette's 5E3 schematic values; the shared
+`250Ω` cathode-bias resistor and `8k` push-pull output-transformer primary
+(reflected to `2k` per tube — plate-to-plate impedance divides by 4 for a
+center-tapped winding) are likewise his.
+
+Two deliberate scope boundaries, called out honestly rather than silently
+assumed: screen voltage is held fixed rather than given its own dynamic
+sag (the existing sag detector already models supply sag heuristically,
+and building real screen-supply dynamics would be a topology change beyond
+this pass); and the self-bias solve treats each tube's `250Ω` cathode
+resistor as if it belonged to that tube alone, rather than modeling the
+real shared-resistor coupling between the two power tubes (also a topology
+change beyond "replace the per-tube current equation" — see
+`PentodeStage`'s own comment).
+
+Verified in a standalone harness before wiring in: the DC bias solve
+converges to **`I_a0≈37.1mA` idle plate current** — squarely inside a real
+6V6's typical class-AB operating range — with both plate and cathode
+Ohm's-law checks exact. Three new calibration constants
+(`cathodyneInputScale`, `powerStageInputScale`, `powerStageOutputScale`)
+were derived the same "measure, don't guess" way as `outputCalibration`/
+`v1GainCompensation` above: swept across the full realistic Drive ×
+input-loudness range plus stress-test extremes well beyond what the real
+signal path can deliver (input levels the upstream `safetyCeiling` clamp
+already rules out). Result: quiet playing stays clean, loud playing at max
+Drive reaches solidly toward but not fully into the existing output-
+transformer knee's saturated asymptote — real headroom, not a tuning miss,
+since a beam-tetrode power stage genuinely is less Va-sensitive/more
+current-limited than the preamp triodes ahead of it, so most of this amp's
+dirt still comes from V1/V2A upstream, matching how a real lower/medium-
+gain tweed circuit actually behaves. Bounded and finite across the entire
+sweep, including a hard-impulse stress test (peak 0.9934, no blow-up).
 
 ## UI
 

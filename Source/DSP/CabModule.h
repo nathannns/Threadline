@@ -35,6 +35,15 @@ public:
     {
         currentSpec = spec;
         convolution.prepare (spec);
+        // Persistent, sized once here rather than a fresh local AudioBuffer
+        // + makeCopyOf() every process() call -- that always reallocates
+        // (a default-constructed buffer is 0-sized, so setSize()'s reuse
+        // check never has a matching size to skip), which is a real-time-
+        // unsafe heap alloc+free on the audio thread every single block,
+        // doubled since two CabModule instances (A/B slots) both do it.
+        // Matches how HallRoomReverbModule's own wetBuffer already does this.
+        wetBuffer.setSize (static_cast<int> (spec.numChannels),
+                           static_cast<int> (spec.maximumBlockSize), false, false, true);
         fadeInTotalSamples = juce::jmax (1, (int) (spec.sampleRate * 0.015)); // ~15ms
         fadeInRemaining = 0;
     }
@@ -101,24 +110,29 @@ public:
     {
         if (! enabled || ! hasLoadedIR)
             return;
+        const auto numSamples = buffer.getNumSamples();
+        const auto channels = juce::jmin (buffer.getNumChannels(), wetBuffer.getNumChannels());
+        if (numSamples > wetBuffer.getNumSamples() || channels == 0)
+            return;
 
         // A fresh IR was just swapped in on the message thread — fade the
         // wet signal in over ~15ms rather than jumping straight to full
         // level, so any residual discontinuity in the convolution engine's
         // internal (overlap-save) history from the swap itself is masked
         // rather than heard as a click.
-        juce::AudioBuffer<float> wet;
-        wet.makeCopyOf (buffer);
-        juce::dsp::AudioBlock<float> wetBlock (wet);
-        juce::dsp::ProcessContextReplacing<float> wetContext (wetBlock);
+        for (int ch = 0; ch < channels; ++ch)
+            wetBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+        juce::dsp::AudioBlock<float> wetBlock (wetBuffer);
+        auto activeWet = wetBlock.getSubsetChannelBlock (0, static_cast<size_t> (channels))
+                                  .getSubBlock (0, static_cast<size_t> (numSamples));
+        juce::dsp::ProcessContextReplacing<float> wetContext (activeWet);
         convolution.process (wetContext);
 
         const auto polarity = phaseInverted ? -1.0f : 1.0f;
-        const auto numSamples = buffer.getNumSamples();
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        for (int ch = 0; ch < channels; ++ch)
         {
             auto* dry = buffer.getWritePointer (ch);
-            auto* w = wet.getWritePointer (ch);
+            auto* w = wetBuffer.getWritePointer (ch);
             auto fadeRemainingForChannel = fadeInRemaining;
             for (int i = 0; i < numSamples; ++i)
             {
@@ -288,6 +302,7 @@ private:
     // versus a single large uniform FFT block that would trade CPU for
     // latency evenly across the whole IR.
     juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 256 } };
+    juce::AudioBuffer<float> wetBuffer;
     juce::dsp::ProcessSpec currentSpec {};
     bool enabled = true;
     bool phaseInverted = false;

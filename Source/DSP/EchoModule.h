@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "Antialiasing.h"
 
 // "Plexer" is this plugin's own name for the effect (Echoplex is Maestro/
 // Dunlop's trademark, kept out of our UI/parameter names) — modeled on the
@@ -79,6 +80,14 @@ private:
     juce::dsp::IIR::Filter<float> preampMidFilter[2], preampTrebleFilter[2];
     // Fixed tape-loop rolloff inside the feedback path -- see file header.
     juce::dsp::IIR::Filter<float> repeatDarkenFilter[2];
+    // Antialiased (ADAA) versions of the two nonlinearities that sit inside
+    // the feedback loop -- see Antialiasing.h. The always-on saturation
+    // stage below is the one that's actually audible as "character"; the
+    // write-side rail is a safety limiter that only engages its nonlinear
+    // branch near self-oscillation, but that's exactly the regime where
+    // harmonic content -- and therefore aliasing -- peaks.
+    AdaaTanh feedbackSaturation[2];
+    AdaaSmoothRail writeRail[2];
     double sampleRate = 44100.0;
     int writeIndex = 0;
     int validSamples = 0;

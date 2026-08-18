@@ -27,9 +27,27 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     };
 
     buildSection (tremSection, *this, processor.apvts, "Tremolo", "tremOn", {
-        { "tremAmount", "Amount" }
+        { "tremRate", "Rate" }, { "tremAmount", "Amount" }
     }, false, SectionPlate::Tremolo);
     applyKnobStyle (tremSection, PhotoKnob::Style::Tremolo);
+    constexpr int tremVoiceRadioGroup = 9003;
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& button = tremVoiceButtons[i];
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (tremVoiceRadioGroup, juce::dontSendNotification);
+        button.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+        button.setColour (juce::TextButton::buttonOnColourId, ThreadlineColours::accent);
+        button.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+        addAndMakeVisible (button);
+        button.onClick = [this, i]
+        {
+            if (auto* parameter = processor.apvts.getParameter ("tremVoice"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) i));
+        };
+    }
+    syncRadioGroup (tremVoiceButtons, 2, "tremVoice");
 
     // July's exact control surface: Rate, Depth, Lag (LFO center delay
     // time), a Sine/Triangle waveform switch, and D-C-V (Dry-Chorus-Vibrato)
@@ -196,6 +214,11 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
 
 void Page3Component::timerCallback()
 {
+    const auto tremVoice = juce::roundToInt (processor.apvts.getRawParameterValue ("tremVoice")->load());
+    for (int i = 0; i < 2; ++i)
+        if (tremVoiceButtons[i].getToggleState() != (i == tremVoice))
+            tremVoiceButtons[i].setToggleState (i == tremVoice, juce::dontSendNotification);
+
     const auto waveform = juce::roundToInt (processor.apvts.getRawParameterValue ("chorusWaveform")->load());
     for (int i = 0; i < 2; ++i)
         if (waveformButtons[i].getToggleState() != (i == waveform))
@@ -257,6 +280,36 @@ void Page3Component::resized()
     constexpr int gap = 6;
     const auto cardHeight = (area.getHeight() - 3 * gap) / 4;
     layoutHorizontalRackSection (tremSection, area.removeFromTop (cardHeight));
+    {
+        // Same technique as July/Delay/Reverb below: reserve a control
+        // column on the right for the Bias/Harmonic switch, then re-space
+        // Tremolo's own 2 knobs (Rate, Amount) across what's left instead of
+        // the auto-divided-by-count width layoutHorizontalRackSection just
+        // gave them, which assumed the full card width.
+        auto tremBounds = tremSection.bounds;
+        const auto controlWidth = juce::jlimit (150, 200, tremBounds.getWidth() / 6);
+        const auto controlsLeft = tremBounds.getRight() - 14 - controlWidth;
+        constexpr int rowHeight = 22;
+        const auto rowY = tremBounds.getCentreY() - rowHeight / 2;
+        const auto voiceWidth = (controlWidth - 4) / 2;
+        tremVoiceButtons[0].setBounds (controlsLeft, rowY, voiceWidth, rowHeight);
+        tremVoiceButtons[1].setBounds (controlsLeft + voiceWidth + 4, rowY, controlWidth - voiceWidth - 4, rowHeight);
+
+        if (tremSection.knobs.size() == 2)
+        {
+            const auto knobsLeft = tremBounds.getX() + juce::jlimit (112, 210, tremBounds.getWidth() / 5) + 18;
+            const auto knobsRight = controlsLeft - 18;
+            const auto knobsWidth = knobsRight - knobsLeft;
+            const float positions[] { 0.28f, 0.72f };
+            for (size_t i = 0; i < tremSection.knobs.size(); ++i)
+            {
+                auto& slider = tremSection.knobs[i]->slider;
+                const auto width = slider.getWidth();
+                slider.setTopLeftPosition (knobsLeft + juce::roundToInt (positions[i] * (float) knobsWidth) - width / 2,
+                                           slider.getY());
+            }
+        }
+    }
     area.removeFromTop (gap);
 
     // July: same card size/identity-width as Tremolo and Reverb — its extra

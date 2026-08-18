@@ -87,6 +87,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 1.0f, 0.001f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("klonLevel"), "Bull Level",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
+    // Default index 1 ("2x") matches this stage's previous hardcoded
+    // behaviour exactly, so existing sessions/presets without this
+    // parameter saved sound unchanged.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("klonOversampling"), "Bull Oversampling",
+        juce::StringArray { "Off", "2x", "4x" }, 1));
 
     // --- Overdrive stage order: Bull (Klon-style) and TS9 (Breaker) can run
     // in either order ahead of the Amp. Each stage keeps its own on/off
@@ -107,6 +112,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 1.0f, 0.001f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ts9Variant"), "TS9 Variant",
         juce::StringArray { "TS9", "TS808", "TS10" }, 0));
+    // Default index 1 ("2x") matches this stage's previous hardcoded
+    // behaviour exactly, so existing sessions/presets without this
+    // parameter saved sound unchanged.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ts9Oversampling"), "TS9 Oversampling",
+        juce::StringArray { "Off", "2x", "4x" }, 1));
 
     // --- Amp (5E3) --- defaults true (unlike the stomps above, which
     // default off): the amp is the plugin's core sound-shaping stage, and
@@ -177,6 +187,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("tremOn"), "Tremolo On", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tremAmount"), "Tremolo Amount",
         Range (0.0f, 100.0f, 0.1f), 40.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tremRate"), "Tremolo Rate",
+        Range (0.5f, 10.0f, 0.01f, 0.5f), 3.20f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("tremVoice"), "Tremolo Voice",
+        juce::StringArray { "Bias", "Harmonic" }, 0));
 
     // --- July (Chorus/Vibrato) --- our name for the effect (Julia is
     // Walrus Audio's trademark); the control surface exactly matches the
@@ -246,8 +260,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("carbonMod"), "Copier Mod", false));
 
     // --- Reverb: 3 Lexicon 480L hall/room convolutions (HallRoomReverbModule).
-    // The old Rockalizer spring-tank models (Space/9100/Echomixer) have been
-    // retired — SpringModule is no longer part of the chain.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("reverbOn"), "Reverb On", false));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("reverbModel"), "Reverb Model",
         juce::StringArray { "Room", "Hall", "Plate" }, 1));
@@ -312,17 +324,21 @@ void ThreadlineAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 
     noiseGate.prepare (spec);
     compressor.prepare (spec);
-    klon.prepare (spec);
-    ts9.prepare (spec);
+    for (int mode = 0; mode < (int) klons.size(); ++mode)
+        klons[(size_t) mode].prepare (spec, mode);
+    for (int mode = 0; mode < (int) ts9s.size(); ++mode)
+        ts9s[(size_t) mode].prepare (spec, mode);
     for (int mode = 0; mode < (int) amps.size(); ++mode)
         amps[(size_t) mode].prepare (spec, mode);
     // Klon and TS9 now also oversample their clip stage (see their headers),
     // so their latency adds to Amp's in series — all three sit one after
-    // another in the chain. Amp's own latency is pinned to its 4x-mode
+    // another in the chain. Each one's latency is pinned to its own 4x-mode
     // instance regardless of the currently selected oversampling setting
-    // (see the comment further down where it's selected), so the reported
-    // total stays constant across a live oversampling-mode switch too.
-    setLatencySamples (klon.getLatencySamples() + ts9.getLatencySamples() + amps.back().getLatencySamples());
+    // (see the comments further down where each is selected), so the
+    // reported total stays constant across a live oversampling-mode switch
+    // on any of the three, not just Amp.
+    setLatencySamples (klons.back().getLatencySamples() + ts9s.back().getLatencySamples()
+                        + amps.back().getLatencySamples());
     cabA.prepare (spec);
     cabB.prepare (spec);
     // Load each slot's selected built-in cabinet IR.
@@ -459,9 +475,11 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // position in the chain (which differs depending on odOrder).
     const auto klonActive = preFxSectionOn && pBool ("klonOn");
     const auto ts9Active = preFxSectionOn && pBool ("ts9On");
-    klon.setParameters (p ("klonGain"), p ("klonTreble"), p ("klonLevel"));
-    ts9.setVariant (static_cast<TS9Module::Variant> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
-    ts9.setParameters (p ("ts9Drive"), p ("ts9Tone"), p ("ts9Level"));
+    auto& selectedKlon = klons[(size_t) juce::jlimit (0, 2, (int) p ("klonOversampling"))];
+    auto& selectedTs9 = ts9s[(size_t) juce::jlimit (0, 2, (int) p ("ts9Oversampling"))];
+    selectedKlon.setParameters (p ("klonGain"), p ("klonTreble"), p ("klonLevel"));
+    selectedTs9.setVariant (static_cast<TS9Module::Variant> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
+    selectedTs9.setParameters (p ("ts9Drive"), p ("ts9Tone"), p ("ts9Level"));
 
     auto runKlon = [&]
     {
@@ -470,15 +488,15 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             dryScratchBuffer.setSize (buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
                 dryScratchBuffer.copyFrom (ch, 0, buffer, ch, 0, buffer.getNumSamples());
-            klon.setEnabled (true);
-            klon.process (buffer);
+            selectedKlon.setEnabled (true);
+            selectedKlon.process (buffer);
             crossfadeToggle (buffer, dryScratchBuffer, klonWetAmount, klonActive);
             klonWasActive = klonActive || klonWetAmount.isSmoothing();
             if (! klonWasActive)
-                klon.setEnabled (false);
+                selectedKlon.setEnabled (false);
         }
         else
-            klon.setEnabled (false);
+            selectedKlon.setEnabled (false);
     };
     auto runTs9 = [&]
     {
@@ -487,15 +505,15 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             dryScratchBuffer.setSize (buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
                 dryScratchBuffer.copyFrom (ch, 0, buffer, ch, 0, buffer.getNumSamples());
-            ts9.setEnabled (true);
-            ts9.process (buffer);
+            selectedTs9.setEnabled (true);
+            selectedTs9.process (buffer);
             crossfadeToggle (buffer, dryScratchBuffer, ts9WetAmount, ts9Active);
             ts9WasActive = ts9Active || ts9WetAmount.isSmoothing();
             if (! ts9WasActive)
-                ts9.setEnabled (false);
+                selectedTs9.setEnabled (false);
         }
         else
-            ts9.setEnabled (false);
+            selectedTs9.setEnabled (false);
     };
 
     if ((int) p ("odOrder") == 0)
@@ -568,15 +586,18 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // --- Tremolo: fades the modulation depth to 0 before resetting, same
     // as Echo/Reverb, instead of snapping the gain state to silence mid-cycle.
     const auto tremoloActive = wetFxSectionOn && pBool ("tremOn") && p ("tremAmount") > 0.001f;
+    tremolo.setVoice (static_cast<TremoloModule::Voice> (juce::jlimit (0, 1, (int) p ("tremVoice"))));
     if (tremoloActive)
     {
         tremolo.setAmount (p ("tremAmount"));
+        tremolo.setRate (p ("tremRate"));
         tremolo.process (buffer);
         tremoloWasActive = true;
     }
     else if (tremoloWasActive)
     {
         tremolo.setAmount (0.0f);
+        tremolo.setRate (p ("tremRate"));
         tremolo.process (buffer);
         if (! tremolo.isWetTransitionActive())
         {
@@ -662,7 +683,7 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    // --- Reverb (Hall/Room only — the spring models are retired) ---
+    // --- Reverb (Hall/Room) ---
     {
         const auto reverbEnabled = wetFxSectionOn && pBool ("reverbOn");
         hallRoomReverb.setParameters (p ("reverbPreDelay"), p ("reverbDecay"), p ("reverbTone"),

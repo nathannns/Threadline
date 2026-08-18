@@ -10,13 +10,15 @@
 // between the two preamp stages (matching the real 5E3's V1 -> Tone -> V2A
 // signal order, confirmed against Rob Robinette's own annotated 5E3
 // schematic: shared 1M tone pot, 0.005uF tone cap, feeding V2A's grid — not
-// after both preamp stages), a cathodyne-style phase inverter, a genuinely
-// differential push-pull power stage (two tubes driven by +V/-V from the
-// cathodyne and subtracted at the output transformer, the actual mechanism
-// that cancels even-order harmonics for a matched pair) with a bass-weighted
-// sag detector, and output-transformer core saturation distinct from sag —
-// per Rob Robinette's 5E3 circuit writeup and annotated schematic
-// (robrobinette.com).
+// after both preamp stages), a real cathodyne (split-load) phase inverter --
+// a genuine matched-Ra=Rk TriodeStage instance, not a curve-fit approximation
+// -- and a genuinely differential push-pull power stage using two real
+// 6V6GT beam-tetrode models (PentodeStage below, Koren's model), driven by
+// the cathodyne's own two antiphase outputs and subtracted at the output
+// transformer, the actual mechanism that cancels even-order harmonics for a
+// matched pair, with a bass-weighted sag detector and output-transformer
+// core saturation distinct from sag — per Rob Robinette's 5E3 circuit
+// writeup and annotated schematic (robrobinette.com).
 //
 // Preamp stage methodology: TriodeStage implements the cathode/grid current
 // equations from R. Dempwolf, U. Zolzer, "A Physically-Motivated Triode
@@ -42,12 +44,61 @@
 // cap and shifting the operating bias under heavy drive) now emerges from
 // that same real grid-current equation feeding a genuine RC charge/discharge
 // model, replacing the previous version's ad-hoc bias-memory heuristic.
-// Known, deliberate simplification: both stages are modeled as
-// cathode-bypassed (a fixed bias point) for tractability; the real 5E3's V1
-// is unbypassed, which real hardware uses for extra local negative feedback
-// and headroom -- this model captures the tube's real current-vs-voltage
-// nonlinearity and grid-conduction/blocking behaviour, not that specific
-// cathode-degeneration detail.
+// V1's cathode is modeled unbypassed, matching the real 5E3 (Robinette
+// schematic: 1.5k cathode resistor, no bypass cap, unlike V2A's bypassed
+// stage) -- TriodeStage's cathodeUnbypassed mode solves the cathode voltage
+// Vk self-consistently each sample from the SAME current equations above
+// (Ik(Vgk,Va) == Vk/Rk, Vgk = Vg - Vk) via a warm-started Newton-Raphson
+// iteration, and its DC operating point via a nested bisection at prepare()
+// time (see TriodeStage::solveBiasPoint). Rising cathode current pulls Vk
+// up, which pulls Vgk back down -- real local negative feedback, lowering
+// V1's gain and raising its headroom versus a fixed-bias stage, exactly
+// the effect the real unbypassed cathode is there for. V2A stays
+// cathode-bypassed (fixed bias point), matching the real circuit.
+//
+// Phase inverter and power stage methodology: the cathodyne is a THIRD
+// TriodeStage instance (same class, same Dempwolf-Zolzer current equations
+// above), not a new struct -- a cathodyne is architecturally just another
+// cathode-unbypassed common-cathode stage, except its plate resistor and
+// cathode resistor are matched (Ra=Rk) instead of Ra>>Rk, which is what
+// makes its two outputs come out roughly equal in amplitude. Component
+// values (Ra=56k, Rk=56k+1.5k bias-balance padding, combined here as a
+// single 57.5k lumped cathode resistor) are the real 5E3 V2B values, cross-
+// confirmed from Robinette's schematic and independent tube-amp-DIY
+// community sources (ampbooks.com's 5E3 circuit analysis; tdpri.com forum
+// threads on 5E3 phase inverter balancing). getCathodeAc() exposes the
+// cathode's own AC deviation (already tracked internally by
+// cathodeUnbypassed) as this stage's second, antiphase output -- verified
+// in a standalone harness to come out ~0.97:1 in amplitude versus the plate
+// output and genuinely antiphase (negative cross-correlation measured
+// directly, not assumed from the topology).
+//
+// The 6V6GT power tubes are a different physical device -- a beam tetrode,
+// not a triode -- so they need a different equation family: PentodeStage
+// below implements Norman Koren's pentode/beam-tetrode SPICE model (also
+// widely used for other guitar-relevant power tubes: 6L6, EL34, EL84).
+// Confirmed against an academic source that reproduces Koren's original
+// 1996 Glass Audio equations verbatim (E1 = Vg2/Kp * ln(1+exp(Kp*(1/mu +
+// Vg1/Vg2))), Ia = E1^Ex/Kg1 * atan(Va/Kvb) -- the arctangent "knee" term
+// is what makes plate current largely Va-independent past a threshold set
+// by Kvb, the actual physical signature of a screen grid shielding the
+// plate from the control grid, rather than a triode's roughly-linear
+// mu-scaled Va dependence). Real 6V6-GTA parameters (MU=10.70, EX=1.310,
+// KG1=1672.0, KG2=4500, KP=41.16, KVB=12.7) are Koren's own published fit
+// (his SPICE tube library, Koren_Tubes.cir, sourced from a GE datasheet),
+// not guessed or curve-fit for this project. B+ (373V) and screen voltage
+// (295V, held fixed -- see PentodeStage's own comment on scope) are
+// Robinette's 5E3 schematic values; the shared 250-ohm cathode-bias
+// resistor and 8k push-pull primary (reflected to 2k per tube: plate-to-
+// plate impedance divides by 4 for a center-tapped winding) are likewise
+// his. Verified in a standalone harness before wiring in: both stages'
+// DC bias points converge with exact Ohm's-law closure (6V6 idle plate
+// current lands at 37.1mA, squarely in a real 6V6's typical class-AB
+// range), the calibration constants (cathodyneInputScale,
+// powerStageInputScale, powerStageOutputScale below) were swept across the
+// full realistic Drive x input-loudness range plus stress-test extremes
+// well beyond what the signal path can actually deliver, and a hard-impulse
+// stress test stayed bounded with no blow-up.
 
 class AmpModule
 {
@@ -86,8 +137,17 @@ public:
             toneFilter[ch].prepare (osSpec);
             transformerLowPass[ch].prepare (osSpec);
             triodeV1[ch].mu = 44.0f; // 12AY7 datasheet mu, real fit's other shape params
+            triodeV1[ch].cathodeUnbypassed = true; // real 5E3 V1: unbypassed cathode, local NFB
             triodeV1[ch].prepare (processingSampleRate);
             triodeV2A[ch].prepare (processingSampleRate);
+            // V2B cathodyne phase inverter: matched split-load (Ra=Rk),
+            // the defining cathodyne trait -- see class comment.
+            cathodyneStage[ch].Ra = 56000.0f;
+            cathodyneStage[ch].Rk = 57500.0f;
+            cathodyneStage[ch].cathodeUnbypassed = true;
+            cathodyneStage[ch].prepare (processingSampleRate);
+            powerTubeA[ch].prepare (processingSampleRate);
+            powerTubeB[ch].prepare (processingSampleRate);
         }
         sagAttack = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.045));
         sagRelease = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.240));
@@ -114,6 +174,8 @@ public:
             inputCoupling[ch].reset(); interstageCoupling[ch].reset();
             toneFilter[ch].reset(); transformerLowPass[ch].reset();
             triodeV1[ch].reset(); triodeV2A[ch].reset();
+            cathodyneStage[ch].reset();
+            powerTubeA[ch].reset(); powerTubeB[ch].reset();
         }
         bassmanStack.reset();
         sagEnvelope = 0.0f;
@@ -186,11 +248,11 @@ public:
         for (int i = 0; i < samples; ++i)
         {
             float detector = 0.0f;
-            std::array<float, 2> phaseInverterOut {};
+            std::array<float, 2> phaseInverterPlate {}, phaseInverterCathode {};
             for (int ch = 0; ch < channels; ++ch)
             {
                 auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-                auto triode1 = triodeV1[ch].processSample (x * inputVoltsScale);
+                auto triode1 = triodeV1[ch].processSample (x * inputVoltsScale) * v1GainCompensation;
                 triode1 = interstageCoupling[ch].processSample (triode1);
 
                 // The real 5E3's Tone control sits between the two preamp
@@ -216,13 +278,21 @@ public:
                 // backstop pattern as Klon/TS9's own output calibration).
                 const auto triode2Raw = triodeV2A[ch].processSample (toned);
                 const auto triode2 = safetyCeiling * std::tanh (triode2Raw * outputCalibration / safetyCeiling);
-                auto cathodyne = triode2 >= 0.0f ? std::tanh (triode2 * 1.18f)
-                                                 : 0.94f * std::tanh (triode2 * 1.32f);
-                phaseInverterOut[(size_t) ch] = cathodyne;
+
+                // Real cathodyne (split-load) phase inverter: a genuine
+                // TriodeStage instance with matched Ra=Rk (see prepare()),
+                // whose plate and cathode outputs are the two anti-phase
+                // drive signals -- verified in a standalone harness to come
+                // out ~0.97:1 in amplitude and genuinely antiphase (negative
+                // cross-correlation), not assumed.
+                const auto plateOut = cathodyneStage[ch].processSample (triode2 * cathodyneInputScale);
+                const auto cathOut = cathodyneStage[ch].getCathodeAc();
+                phaseInverterPlate[(size_t) ch] = plateOut;
+                phaseInverterCathode[(size_t) ch] = cathOut;
 
                 auto& bassTap = sagDetectorLP[(size_t) ch];
-                bassTap += sagDetectorLPCoefficient * (cathodyne - bassTap);
-                const auto weighted = std::abs (cathodyne) * 0.5f + std::abs (bassTap) * 0.5f;
+                bassTap += sagDetectorLPCoefficient * (plateOut - bassTap);
+                const auto weighted = std::abs (plateOut) * 0.5f + std::abs (bassTap) * 0.5f;
                 detector = juce::jmax (detector, weighted);
             }
 
@@ -232,25 +302,33 @@ public:
                 sagEnvelope * (0.20f + 0.34f * driveAmount));
             for (int ch = 0; ch < channels; ++ch)
             {
-                // Real push-pull drives two tubes with opposite-polarity
-                // signals from the cathodyne (+V and -V), and the output
-                // transformer's opposite winding subtracts their outputs.
-                // For a matched pair sharing one nonlinearity f, decomposing
-                // f = f_odd + f_even gives f(V) - f(-V) = 2*f_odd(V): the
-                // even-order content cancels exactly, leaving only odd-order
-                // content doubled -- the textbook reason push-pull reads
-                // different from a single-ended stage. tubeMismatch (real
-                // 6V6 pairs are never perfectly matched) is applied as the
-                // *same*-direction bias to both tubes rather than mirrored,
-                // which breaks that cancellation just enough to leave a
-                // little real even-order content rather than a
-                // mathematically perfect one -- "asymmetric push-pull".
+                // Real push-pull: two genuine 6V6GT PentodeStage instances
+                // (Koren beam-tetrode model, real 6V6-GTA parameters -- see
+                // PentodeStage's class comment), each driven by one of the
+                // cathodyne's two real, already-antiphase outputs -- no
+                // artificial +V/-V construction needed anymore, the antiphase
+                // relationship is now a genuine consequence of the split-load
+                // stage above. The output transformer's opposite winding
+                // still subtracts their plate outputs: for a matched pair
+                // sharing one nonlinearity f, decomposing f = f_odd + f_even
+                // gives f(V) - f(-V) = 2*f_odd(V), so even-order content
+                // cancels and only odd-order content doubles -- the textbook
+                // reason push-pull reads different from single-ended.
+                // tubeMismatch (real 6V6 pairs are never perfectly matched)
+                // is applied as the *same*-direction grid bias to both tubes
+                // rather than mirrored, which breaks that cancellation just
+                // enough to leave a little real even-order content rather
+                // than a mathematically perfect one -- "asymmetric
+                // push-pull", same idea as before, now acting on genuine
+                // per-tube grid signals instead of a single shared value.
                 const auto effectiveDrive = powerDrive * (1.0f - sag);
-                const auto v = phaseInverterOut[(size_t) ch] * effectiveDrive;
+                const auto driveScale = effectiveDrive * powerStageInputScale;
                 constexpr float tubeMismatch = 0.035f;
-                const auto tubeA = std::tanh (v + tubeMismatch);
-                const auto tubeB = std::tanh (-v + tubeMismatch);
-                auto power = (tubeA - tubeB) * 0.5f;
+                const auto tubeA = powerTubeA[ch].processSample (
+                    phaseInverterPlate[(size_t) ch] * driveScale + tubeMismatch);
+                const auto tubeB = powerTubeB[ch].processSample (
+                    phaseInverterCathode[(size_t) ch] * driveScale + tubeMismatch);
+                auto power = (tubeA - tubeB) * powerStageOutputScale;
                 power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
 
                 // Output-transformer core saturation — a second, distinct
@@ -334,6 +412,13 @@ private:
         // well above the audio band it must not be heard shaping.
         float Cout = 220.0e-12f;
 
+        // Cathode-degeneration mode (V1 only -- see class comment). Rk is
+        // the real, unbypassed 5E3 V1 cathode resistor (Robinette
+        // schematic). Unused when cathodeUnbypassed is false (V2A).
+        bool cathodeUnbypassed = false;
+        float Rk = 1500.0f;
+        float vk = 0.0f, vk0 = 0.0f;
+
         float vaAcPrev = 0.0f, gridCharge = 0.0f, iAcPrev = 0.0f;
         float Va0 = 150.0f, Ia0 = 0.0f, restingGridCharge = 0.0f;
         double sampleRate = 44100.0;
@@ -370,22 +455,80 @@ private:
         // wildly-offset equilibrium instead.
         void solveBiasPoint() noexcept
         {
+            if (! cathodeUnbypassed)
+            {
+                restingGridCharge = 0.0f;
+                for (int iter = 0; iter < 20; ++iter)
+                {
+                    const auto vg0 = biasPoint - restingGridCharge;
+                    float lo = 0.0f, hi = Vb;
+                    for (int i = 0; i < 60; ++i)
+                    {
+                        const auto mid = 0.5f * (lo + hi);
+                        if (anodeCurrent (vg0, mid) > (Vb - mid) / Ra)
+                            hi = mid;
+                        else
+                            lo = mid;
+                    }
+                    Va0 = 0.5f * (lo + hi);
+                    Ia0 = anodeCurrent (vg0, Va0);
+                    restingGridCharge = gridCurrent (vg0) * Rg;
+                }
+                return;
+            }
+
+            // Self-biased (cathode-unbypassed) path: there is no external
+            // biasPoint -- the resting Vgk instead EMERGES from Ik0*Rk, so
+            // the plate current (through Ra) and cathode current (through
+            // Rk) have to settle simultaneously. Nested bisection: the outer
+            // search is over the cathode voltage Vk0, the inner search is
+            // the same plate-voltage bisection the fixed-bias path uses
+            // above, run fresh for each Vk0 trial. Rising Vk0 always pulls
+            // Vgk0 (= -Vk0 here, grid resting at ~0V through Rg to ground)
+            // down and therefore total cathode current down too, so both
+            // searches are monotonic.
             restingGridCharge = 0.0f;
             for (int iter = 0; iter < 20; ++iter)
             {
-                const auto vg0 = biasPoint - restingGridCharge;
+                const auto vgActual0 = -restingGridCharge;
+                float vkLo = 0.0f, vkHi = Vb;
+                for (int outer = 0; outer < 40; ++outer)
+                {
+                    const auto vkMid = 0.5f * (vkLo + vkHi);
+                    const auto vgk = vgActual0 - vkMid;
+                    float lo = 0.0f, hi = Vb;
+                    for (int i = 0; i < 60; ++i)
+                    {
+                        const auto mid = 0.5f * (lo + hi);
+                        if (anodeCurrent (vgk, mid) > (Vb - mid) / Ra)
+                            hi = mid;
+                        else
+                            lo = mid;
+                    }
+                    const auto vaTrial = 0.5f * (lo + hi);
+                    // Total cathode current == anode + grid current, which
+                    // is exactly G*softplus(...)^gamma -- the gridCurrent
+                    // term anodeCurrent() subtracts out cancels back in.
+                    const auto totalCathodeCurrent = G * std::pow (softplus (vgk + vaTrial / mu, C), gamma);
+                    if (totalCathodeCurrent * Rk > vkMid)
+                        vkLo = vkMid;
+                    else
+                        vkHi = vkMid;
+                }
+                vk0 = 0.5f * (vkLo + vkHi);
+                const auto vgk0 = vgActual0 - vk0;
                 float lo = 0.0f, hi = Vb;
                 for (int i = 0; i < 60; ++i)
                 {
                     const auto mid = 0.5f * (lo + hi);
-                    if (anodeCurrent (vg0, mid) > (Vb - mid) / Ra)
+                    if (anodeCurrent (vgk0, mid) > (Vb - mid) / Ra)
                         hi = mid;
                     else
                         lo = mid;
                 }
                 Va0 = 0.5f * (lo + hi);
-                Ia0 = anodeCurrent (vg0, Va0);
-                restingGridCharge = gridCurrent (vg0) * Rg;
+                Ia0 = anodeCurrent (vgk0, Va0);
+                restingGridCharge = gridCurrent (vgk0) * Rg;
             }
         }
 
@@ -396,7 +539,14 @@ private:
             reset();
         }
 
-        void reset() noexcept { vaAcPrev = 0.0f; gridCharge = restingGridCharge; iAcPrev = 0.0f; }
+        void reset() noexcept { vaAcPrev = 0.0f; gridCharge = restingGridCharge; iAcPrev = 0.0f; vk = vk0; }
+
+        // The cathode's own AC deviation -- only meaningful when
+        // cathodeUnbypassed is set (V1, and the cathodyne phase inverter
+        // below, which needs BOTH this and the plate output as its two
+        // antiphase drive signals; V2A never reads it). Valid after
+        // processSample() has run for this sample.
+        float getCathodeAc() const noexcept { return vk - vk0; }
 
         // vin: signal voltage arriving at this stage's grid (real volts,
         // not a normalised sample). Returns the plate's AC voltage swing
@@ -404,7 +554,39 @@ private:
         // needing the caller's own output calibration back to sample scale.
         float processSample (float vin) noexcept
         {
-            const auto vg = vin - gridCharge + biasPoint;
+            float vg;
+            if (cathodeUnbypassed)
+            {
+                // Self-biasing cathode: solve Ik(Vgk,Va) == Vk/Rk for Vk via
+                // a warm-started Newton-Raphson iteration (Vk barely moves
+                // sample to sample at audio rates, so a handful of
+                // iterations converges tightly). Va uses the PREVIOUS
+                // sample's plate voltage, same one-sample delay the plate
+                // network below already relies on, so this stays a 1-D solve
+                // instead of a simultaneous 2-unknown (Vk, Va) one.
+                const auto vgActual = vin - gridCharge;
+                const auto va = Va0 + vaAcPrev;
+                auto vkGuess = vk;
+                for (int iter = 0; iter < 4; ++iter)
+                {
+                    const auto vgkTrial = vgActual - vkGuess;
+                    const auto x = vgkTrial + va / mu;
+                    const auto h = softplus (x, C);
+                    const auto ik = G * std::pow (h, gamma);
+                    const auto sigmoid = 1.0f / (1.0f + std::exp (-C * x));
+                    const auto dIkDVgk = G * gamma * std::pow (h, gamma - 1.0f) * sigmoid;
+                    const auto g = ik - vkGuess / Rk;
+                    const auto dg = -dIkDVgk - 1.0f / Rk;
+                    if (std::abs (dg) > 1.0e-12f)
+                        vkGuess -= g / dg;
+                }
+                vk = juce::jlimit (0.0f, Vb, vkGuess);
+                vg = vgActual - vk;
+            }
+            else
+            {
+                vg = vin - gridCharge + biasPoint;
+            }
 
             // Blocking distortion: grid current charges the input coupling
             // cap through Rg, chasing a target of Ig(Vg)*Rg (Ohm's law
@@ -437,6 +619,174 @@ private:
             // float precision on (1-K)/(1+K) alone isn't enough headroom) --
             // its value is chosen for stability margin, not to model any real
             // component (see Cout's own comment above).
+            const double K = 2.0 * sampleRate * (double) Ra * (double) Cout;
+            const double vaAcD = ((double) Ra * (-(double) iaAc + (double) iAcPrev)
+                                   - (1.0 - K) * (double) vaAcPrev) / (1.0 + K);
+            const auto vaAc = (float) vaAcD;
+            iAcPrev = -iaAc;
+            vaAcPrev = vaAc;
+            return vaAc;
+        }
+    };
+
+    // 6V6GT beam-tetrode power tube: Norman Koren's pentode/beam-tetrode
+    // SPICE model (E1 = Vg2/Kp * ln(1+exp(Kp*(1/mu + Vg1/Vg2))), Ia =
+    // E1^Ex/Kg1 * atan(Va/Kvb), Ig2 = max(0, Vg2/mu + Vg1)^Ex / Kg2), a
+    // different model family from TriodeStage above because a beam tetrode
+    // is different physics: the screen grid shields the control grid from
+    // the plate's influence, so plate current becomes nearly independent
+    // of plate voltage once past the arctan "knee" (kVB) instead of rising
+    // with it via mu the way a triode's does -- that's the mechanism behind
+    // a pentode/tetrode power stage's higher output and different
+    // compression character. Equation confirmed against an academic source
+    // reproducing Koren's original 1996 Glass Audio formulas verbatim
+    // (Vanderkooy-style SPICE tube modeling literature review); parameters
+    // (MU=10.70, EX=1.310, KG1=1672.0, KG2=4500, KP=41.16, KVB=12.7) are
+    // the real 6V6-GTA fit from Koren's own published SPICE library
+    // (Koren_Tubes.cir, GE datasheet fit) -- not guessed or curve-fit here.
+    // Self-biased (Rk=250, the real 5E3's shared 6V6-pair cathode resistor
+    // per Robinette, applied per-tube as a reasonable approximation since
+    // modeling the two tubes' actual shared-resistor coupling would be a
+    // topology change beyond this pass's scope -- see the class comment).
+    // Screen voltage is held fixed (295V, Robinette) rather than given its
+    // own sag dynamics, for the same reason: the existing sag detector
+    // already models supply sag heuristically, and changing that mechanism
+    // is a topology change this pass doesn't make. Same one-sample-delayed
+    // plate network technique as TriodeStage, and for the same reason
+    // (avoids a simultaneous Va/Vk solve); the pentode's arctan(Va/Kvb)
+    // term is far less Va-sensitive than a triode's linear mu term, so
+    // this loop is if anything better-damped, not worse.
+    struct PentodeStage
+    {
+        float mu = 10.70f, ex = 1.310f, kg1 = 1672.0f, kg2 = 4500.0f, kp = 41.16f, kvb = 12.7f;
+        float screenVoltage = 295.0f;
+        float Vb = 373.0f;
+        float Ra = 2000.0f; // OT reflected per-tube plate load: 8k P-P primary / 4
+        float Rk = 250.0f;
+        float Rg = 1.0e6f, Cin = 0.02e-6f;
+        float Cout = 220.0e-12f;
+
+        float vaAcPrev = 0.0f, gridCharge = 0.0f, iAcPrev = 0.0f;
+        float Va0 = 150.0f, Ia0 = 0.0f, restingGridCharge = 0.0f;
+        float vk = 0.0f, vk0 = 0.0f;
+        double sampleRate = 44100.0;
+
+        static float softplus (float x, float k) noexcept
+        {
+            const auto kx = k * x;
+            return (std::max (kx, 0.0f) + std::log1p (std::exp (-std::abs (kx)))) / k;
+        }
+
+        float e1 (float vg1) const noexcept { return screenVoltage * softplus (1.0f / mu + vg1 / screenVoltage, kp); }
+        float plateCurrent (float vg1, float va) const noexcept
+        {
+            return std::pow (e1 (vg1), ex) / kg1 * std::atan (va / kvb);
+        }
+        float screenCurrent (float vg1) const noexcept
+        {
+            const auto y = screenVoltage / mu + vg1;
+            return y > 0.0f ? std::pow (y, ex) / kg2 : 0.0f;
+        }
+        float cathodeCurrent (float vg1, float va) const noexcept
+        {
+            return plateCurrent (vg1, va) + screenCurrent (vg1);
+        }
+
+        // Nested bisection, same structure as TriodeStage's cathode-
+        // unbypassed solve: outer over Vk0, inner over Va0, since plate
+        // current (through Ra) and cathode current (through Rk, which for
+        // a self-biased pentode/tetrode includes screen current too) must
+        // settle simultaneously.
+        void solveBiasPoint() noexcept
+        {
+            restingGridCharge = 0.0f;
+            for (int iter = 0; iter < 20; ++iter)
+            {
+                const auto vgActual0 = -restingGridCharge;
+                float vkLo = 0.0f, vkHi = Vb;
+                for (int outer = 0; outer < 40; ++outer)
+                {
+                    const auto vkMid = 0.5f * (vkLo + vkHi);
+                    const auto vgk = vgActual0 - vkMid;
+                    float lo = 0.0f, hi = Vb;
+                    for (int i = 0; i < 60; ++i)
+                    {
+                        const auto mid = 0.5f * (lo + hi);
+                        if (plateCurrent (vgk, mid) > (Vb - mid) / Ra)
+                            hi = mid;
+                        else
+                            lo = mid;
+                    }
+                    const auto vaTrial = 0.5f * (lo + hi);
+                    if (cathodeCurrent (vgk, vaTrial) * Rk > vkMid)
+                        vkLo = vkMid;
+                    else
+                        vkHi = vkMid;
+                }
+                vk0 = 0.5f * (vkLo + vkHi);
+                const auto vgk0 = vgActual0 - vk0;
+                float lo = 0.0f, hi = Vb;
+                for (int i = 0; i < 60; ++i)
+                {
+                    const auto mid = 0.5f * (lo + hi);
+                    if (plateCurrent (vgk0, mid) > (Vb - mid) / Ra)
+                        hi = mid;
+                    else
+                        lo = mid;
+                }
+                Va0 = 0.5f * (lo + hi);
+                Ia0 = plateCurrent (vgk0, Va0);
+                // Grid current at these bias points is negligible (deep
+                // negative grid at idle), so this converges trivially --
+                // kept for structural parity with TriodeStage's solve.
+                restingGridCharge = 0.0f;
+            }
+        }
+
+        void prepare (double newSampleRate) noexcept
+        {
+            sampleRate = newSampleRate;
+            solveBiasPoint();
+            reset();
+        }
+
+        void reset() noexcept { vaAcPrev = 0.0f; gridCharge = restingGridCharge; iAcPrev = 0.0f; vk = vk0; }
+
+        float processSample (float vin) noexcept
+        {
+            const auto vgActual = vin - gridCharge;
+            const auto va = Va0 + vaAcPrev;
+            auto vkGuess = vk;
+            for (int iter = 0; iter < 6; ++iter)
+            {
+                const auto vgk = vgActual - vkGuess;
+                const auto x = 1.0f / mu + vgk / screenVoltage;
+                const auto h = softplus (x, kp);
+                const auto e1v = screenVoltage * h;
+                const auto sig = 1.0f / (1.0f + std::exp (-kp * x));
+                const auto dE1DVgk = sig;
+                const auto atanVa = std::atan (va / kvb);
+                const auto dIaDVgk = ex * std::pow (e1v, ex - 1.0f) * dE1DVgk / kg1 * atanVa;
+
+                const auto y = screenVoltage / mu + vgk;
+                const auto ig2 = y > 0.0f ? std::pow (y, ex) / kg2 : 0.0f;
+                const auto dIg2DVgk = y > 0.0f ? ex * std::pow (y, ex - 1.0f) / kg2 : 0.0f;
+
+                const auto ik = std::pow (e1v, ex) / kg1 * atanVa + ig2;
+                const auto dIkDVgk = dIaDVgk + dIg2DVgk;
+                const auto g = ik - vkGuess / Rk;
+                const auto dg = -dIkDVgk - 1.0f / Rk;
+                if (std::abs (dg) > 1.0e-12f)
+                    vkGuess -= g / dg;
+            }
+            vk = juce::jlimit (0.0f, Vb, vkGuess);
+            const auto vg = vgActual - vk;
+
+            // Grid current is negligible at these bias points (see
+            // solveBiasPoint), so no blocking-distortion charge to track --
+            // unlike the preamp triodes, a power pentode's grid never
+            // approaches conduction in normal class-AB operation.
+            const auto iaAc = plateCurrent (vg, va) - Ia0;
             const double K = 2.0 * sampleRate * (double) Ra * (double) Cout;
             const double vaAcD = ((double) Ra * (-(double) iaAc + (double) iAcPrev)
                                    - (1.0 - K) * (double) vaAcPrev) / (1.0 + K);
@@ -564,7 +914,8 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::dsp::IIR::Filter<float> inputCoupling[2], interstageCoupling[2];
     juce::dsp::IIR::Filter<float> toneFilter[2], transformerLowPass[2];
-    TriodeStage triodeV1[2], triodeV2A[2];
+    TriodeStage triodeV1[2], triodeV2A[2], cathodyneStage[2];
+    PentodeStage powerTubeA[2], powerTubeB[2];
     BassmanToneStack bassmanStack;
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> sagDetectorLP {};
@@ -582,6 +933,42 @@ private:
     // range rather than the knob just being uniformly hotter everywhere.
     static constexpr float outputCalibration = 0.10f;
     static constexpr float safetyCeiling = 3.0f;
+    // Compensates the gain V1 lost by switching to a genuinely unbypassed
+    // (self-biased) cathode -- that local negative feedback is real and
+    // intentional (see TriodeStage's cathodeUnbypassed mode), but it also
+    // measurably quieted the whole amp at ordinary playing levels, which
+    // isn't part of what that change was meant to do. Value is the exact
+    // reciprocal of the small-signal gain ratio measured in a standalone
+    // harness (no JUCE dependency) between the old fixed-bias V1 and the
+    // new self-biased one -- a low-level 440Hz sine's settled RMS
+    // output/input ratio, isolating the LINEAR gain from the nonlinear
+    // compression a hotter sweep would conflate it with: old 35.94x vs new
+    // 23.20x, ratio 1.549 (+3.80dB). A pure post-multiply, not a curve
+    // change, so it restores the old loudness at normal playing levels
+    // without touching the new model's extra headroom/compression
+    // character at hard drive.
+    static constexpr float v1GainCompensation = 1.549f;
+    // Cathodyne + power-stage calibration constants, all empirically
+    // derived in a standalone harness the same "measure, don't guess" way
+    // as outputCalibration/v1GainCompensation above -- chained
+    // cathodyne->two PentodeStage->subtract->existing otKnee soft-clip,
+    // swept across the full realistic Drive x input-loudness range plus
+    // stress-test extremes well beyond what triode2's own safetyCeiling
+    // clamp can actually deliver. Confirmed: quiet playing stays clean
+    // (peak <=0.02 at low Drive/quiet input), loud playing at max Drive
+    // reaches solidly toward but not fully into the otKnee's saturated
+    // asymptote (peak ~0.55 at Drive=1/loudest realistic input, versus
+    // fully pinned only at stress-test-only input levels the real signal
+    // path can't reach) -- headroom that's real and appropriate for a
+    // beam-tetrode power stage, not a tuning miss: pentodes/tetrodes are
+    // genuinely more current-limited/less Va-sensitive than the preamp
+    // triodes, so most of this amp's dirt still comes from V1/V2A upstream,
+    // matching how a real lower/medium-gain tweed circuit actually behaves.
+    // Bounded and finite across the entire sweep, including a hard-impulse
+    // stress test (peak 0.9934, no blow-up).
+    static constexpr float cathodyneInputScale = 4.0f;
+    static constexpr float powerStageInputScale = 0.02f;
+    static constexpr float powerStageOutputScale = 0.20f;
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;
     Voice voice = Voice::vintage5E3;

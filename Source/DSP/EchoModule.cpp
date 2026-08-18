@@ -53,6 +53,8 @@ void EchoModule::reset()
         preampMidFilter[ch].reset();
         preampTrebleFilter[ch].reset();
         repeatDarkenFilter[ch].reset();
+        feedbackSaturation[ch].reset();
+        writeRail[ch].reset();
     }
     delaySamples.setCurrentAndTargetValue (static_cast<float> (sampleRate * 0.300));
     wetMix.setCurrentAndTargetValue (0.0f);
@@ -230,7 +232,7 @@ void EchoModule::process (juce::AudioBuffer<float>& buffer)
             // generates, was what made repeats sound like a harsh metallic
             // hiss instead of warm tape saturation.
             const auto satGain = 1.0f + drive * 2.0f;
-            const auto saturatedFeedback = std::tanh (rawFeedback * satGain) / satGain;
+            const auto saturatedFeedback = feedbackSaturation[channel].process (rawFeedback * satGain) / satGain;
             // The tape loop's own bandwidth loss, applied after saturation
             // so it's the harmonics saturation just added that get tamed --
             // this is what keeps repeats warm rather than accumulating an
@@ -239,8 +241,11 @@ void EchoModule::process (juce::AudioBuffer<float>& buffer)
 
             const auto writeSample = coloured + darkened * feedback;
             // A wide safety rail: self-oscillation should stay loud and
-            // chaotic like the real unit, not numerically explode.
-            delayBuffer.setSample (channel, writeIndex, smoothRail (writeSample, 1.4f, 3.2f));
+            // chaotic like the real unit, not numerically explode. ADAA'd
+            // (see Antialiasing.h) since this sits inside the feedback loop
+            // -- whatever aliasing its nonlinear branch generates would
+            // otherwise recirculate and compound on every repeat.
+            delayBuffer.setSample (channel, writeIndex, writeRail[channel].process (writeSample, 1.4f, 3.2f));
 
             const auto safeWet = smoothRail (rawFeedback, 2.0f, 4.0f);
             // Additive, not a dry/wet crossfade: Volume adds echo level on

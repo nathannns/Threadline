@@ -64,8 +64,11 @@ private:
     // 9-Band EQ -> Output Gain -> Output Meter.
     NoiseGateModule noiseGate;
     CompressorModule compressor;
-    KlonModule klon;
-    TS9Module ts9;
+    // 3 fully-prepared instances, one per oversampling mode, same
+    // hot-switchable pattern as amps below -- PluginProcessor just picks
+    // which one to run each block based on the corresponding parameter.
+    std::array<KlonModule, 3> klons;
+    std::array<TS9Module, 3> ts9s;
     // Prepared up front so changing quality never allocates on the audio thread.
     std::array<AmpModule, 3> amps;
     // Two IR slots processed in parallel from the same dry signal (like two

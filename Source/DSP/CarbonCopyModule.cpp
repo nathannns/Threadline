@@ -30,7 +30,10 @@ void CarbonCopyModule::reset()
     validSamples = 0;
     modPhase = 0.0f;
     for (int ch = 0; ch < 2; ++ch)
+    {
         darkenFilter[ch].reset();
+        writeRail[ch].reset();
+    }
     delaySamples.setCurrentAndTargetValue (static_cast<float> (sampleRate * 0.300));
     wetMix.setCurrentAndTargetValue (0.0f);
     feedbackValue.setCurrentAndTargetValue (0.0f);
@@ -107,15 +110,6 @@ void CarbonCopyModule::process (juce::AudioBuffer<float>& buffer)
     const auto modStep = juce::MathConstants<float>::twoPi * 0.6f / static_cast<float> (sampleRate);
     constexpr float modDepthMs = 2.2f;
 
-    const auto smoothRail = [] (float value, float knee, float ceiling)
-    {
-        const auto magnitude = std::abs (value);
-        if (magnitude <= knee)
-            return value;
-        const auto range = ceiling - knee;
-        return std::copysign (knee + range * std::tanh ((magnitude - knee) / range), value);
-    };
-
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         const auto mix = wetMix.getNextValue();
@@ -139,7 +133,7 @@ void CarbonCopyModule::process (juce::AudioBuffer<float>& buffer)
             const auto darkened = darkenFilter[channel].processSample (delayed);
 
             const auto writeSample = input + darkened * feedback;
-            delayBuffer.setSample (channel, writeIndex, smoothRail (writeSample, 1.4f, 3.2f));
+            delayBuffer.setSample (channel, writeIndex, writeRail[channel].process (writeSample, 1.4f, 3.2f));
 
             // A crossfade, not Plexer's additive mixing -- real analog delay
             // pedals like this one just blend wet/dry. Equal-power (not
