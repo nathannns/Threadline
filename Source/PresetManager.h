@@ -153,11 +153,12 @@ private:
 
         // Each factory sound deliberately exercises the current topology:
         // Diamond optical compressor (two-stage vactrol release), switchable
-        // drive order, TS9/TS808/TS10 variants, Vintage/Boutique amp voices,
-        // parallel dual-cab IRs (with a phase-invert showcase), RE-201-style
-        // delay patterns including Ping-Pong, the July-inspired chorus/
-        // vibrato, the bias-modulation tremolo, convolution spaces, and the
-        // post-effects EQ.
+        // drive order, TS9/TS808/TS10 variants, Vintage/Boutique amp voices
+        // (now the real triode preamp model, not a curve-fit tanh), parallel
+        // dual-cab IRs (with a phase-invert showcase), both delay engines
+        // (Plexer *and* Copier -- the original six only ever used Plexer),
+        // the July-inspired chorus/vibrato, the bias-modulation tremolo, all
+        // three reverb spaces, and the post-effects EQ.
         makePreset ("01 Clean Tweed", {
             { "compOn", 1.0f }, { "compThreshold", 28.0f }, { "compRatio", 24.0f },
             { "compAttack", 6.0f }, { "compRelease", 0.8f }, { "compMakeup", 1.2f },
@@ -200,7 +201,7 @@ private:
             { "cabBlend", 42.0f },
             // Plexer in Echo mode: a handful of clean-ish slapback repeats
             // behind the lead, not self-oscillating.
-            { "echoOn", 1.0f }, { "echoMode", 0.0f },
+            { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 0.0f },
             { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.66f },
             { "reverbMix", 12.0f }, { "reverbWidth", 62.0f }
@@ -233,7 +234,7 @@ private:
             { "chorusDCV", 1.0f }, // Chorus
             // Sound-on-Sound: layered, long-sustaining repeats that wash
             // into the reverb tail rather than distinct slapback.
-            { "echoOn", 1.0f }, { "echoMode", 1.0f },
+            { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 1.0f },
             { "echoTime", 450.0f }, { "echoSustain", 55.0f }, { "echoVolume", 26.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbPreDelay", 0.18f },
             { "reverbDecay", 0.82f }, { "reverbTone", 0.50f }, { "reverbMix", 29.0f },
@@ -258,6 +259,74 @@ private:
             { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9000.0f },
             { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.38f },
             { "reverbMix", 6.0f }, { "reverbWidth", 48.0f }
+        });
+        // Bull alone, gain low, amp barely pushed -- the "transparent
+        // boost" use case: raises level and adds a little upper-mid push
+        // without the amp itself audibly breaking up.
+        makePreset ("07 Transparent Boost", {
+            { "odOrder", 0.0f }, { "klonOn", 1.0f }, { "klonGain", 0.08f },
+            { "klonTreble", 0.46f }, { "klonLevel", 0.66f },
+            { "ampVoice", 0.0f }, { "ampDrive", 0.15f }, { "ampTone", 0.58f },
+            { "ampOutput", -0.5f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbDecay", 0.40f },
+            { "reverbTone", 0.60f }, { "reverbMix", 6.0f }, { "reverbWidth", 45.0f }
+        });
+        // Both drives stacked hard into a cranked Boutique voice -- the
+        // opposite end of the gain range from "07 Transparent Boost",
+        // thickened by a wide chorus and a long Plate tail.
+        makePreset ("08 Wall of Fuzz", {
+            { "compOn", 1.0f }, { "compThreshold", 55.0f }, { "compRatio", 40.0f },
+            { "compAttack", 10.0f }, { "compRelease", 2.0f }, { "compMakeup", 1.5f },
+            { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 0.0f },
+            { "ts9Drive", 0.55f }, { "ts9Tone", 0.52f }, { "ts9Level", 0.62f },
+            { "klonOn", 1.0f }, { "klonGain", 0.35f }, { "klonTreble", 0.60f },
+            { "klonLevel", 0.55f },
+            { "ampVoice", 1.0f }, { "ampDrive", 0.88f }, { "ampBass", 0.52f },
+            { "ampMid", 0.44f }, { "ampTreble", 0.62f }, { "ampOutput", -6.5f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
+            { "cabBlend", 45.0f },
+            { "chorusOn", 1.0f }, { "chorusWaveform", 1.0f },
+            { "chorusRate", 0.55f }, { "chorusDepth", 45.0f }, { "chorusLag", 40.0f },
+            { "chorusDCV", 1.0f }, // Chorus
+            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.60f },
+            { "reverbTone", 0.45f }, { "reverbMix", 14.0f }, { "reverbWidth", 70.0f }
+        });
+        // Snappy optical comp, bright Vintage voice, Plexer's Echo mode at a
+        // short slapback delay time -- the classic rockabilly slap, not a
+        // wash of repeats.
+        makePreset ("09 Slapback Rockabilly", {
+            { "compOn", 1.0f }, { "compThreshold", 38.0f }, { "compRatio", 45.0f },
+            { "compAttack", -20.0f }, { "compRelease", 1.0f }, { "compMakeup", 0.8f },
+            { "odOrder", 0.0f }, { "ts9On", 1.0f }, { "ts9Variant", 1.0f },
+            { "ts9Drive", 0.08f }, { "ts9Tone", 0.62f }, { "ts9Level", 0.68f },
+            { "ampVoice", 0.0f }, { "ampDrive", 0.30f }, { "ampTone", 0.70f },
+            { "ampOutput", -2.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 4.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
+            { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 0.0f },
+            { "echoTime", 115.0f }, { "echoSustain", 12.0f }, { "echoVolume", 22.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.30f },
+            { "reverbTone", 0.65f }, { "reverbMix", 8.0f }, { "reverbWidth", 40.0f }
+        });
+        // Copier (Carbon-Copy-style BBD) gets its own showcase -- every
+        // other preset here uses Plexer. Mod on for the characteristic
+        // chorus-like wobble on the repeats, Plate reverb for a darker,
+        // denser tail behind them.
+        makePreset ("10 Copier Dreams", {
+            { "ampVoice", 0.0f }, { "ampDrive", 0.32f }, { "ampTone", 0.58f },
+            { "ampOutput", -2.5f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
+            { "cabBOn", 1.0f }, { "cabBIRSelect", 1.0f }, { "cabBMix", 1.0f },
+            { "cabBlend", 30.0f },
+            { "echoOn", 1.0f }, { "delayModel", 1.0f },
+            { "carbonTime", 340.0f }, { "carbonRegen", 42.0f }, { "carbonMix", 32.0f },
+            { "carbonMod", 1.0f },
+            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbPreDelay", 0.10f },
+            { "reverbDecay", 0.58f }, { "reverbTone", 0.48f }, { "reverbMix", 16.0f },
+            { "reverbWidth", 66.0f }
         });
 
         apvts.replaceState (original);
