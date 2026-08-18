@@ -151,27 +151,22 @@ private:
             savePreset (name);
         };
 
-        // Each factory sound deliberately exercises the current topology:
-        // Diamond optical compressor (two-stage vactrol release), switchable
-        // drive order, TS9/TS808/TS10 variants, Vintage/Boutique amp voices
-        // (now the real triode preamp model, not a curve-fit tanh), parallel
-        // dual-cab IRs (with a phase-invert showcase), both delay engines
-        // (Plexer *and* Copier -- the original six only ever used Plexer),
-        // the July-inspired chorus/vibrato, the bias-modulation tremolo, all
-        // three reverb spaces, and the post-effects EQ.
+        // Naming rule: a preset's name must acknowledge every "wet"/character
+        // effect actually engaged (Tremolo, July chorus/vibrato, Plexer/
+        // Copier delay, Reverb) -- so "Clean Tweed" only ever means the
+        // amp+cab tone alone, not amp+cab quietly carrying a chorus too.
+        // Drive pedals, the amp's own voicing, comp, gate, and EQ are
+        // "core tone" shaping (already named by words like Driven/Tight/
+        // Fuzz/Boost) and don't need their own callout the way a spatial or
+        // modulation effect does. Several presets below are deliberately
+        // 100% dry -- not every sound needs a wet effect riding along.
         makePreset ("01 Clean Tweed", {
-            { "compOn", 1.0f }, { "compThreshold", 28.0f }, { "compRatio", 24.0f },
-            { "compAttack", 6.0f }, { "compRelease", 0.8f }, { "compMakeup", 1.2f },
-            { "ampVoice", 0.0f }, { "ampDrive", 0.22f }, { "ampTone", 0.63f },
-            { "ampOutput", -1.5f },
+            { "ampVoice", 0.0f }, { "ampDrive", 0.20f }, { "ampTone", 0.63f },
+            { "ampOutput", -1.0f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
-            // July kept light and taut — a shimmer, not a wobble.
-            { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
-            { "chorusRate", 0.30f }, { "chorusDepth", 20.0f }, { "chorusLag", 25.0f },
-            { "chorusDCV", 1.0f }, // Chorus
-            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.48f },
-            { "reverbTone", 0.62f }, { "reverbMix", 10.0f }, { "reverbWidth", 58.0f }
+            { "cabBOn", 0.0f }, { "cabBlend", 0.0f }
+            // Bone dry: no comp, no chorus, no delay, no reverb -- just the
+            // amp+cab tone the name promises.
         });
         makePreset ("02 Edge of Breakup", {
             { "odOrder", 0.0f }, { "klonOn", 1.0f }, { "klonGain", 0.14f },
@@ -180,14 +175,10 @@ private:
             { "ampOutput", -3.0f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 1.0f }, { "cabBMix", 1.0f },
-            { "cabBlend", 30.0f },
-            // Bias-tremolo's asymmetric throb: a fast dip toward cutoff, a
-            // gentler recovery. Kept subtle so it breathes under a chord.
-            { "tremOn", 1.0f }, { "tremAmount", 20.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbDecay", 0.56f },
-            { "reverbTone", 0.55f }, { "reverbMix", 9.0f }, { "reverbWidth", 54.0f }
+            { "cabBlend", 30.0f }
+            // Dry -- Bull pushing the amp into breakup is the whole story.
         });
-        makePreset ("03 Driven Lead", {
+        makePreset ("03 Driven Lead + Slapback", {
             { "compOn", 1.0f }, { "compThreshold", 42.0f }, { "compRatio", 34.0f },
             { "compAttack", 12.0f }, { "compRelease", 1.5f }, { "compMakeup", 1.0f },
             { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 1.0f },
@@ -200,11 +191,10 @@ private:
             { "cabBOn", 1.0f }, { "cabBIRSelect", 4.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 42.0f },
             // Plexer in Echo mode: a handful of clean-ish slapback repeats
-            // behind the lead, not self-oscillating.
+            // behind the lead, not self-oscillating -- the one wet effect
+            // this preset uses, named in its title.
             { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 0.0f },
-            { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.66f },
-            { "reverbMix", 12.0f }, { "reverbWidth", 62.0f }
+            { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f }
         });
         makePreset ("04 Vibrato Swirl", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.25f }, { "ampTone", 0.60f },
@@ -212,30 +202,20 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
             // D-C-V set to Vibrato, with a brisk Rate and a long, sluggish
-            // Lag — genuine full-wet vibrato, not diluted chorus.
+            // Lag — genuine full-wet vibrato, not diluted chorus. The only
+            // effect running, matching the name exactly.
             { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
             { "chorusRate", 1.80f }, { "chorusDepth", 68.0f }, { "chorusLag", 70.0f },
-            { "chorusDCV", 2.0f }, // Vibrato
-            { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbPreDelay", 0.15f },
-            { "reverbDecay", 0.70f }, { "reverbTone", 0.55f }, { "reverbMix", 18.0f },
-            { "reverbWidth", 80.0f }
+            { "chorusDCV", 2.0f } // Vibrato
         });
         makePreset ("05 Ambient Hall", {
-            { "ampVoice", 0.0f }, { "ampDrive", 0.28f }, { "ampTone", 0.61f },
-            { "ampOutput", -3.0f },
+            { "ampVoice", 0.0f }, { "ampDrive", 0.24f }, { "ampTone", 0.61f },
+            { "ampOutput", -2.0f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
             { "cabBlend", 35.0f },
-            // Gentle July this time (slow Rate, moderate Lag, Chorus not
-            // Vibrato) — air rather than the pronounced wobble of "04
-            // Vibrato Swirl".
-            { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
-            { "chorusRate", 0.22f }, { "chorusDepth", 28.0f }, { "chorusLag", 35.0f },
-            { "chorusDCV", 1.0f }, // Chorus
-            // Sound-on-Sound: layered, long-sustaining repeats that wash
-            // into the reverb tail rather than distinct slapback.
-            { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 1.0f },
-            { "echoTime", 450.0f }, { "echoSustain", 55.0f }, { "echoVolume", 26.0f },
+            // Just the Hall space, generous and wide -- no chorus, no
+            // delay, so "Ambient Hall" means exactly one thing.
             { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbPreDelay", 0.18f },
             { "reverbDecay", 0.82f }, { "reverbTone", 0.50f }, { "reverbMix", 29.0f },
             { "reverbWidth", 92.0f }
@@ -256,27 +236,27 @@ private:
             { "eqBand3", -0.8f }, { "eqBand5", 1.4f }, { "eqBand6", 1.0f },
             { "eqBand8", 0.8f }, { "eqBand9", -1.8f },
             { "eqHpfOn", 1.0f }, { "eqHpfFreq", 76.0f },
-            { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9000.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.38f },
-            { "reverbMix", 6.0f }, { "reverbWidth", 48.0f }
+            { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9000.0f }
+            // Dry -- "tight" means controlled, not swimming in a tail.
         });
         // Bull alone, gain low, amp barely pushed -- the "transparent
         // boost" use case: raises level and adds a little upper-mid push
-        // without the amp itself audibly breaking up.
+        // without the amp itself audibly breaking up. Dry, on purpose --
+        // a boost pedal's whole job is to change nothing else.
         makePreset ("07 Transparent Boost", {
             { "odOrder", 0.0f }, { "klonOn", 1.0f }, { "klonGain", 0.08f },
             { "klonTreble", 0.46f }, { "klonLevel", 0.66f },
             { "ampVoice", 0.0f }, { "ampDrive", 0.15f }, { "ampTone", 0.58f },
             { "ampOutput", -0.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbDecay", 0.40f },
-            { "reverbTone", 0.60f }, { "reverbMix", 6.0f }, { "reverbWidth", 45.0f }
+            { "cabBOn", 0.0f }, { "cabBlend", 0.0f }
         });
         // Both drives stacked hard into a cranked Boutique voice -- the
         // opposite end of the gain range from "07 Transparent Boost",
-        // thickened by a wide chorus and a long Plate tail.
-        makePreset ("08 Wall of Fuzz", {
+        // thickened by one wide chorus (named in the title; no reverb on
+        // top of it, so the "wall" reads as the chorus doing its job, not
+        // several effects blurred together).
+        makePreset ("08 Wall of Fuzz + Chorus", {
             { "compOn", 1.0f }, { "compThreshold", 55.0f }, { "compRatio", 40.0f },
             { "compAttack", 10.0f }, { "compRelease", 2.0f }, { "compMakeup", 1.5f },
             { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 0.0f },
@@ -290,13 +270,11 @@ private:
             { "cabBlend", 45.0f },
             { "chorusOn", 1.0f }, { "chorusWaveform", 1.0f },
             { "chorusRate", 0.55f }, { "chorusDepth", 45.0f }, { "chorusLag", 40.0f },
-            { "chorusDCV", 1.0f }, // Chorus
-            { "reverbOn", 1.0f }, { "reverbModel", 2.0f }, { "reverbDecay", 0.60f },
-            { "reverbTone", 0.45f }, { "reverbMix", 14.0f }, { "reverbWidth", 70.0f }
+            { "chorusDCV", 1.0f } // Chorus
         });
         // Snappy optical comp, bright Vintage voice, Plexer's Echo mode at a
         // short slapback delay time -- the classic rockabilly slap, not a
-        // wash of repeats.
+        // wash of repeats. No reverb riding along underneath it.
         makePreset ("09 Slapback Rockabilly", {
             { "compOn", 1.0f }, { "compThreshold", 38.0f }, { "compRatio", 45.0f },
             { "compAttack", -20.0f }, { "compRelease", 1.0f }, { "compMakeup", 0.8f },
@@ -307,15 +285,13 @@ private:
             { "cabAOn", 1.0f }, { "cabAIRSelect", 4.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
             { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 0.0f },
-            { "echoTime", 115.0f }, { "echoSustain", 12.0f }, { "echoVolume", 22.0f },
-            { "reverbOn", 1.0f }, { "reverbModel", 0.0f }, { "reverbDecay", 0.30f },
-            { "reverbTone", 0.65f }, { "reverbMix", 8.0f }, { "reverbWidth", 40.0f }
+            { "echoTime", 115.0f }, { "echoSustain", 12.0f }, { "echoVolume", 22.0f }
         });
         // Copier (Carbon-Copy-style BBD) gets its own showcase -- every
         // other preset here uses Plexer. Mod on for the characteristic
-        // chorus-like wobble on the repeats, Plate reverb for a darker,
-        // denser tail behind them.
-        makePreset ("10 Copier Dreams", {
+        // chorus-like wobble on the repeats, plus a Plate tail behind
+        // them -- both named in the title since both are audibly present.
+        makePreset ("10 Copier Dreams + Plate Verb", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.32f }, { "ampTone", 0.58f },
             { "ampOutput", -2.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
