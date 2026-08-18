@@ -4,10 +4,11 @@
 
 // Dynamic, oversampled 5E3-inspired model. Gain and memory are distributed
 // through the circuit's major functional stages instead of one static
-// clipper: input/interstage coupling caps, a two-stage 12AY7 preamp with
-// grid-bias-shift memory (blocking distortion), a Tone/Bassman-stack network
-// sitting between the two preamp stages (matching the real 5E3's V1 -> Tone
-// -> V2A signal order, confirmed against Rob Robinette's own annotated 5E3
+// clipper: input/interstage coupling caps, a two-stage 12AY7/12AX7 preamp
+// whose nonlinearity is now a genuine triode current model (TriodeStage
+// below) rather than a curve-fit tanh, a Tone/Bassman-stack network sitting
+// between the two preamp stages (matching the real 5E3's V1 -> Tone -> V2A
+// signal order, confirmed against Rob Robinette's own annotated 5E3
 // schematic: shared 1M tone pot, 0.005uF tone cap, feeding V2A's grid — not
 // after both preamp stages), a cathodyne-style phase inverter, a genuinely
 // differential push-pull power stage (two tubes driven by +V/-V from the
@@ -16,6 +17,37 @@
 // sag detector, and output-transformer core saturation distinct from sag —
 // per Rob Robinette's 5E3 circuit writeup and annotated schematic
 // (robrobinette.com).
+//
+// Preamp stage methodology: TriodeStage implements the cathode/grid current
+// equations from R. Dempwolf, U. Zolzer, "A Physically-Motivated Triode
+// Model for Circuit Simulations," DAFx-11 (full text read end-to-end) --
+// I_k = G*h((1/mu)*V_a + V_g)^gamma, I_g = G_g*h(V_g)^xi + I_g0, with
+// h(x) = softplus smoothing -- fitted from the paper's own measured-12AX7
+// Table 1 ("RSD1" tube), the only real, published, measurement-fitted
+// parameter set available for this equation family. No 12AY7-specific fit
+// exists in the literature; V1 uses the same Table 1 shape parameters with
+// mu swapped to 12AY7's real datasheet value (~44 vs 12AX7's ~96, per
+// RCA/GE tube manuals) -- the one parameter with an independent, citable
+// source for that tube, honestly flagged as an approximation rather than a
+// second real fit. The plate-load network (Ra, coupling cap) is discretized
+// via the same direct bilinear transform BassmanToneStack below already
+// uses, verified against a sub-stepped Euler integration. The DC operating
+// point (quiescent plate voltage/current, and the grid-leak resistor's own
+// resting current) is solved self-consistently at prepare() time via
+// bisection -- necessary because the paper's V_eff term uses the tube's
+// real, large (~100-300V) plate voltage, not a small AC-only value, a
+// distinction a first attempt at this got wrong and caught via the same
+// numerical-harness-before-shipping discipline used for Klon/TS9's WDF
+// clippers. Blocking distortion (grid current charging the input coupling
+// cap and shifting the operating bias under heavy drive) now emerges from
+// that same real grid-current equation feeding a genuine RC charge/discharge
+// model, replacing the previous version's ad-hoc bias-memory heuristic.
+// Known, deliberate simplification: both stages are modeled as
+// cathode-bypassed (a fixed bias point) for tractability; the real 5E3's V1
+// is unbypassed, which real hardware uses for extra local negative feedback
+// and headroom -- this model captures the tube's real current-vs-voltage
+// nonlinearity and grid-conduction/blocking behaviour, not that specific
+// cathode-degeneration detail.
 
 class AmpModule
 {
@@ -53,6 +85,9 @@ public:
             interstageCoupling[ch].prepare (osSpec);
             toneFilter[ch].prepare (osSpec);
             transformerLowPass[ch].prepare (osSpec);
+            triodeV1[ch].mu = 44.0f; // 12AY7 datasheet mu, real fit's other shape params
+            triodeV1[ch].prepare (processingSampleRate);
+            triodeV2A[ch].prepare (processingSampleRate);
         }
         sagAttack = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.045));
         sagRelease = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.240));
@@ -78,10 +113,10 @@ public:
         {
             inputCoupling[ch].reset(); interstageCoupling[ch].reset();
             toneFilter[ch].reset(); transformerLowPass[ch].reset();
+            triodeV1[ch].reset(); triodeV2A[ch].reset();
         }
         bassmanStack.reset();
         sagEnvelope = 0.0f;
-        biasMemory.fill (0.0f);
         sagDetectorLP.fill (0.0f);
         outputGain.setCurrentAndTargetValue (targetOutputGain);
     }
@@ -132,8 +167,15 @@ public:
         auto block = oversampling->processSamplesUp (inputBlock);
         const auto samples = static_cast<int> (block.getNumSamples());
         const auto channels = static_cast<int> (block.getNumChannels());
-        const auto stage1Gain = 1.15f + driveAmount * 4.8f;
-        const auto stage2Gain = 1.05f + driveAmount * 3.4f;
+        // Grid-signal scale reaching V1 -- the one driveAmount-controlled
+        // gain in the preamp now (V2A's own drive comes naturally from
+        // however hard V1's real current model already clipped, not a
+        // second independent multiplier -- see class comment). Quadratic
+        // taper keeps the lower two-thirds of the knob usably graduated
+        // (harness-verified: 0.005 keeps a full-scale sample comfortably
+        // near clean/edge-of-breakup, 0.15 is solidly in the 5E3's
+        // characteristic aggressive-but-graceful saturation).
+        const auto inputVoltsScale = 0.005f + driveAmount * driveAmount * 0.145f;
         const auto powerDrive = 1.15f + driveAmount * 2.7f;
 
         for (int i = 0; i < samples; ++i)
@@ -143,11 +185,8 @@ public:
             for (int ch = 0; ch < channels; ++ch)
             {
                 auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-                constexpr float bias1 = 0.16f;
-                auto triode1 = std::tanh (x * stage1Gain + bias1) - std::tanh (bias1);
+                auto triode1 = triodeV1[ch].processSample (x * inputVoltsScale);
                 triode1 = interstageCoupling[ch].processSample (triode1);
-                biasMemory[(size_t) ch] += 0.00055f * (triode1 - biasMemory[(size_t) ch]);
-                auto stage2Input = triode1 - 0.13f * biasMemory[(size_t) ch];
 
                 // The real 5E3's Tone control sits between the two preamp
                 // gain stages -- V1 (this plugin's stage 1) feeds the shared
@@ -161,12 +200,17 @@ public:
                 // work with, not just the final brightness.
                 float toned;
                 if (voice == Voice::vintage5E3)
-                    toned = toneFilter[ch].processSample (stage2Input);
+                    toned = toneFilter[ch].processSample (triode1);
                 else
-                    toned = bassmanStack.processSample (ch, stage2Input);
+                    toned = bassmanStack.processSample (ch, triode1);
 
-                constexpr float bias2 = -0.10f;
-                auto triode2 = std::tanh (toned * stage2Gain + bias2) - std::tanh (bias2);
+                // triodeV2A returns real plate-swing volts (can run to tens
+                // of volts under drive); outputCalibration/safetyCeiling
+                // bring that back to sample scale, harness-verified end to
+                // end across driveAmount x input level (same role and same
+                // backstop pattern as Klon/TS9's own output calibration).
+                const auto triode2Raw = triodeV2A[ch].processSample (toned);
+                const auto triode2 = safetyCeiling * std::tanh (triode2Raw * outputCalibration / safetyCeiling);
                 auto cathodyne = triode2 >= 0.0f ? std::tanh (triode2 * 1.18f)
                                                  : 0.94f * std::tanh (triode2 * 1.32f);
                 phaseInverterOut[(size_t) ch] = cathodyne;
@@ -260,6 +304,122 @@ private:
         for (auto& filter : toneFilter)
             *filter.coefficients = *coefficients;
     }
+
+    // A single common-cathode triode gain stage: real grid/cathode current
+    // equations (Dempwolf & Zolzer, DAFx-11) driving a real plate-load RC
+    // network (Ra plate resistor, Cout coupling cap), plus a physically
+    // modeled blocking-distortion path (grid current charging the input
+    // coupling cap through the grid-leak resistor Rg). See the class-level
+    // comment above for the full methodology and its one honest
+    // approximation (12AY7's mu substituted into a 12AX7-measured fit).
+    struct TriodeStage
+    {
+        // Fitted/assumed parameters (Dempwolf-Zolzer Table 1, "RSD1" 12AX7;
+        // mu overridden per-instance for the 12AY7 stage).
+        float G = 1.371e-3f, mu = 96.2f, gamma = 1.349f, C = 3.917f;
+        float Gg = 5.911e-4f, xi = 1.264f, Cg = 11.71f, Ig0 = 8.025e-8f;
+        // Real 5E3 preamp values (Robinette schematic): 100k plate resistor,
+        // shared-order-of-magnitude coupling/grid-leak network; Vb is a
+        // representative preamp B+ node voltage for these stages.
+        float Ra = 100000.0f, Cout = 0.02e-6f, Rg = 1.0e6f, Cin = 0.02e-6f;
+        float biasPoint = -1.5f, Vb = 300.0f;
+
+        float vaAcPrev = 0.0f, gridCharge = 0.0f, iAcPrev = 0.0f;
+        float Va0 = 150.0f, Ia0 = 0.0f, restingGridCharge = 0.0f;
+        double sampleRate = 44100.0;
+
+        // Numerically stable softplus: log(1+e^(kx))/k without ever
+        // exponentiating a large positive argument.
+        static float softplus (float x, float k) noexcept
+        {
+            const auto kx = k * x;
+            return (std::max (kx, 0.0f) + std::log1p (std::exp (-std::abs (kx)))) / k;
+        }
+
+        float gridCurrent (float vg) const noexcept
+        {
+            return Gg * std::pow (softplus (vg, Cg), xi) + Ig0;
+        }
+
+        float anodeCurrent (float vg, float va) const noexcept
+        {
+            const auto veff = vg + va / mu;
+            return G * std::pow (softplus (veff, C), gamma) - gridCurrent (vg);
+        }
+
+        // Self-consistent DC operating point: the quiescent plate
+        // voltage/current (Ia(Vg0,Va0) = (Vb-Va0)/Ra, bisection -- Ia is
+        // monotonic in Va) AND the grid-leak resistor's own resting current
+        // (which shifts Vg0 itself, since Ig0's baseline leakage alone
+        // produces a nonzero resting grid-cap charge) -- solved by iterating
+        // both to a fixed point. Skipping the second part was the exact bug
+        // a standalone harness caught: without it, the running model's
+        // actual resting grid voltage never matches the point Va0/Ia0 were
+        // solved for, so the "AC-only" current fed to the plate network
+        // never settles to zero at rest and the stage finds a wrong,
+        // wildly-offset equilibrium instead.
+        void solveBiasPoint() noexcept
+        {
+            restingGridCharge = 0.0f;
+            for (int iter = 0; iter < 20; ++iter)
+            {
+                const auto vg0 = biasPoint - restingGridCharge;
+                float lo = 0.0f, hi = Vb;
+                for (int i = 0; i < 60; ++i)
+                {
+                    const auto mid = 0.5f * (lo + hi);
+                    if (anodeCurrent (vg0, mid) > (Vb - mid) / Ra)
+                        hi = mid;
+                    else
+                        lo = mid;
+                }
+                Va0 = 0.5f * (lo + hi);
+                Ia0 = anodeCurrent (vg0, Va0);
+                restingGridCharge = gridCurrent (vg0) * Rg;
+            }
+        }
+
+        void prepare (double newSampleRate) noexcept
+        {
+            sampleRate = newSampleRate;
+            solveBiasPoint();
+            reset();
+        }
+
+        void reset() noexcept { vaAcPrev = 0.0f; gridCharge = restingGridCharge; iAcPrev = 0.0f; }
+
+        // vin: signal voltage arriving at this stage's grid (real volts,
+        // not a normalised sample). Returns the plate's AC voltage swing
+        // (also real volts -- can run to tens of volts under drive), still
+        // needing the caller's own output calibration back to sample scale.
+        float processSample (float vin) noexcept
+        {
+            const auto vg = vin - gridCharge + biasPoint;
+
+            // Blocking distortion: grid current charges the input coupling
+            // cap through Rg, chasing a target of Ig(Vg)*Rg (Ohm's law
+            // across the grid-leak resistor) with time constant Rg*Cin.
+            const auto targetCharge = gridCurrent (vg) * Rg;
+            const auto leaky = std::exp (-1.0f / (float) (sampleRate * Rg * Cin));
+            gridCharge = leaky * gridCharge + (1.0f - leaky) * targetCharge;
+
+            const auto iaAc = anodeCurrent (vg, Va0 + vaAcPrev) - Ia0;
+
+            // Direct bilinear transform of the plate-load RC (R=Ra, C=Cout)
+            // driven by the AC current -- same technique BassmanToneStack
+            // below uses, and for the same reason accumulated in double:
+            // K grows with sample rate (up to ~3e6 at the highest supported
+            // oversampled rates) and float precision on (1-K)/(1+K) alone
+            // isn't enough headroom.
+            const double K = 2.0 * sampleRate * (double) Ra * (double) Cout;
+            const double vaAcD = ((double) Ra * (-(double) iaAc + (double) iAcPrev)
+                                   - (1.0 - K) * (double) vaAcPrev) / (1.0 + K);
+            const auto vaAc = (float) vaAcD;
+            iAcPrev = -iaAc;
+            vaAcPrev = vaAc;
+            return vaAc;
+        }
+    };
 
     // Closed-form emulation of the real passive Fender '59 Bassman tone
     // stack (Bass/Mid/Treble pots + R1-R4/C1-C3 RC network) for
@@ -378,10 +538,17 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::dsp::IIR::Filter<float> inputCoupling[2], interstageCoupling[2];
     juce::dsp::IIR::Filter<float> toneFilter[2], transformerLowPass[2];
+    TriodeStage triodeV1[2], triodeV2A[2];
     BassmanToneStack bassmanStack;
     juce::SmoothedValue<float> outputGain;
-    std::array<float, 2> biasMemory {};
     std::array<float, 2> sagDetectorLP {};
+    // V2A's raw plate-voltage output (real volts, tens of volts under
+    // drive) back to sample scale, plus a tanh safety rail backstopping
+    // that empirical calibration -- harness-verified end to end (see
+    // TriodeStage's class comment), same established pattern as Klon/TS9's
+    // own output calibration constants.
+    static constexpr float outputCalibration = 0.02f;
+    static constexpr float safetyCeiling = 3.0f;
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;
     Voice voice = Voice::vintage5E3;

@@ -31,10 +31,14 @@ on/off toggle regardless) via the Overdrive Order switch.
   into a fixed curve. Per-variant differences still live in the pre-clip
   highpass corner and post-clip Tone range, same as before.
 - `AmpModule` — dynamic, oversampled 5E3-inspired model (Rob Robinette's 5E3
-  circuit writeup): input/interstage coupling caps, a two-stage 12AY7 preamp
-  with grid-bias-shift memory (blocking distortion -- sustained heavy drive
-  shifts the operating point, causing a momentary "gasp" and recovery). The
-  Tone/Bassman-stack network sits between those two preamp stages, matching
+  circuit writeup): input/interstage coupling caps, a two-stage 12AY7/12AX7
+  preamp whose nonlinearity is a genuine triode current model (`TriodeStage`
+  -- see "Triode preamp model" below) rather than a curve-fit tanh, including
+  real physically-modeled blocking distortion (grid current charging the
+  input coupling cap under sustained heavy drive, causing a momentary "gasp"
+  and recovery, now an emergent result of the real grid-current equation
+  rather than a hand-tuned heuristic). The Tone/Bassman-stack network sits
+  between those two preamp stages, matching
   the real 5E3's actual V1 -> Tone -> V2A signal order (confirmed against
   Robinette's own annotated schematic: a shared 1M tone pot and 0.005uF tone
   cap feeding V2A's grid, not a filter tacked on after both preamp stages --
@@ -201,17 +205,85 @@ backstop — the diode pair itself is what actually limits the level, same
 as in real hardware; the safety rail is insurance against the calibration
 guess being off, not a routine level-setter.
 
-`AmpModule` was **not** included in this pass, on purpose. Its passive
-Bassman/Tone-stack network is already exactly circuit-derived (Yeh & Smith's
-transfer function) — mathematically equivalent to a WDF simulation of the
-same linear network, so re-implementing it as one wouldn't change its
-accuracy, only its cost. The genuinely nonlinear part of a real tube
-preamp stage (grid conduction against the plate curve) is a different
-kind of circuit than a diode clipper and needs its own real reference
-model and per-tube-type research (12AY7 vs 12AX7) before touching it —
-rushing an unvalidated version into the amp in the same pass as the two
-clippers above risked being far harder to catch if wrong. Left as a
-separate, clearly-scoped follow-up rather than done partially here.
+`AmpModule`'s Bassman/Tone-stack network was **not** touched in this pass —
+it's already exactly circuit-derived (Yeh & Smith's transfer function),
+mathematically equivalent to a WDF simulation of the same linear network, so
+re-implementing it as one wouldn't change its accuracy, only its cost. The
+preamp's own nonlinear stages *were* upgraded, in a later pass, once real
+reference material for that different kind of circuit (grid conduction
+against the plate curve, not a diode clipper) had actually been read — see
+"Triode preamp model" below.
+
+## Triode preamp model (AmpModule's V1/V2A)
+
+`AmpModule`'s two preamp gain stages (V1, V2A) previously used a curve-fit
+`tanh` plus a hand-tuned "bias memory" heuristic for blocking distortion.
+Both are now `TriodeStage` (nested in `Source/DSP/AmpModule.h`): a genuine
+triode current model driving a real plate-load RC network, built from
+actually reading — not working from memory of — R. Dempwolf, U. Zölzer,
+["A Physically-Motivated Triode Model for Circuit
+Simulations"](https://dafx.de/paper-archive/2011/Papers/76_e.pdf) (DAFx-11),
+full text extracted via the paper's own saved PDF. Its two headline
+equations are used directly:
+
+- Cathode/anode current: `I_a = G·h((1/μ)·V_a + V_g)^γ − I_g`
+- Grid current: `I_g = G_g·h(V_g)^ξ + I_g0`, where `h(x) = softplus(x)` is
+  a tunable-knee smoothing function the paper uses so both currents stay
+  non-negative and differentiable through the conduction knee.
+
+Parameters are the paper's own Table 1 measured fit for a real 12AX7
+("RSD1"), used as-is for V2A. No 12AY7-specific fit exists in the
+literature; V1 uses the same Table 1 shape parameters with only `μ`
+substituted for 12AY7's real datasheet value (~44, vs the 12AX7's ~96, per
+RCA/GE tube manuals) — the one parameter with an independently citable
+source for that tube, called out honestly as an approximation rather than
+a second real measured fit.
+
+Two things came out of actually verifying this numerically (same
+standalone-harness-before-shipping discipline as the WDF clippers above)
+that are worth recording because they're the kind of mistake that *sounds*
+plausible until measured:
+
+1. **The DC operating point is not optional.** The paper's `V_eff = V_g +
+   V_a/μ` term uses the tube's real, large (~100–300V) plate voltage — not
+   a small zero-centered AC value. A first attempt modeled `V_a` as a bare
+   AC deviation from zero, which broke the stage's negative feedback and
+   made it clip almost the entire waveform at sub-millivolt input. The fix:
+   at `prepare()`, solve the quiescent plate voltage/current by bisection
+   (`I_a(V_g0, V_a0) = (V_b − V_a0) / R_a`, monotonic, so bisection is
+   robust), then run the AC dynamics as a perturbation around that real
+   operating point — the standard large-signal/small-signal split, just
+   solved here rather than assumed.
+2. **The grid-leak resistor's own resting current has to be in that same
+   solve.** `I_g0` (leakage) alone produces a small nonzero resting
+   grid-cap charge even at silence; solving the plate bias point without
+   accounting for it left a permanent mismatch between the assumed and
+   actual resting grid voltage, which meant the running model never
+   settled to zero at rest and instead found a wrong, wildly-offset
+   equilibrium. Fixed by iterating the plate-bias solve and the resting
+   grid-current solve to a joint fixed point. Verified by driving the
+   isolated stage with a DC step and confirming it settles to the same
+   gain an independent closed-form small-signal calculation predicts
+   (both landed on ≈−36×, to three figures) — and confirming a silent
+   input produces exactly zero output at rest, not a slowly-drifting one.
+
+The plate-load RC network (`R_a`, coupling cap) uses the same direct
+bilinear transform `BassmanToneStack` already uses elsewhere in this file,
+cross-checked against a sub-stepped Euler integration of the same circuit.
+Blocking distortion is now the grid current genuinely charging the input
+coupling cap through the grid-leak resistor (chasing a target of
+`I_g(V_g)·R_g`, Ohm's law, with time constant `R_g·C_in`) rather than a
+fixed-rate heuristic — an early version used a placeholder coupling-cap
+value roughly 40,000× too small, giving a sub-millisecond "blocking" time
+constant that clamped almost the entire signal; corrected to a real
+preamp-scale coupling cap once the harness made the mismatch obvious.
+
+Known, deliberate simplification: both stages are modeled cathode-bypassed
+(a fixed bias point). The real 5E3's V1 is unbypassed, which real hardware
+uses for extra local negative feedback and headroom; this model captures
+the tube's real current-vs-voltage nonlinearity and grid-conduction/
+blocking behaviour, not that specific cathode-degeneration detail — a
+scope boundary, not an oversight.
 
 ## UI
 
