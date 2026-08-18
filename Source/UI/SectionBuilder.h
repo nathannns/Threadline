@@ -285,6 +285,16 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
         auto cell = area.removeFromLeft (cellWidth);
         knob->slider.setBounds (cell.reduced (6, 8).withTrimmedTop (12));
         knob->slider.toFront (false);
+        // buildSection() colours each knob caption once, from a "light vs
+        // dark background" flag the Compressor/Tremolo/Reverb sections
+        // never actually set correctly (their captions stayed the pale
+        // textDim tan meant for the plugin's normal dark plates, nearly
+        // invisible against these three's actual light cream/brass plate
+        // art) -- lightFace is already computed just above for the title,
+        // so reuse it here as the one place that knows each plate's real
+        // brightness, overriding whatever buildSection guessed.
+        knob->label.setColour (juce::Label::textColourId,
+                               lightFace ? juce::Colour (0xff352a22) : ThreadlineColours::textDim);
     }
     section.ledImage.toFront (false);
     section.toggle.toFront (false);

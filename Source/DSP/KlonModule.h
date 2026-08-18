@@ -223,10 +223,16 @@ private:
     // output (current through C10, in amps) has no reason to already sit
     // in a sensible audio-sample range; this brings it there. Measured via
     // a standalone harness (same topology, swept drive/input amplitude):
-    // raw output sits around 1-3 microamps, so this needed to be large --
-    // chosen so driveGain/input-amplitude extremes land around 0.5-ish
-    // rather than pinning the safety tanh below.
-    static constexpr float outputCalibration = 150000.0f;
+    // raw output sits around 1-3 microamps. The original 150000 was chosen
+    // to land around 0.5-ish at driveGain/input-amplitude extremes -- safe,
+    // but read as "not enough gain" since it left most of the 3.0 safety
+    // ceiling's headroom completely unused even fully cranked. Raised to
+    // 650000, harness-confirmed to reach up to ~1.9-2.0 (genuinely hot,
+    // clearly audible) at max Gain + loud input while staying proportionally
+    // quieter at low Gain/quiet input -- Klon's own dry/wet blend (not this
+    // constant) is still what keeps it reading as "transparent" rather than
+    // fuzzy at moderate Gain settings.
+    static constexpr float outputCalibration = 650000.0f;
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;
     int channelCount = 2;

@@ -233,12 +233,16 @@ private:
     // Real Tube Screamer input resistor (R4 in BYOD's traced schematic).
     static constexpr float oneOverRin = 1.0f / 4700.0f;
     // Empirically-tuned, not physically derived -- see KlonModule's own
-    // outputCalibration for why. Measured via a standalone harness: unlike
-    // Klon's current-based output, this stage's raw output is a real op-amp
-    // *voltage* swing, which already lands close to a sensible audio range
-    // on its own (~0.4-0.5 for typical input), so this only needs a small
-    // nudge rather than a large rescale.
-    static constexpr float outputCalibration = 1.2f;
+    // outputCalibration for why. A harness sweep showed the ideal-op-amp
+    // diode clamp caps this stage's raw output around ~0.5-0.6V regardless
+    // of amplitude or Drive setting (physically correct -- a real TS9's
+    // diode pair clamps the swing once conducting, same as the real
+    // pedal), which at the original 1.2 multiplier never got past ~0.6-0.7
+    // out of the 3.0 safety ceiling -- reads as "not enough gain" even at
+    // max Drive. Raised to 4.5, which the same harness confirmed reaches
+    // ~2.0 (a solidly hot, but not fully pinned/fuzz-hard) output at max
+    // Drive + loud input, a real ~4x loudness increase.
+    static constexpr float outputCalibration = 4.5f;
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;
     int channelCount = 2;

@@ -572,15 +572,15 @@ private:
     // under drive) back to sample scale, plus a tanh safety rail backstopping
     // that empirical calibration -- harness-verified end to end (see
     // TriodeStage's class comment), same established pattern as Klon/TS9's
-    // own output calibration constants. Raised from an initial 0.02 (which
-    // stayed graceful/smooth but never actually reached the safety rail --
-    // 0% of samples pinned even at max Drive/loud input, i.e. no genuine
-    // hard-clipped "fuzz" was reachable) to 0.065, which the same harness
-    // sweep confirmed reaches real double-digit-percent pinned time at high
-    // Drive+loud input while staying at 0% for low Drive/quiet playing, so
-    // touch sensitivity is preserved rather than trading one problem for
-    // another.
-    static constexpr float outputCalibration = 0.065f;
+    // own output calibration constants. Raised twice: an initial 0.02 never
+    // reached the safety rail at all (0% pinned even at max Drive/loud
+    // input), 0.065 reached double-digit pinned percentages but user
+    // feedback still wanted more headroom available -- 0.10 harness-verified
+    // to reach up to ~80% pinned (genuinely heavy, fuzz-territory clipping)
+    // at max Drive + loud input, while staying at 0% pinned for low
+    // Drive/quiet playing, so touch sensitivity survives across the whole
+    // range rather than the knob just being uniformly hotter everywhere.
+    static constexpr float outputCalibration = 0.10f;
     static constexpr float safetyCeiling = 3.0f;
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;

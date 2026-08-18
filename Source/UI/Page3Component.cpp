@@ -264,8 +264,14 @@ void Page3Component::resized()
         const auto controlWidth = juce::jlimit (150, 200, chorusBounds.getWidth() / 6);
         const auto controlsLeft = chorusBounds.getRight() - 14 - controlWidth;
         constexpr int rowHeight = 22;
-        const auto rowY1 = chorusBounds.getY() + 11;
-        const auto rowY2 = chorusBounds.getBottom() - rowHeight - 9;
+        // Waveform and D-C-V are one paired control (which waveform, how
+        // wet) -- stacking them close together with a small fixed gap
+        // reads as a single cluster, rather than pinning them to the
+        // card's top/bottom edges and leaving most of its height as dead
+        // space between two rows that belong next to each other.
+        constexpr int rowGap = 6;
+        const auto rowY1 = chorusBounds.getCentreY() - rowHeight - rowGap / 2;
+        const auto rowY2 = rowY1 + rowHeight + rowGap;
 
         const auto waveWidth = (controlWidth - 4) / 2;
         waveformButtons[0].setBounds (controlsLeft, rowY1, waveWidth, rowHeight);
@@ -303,8 +309,13 @@ void Page3Component::resized()
         const auto controlWidth = juce::jlimit (150, 200, echoBounds.getWidth() / 6);
         const auto controlsLeft = echoBounds.getRight() - 14 - controlWidth;
         constexpr int rowHeight = 22;
-        const auto rowY1 = echoBounds.getY() + 11;
-        const auto rowY2 = echoBounds.getBottom() - rowHeight - 9;
+        // Same reasoning as July's Waveform/D-C-V stack above: Plexer/Copier
+        // and Echo/Sound-on-Sound/Mod are one paired control (which engine,
+        // that engine's own secondary toggle) -- stack them close together
+        // instead of pinning to the card's top/bottom edges.
+        constexpr int rowGap = 6;
+        const auto rowY1 = echoBounds.getCentreY() - rowHeight - rowGap / 2;
+        const auto rowY2 = rowY1 + rowHeight + rowGap;
 
         const auto modelWidth = (controlWidth - 4) / 2;
         delayModelButtons[0].setBounds (controlsLeft, rowY1, modelWidth, rowHeight);

@@ -221,19 +221,7 @@ private:
             { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 0.0f },
             { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f }
         });
-        makePreset ("04 Vibrato Swirl", {
-            { "ampVoice", 0.0f }, { "ampDrive", 0.25f }, { "ampTone", 0.60f },
-            { "ampOutput", -2.0f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
-            // D-C-V set to Vibrato, with a brisk Rate and a long, sluggish
-            // Lag — genuine full-wet vibrato, not diluted chorus. The only
-            // effect running, matching the name exactly.
-            { "chorusOn", 1.0f }, { "chorusWaveform", 0.0f },
-            { "chorusRate", 1.80f }, { "chorusDepth", 68.0f }, { "chorusLag", 70.0f },
-            { "chorusDCV", 2.0f } // Vibrato
-        });
-        makePreset ("05 Ambient Hall", {
+        makePreset ("04 Ambient Hall", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.24f }, { "ampTone", 0.61f },
             { "ampOutput", -2.0f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
@@ -245,7 +233,7 @@ private:
             { "reverbDecay", 0.82f }, { "reverbTone", 0.50f }, { "reverbMix", 29.0f },
             { "reverbWidth", 92.0f }
         });
-        makePreset ("06 Tight Rhythm", {
+        makePreset ("05 Tight Rhythm", {
             { "gateOn", 1.0f }, { "gateAmount", 30.0f },
             { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 2.0f },
             { "ts9Drive", 0.10f }, { "ts9Tone", 0.57f }, { "ts9Level", 0.73f },
@@ -253,10 +241,11 @@ private:
             { "ampMid", 0.60f }, { "ampTreble", 0.58f }, { "ampOutput", -4.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 4.0f }, { "cabAMix", 1.0f },
             { "cabBOn", 1.0f }, { "cabBIRSelect", 0.0f }, { "cabBMix", 1.0f },
-            // Phase-invert showcase: B's onset is already timing-aligned to A
-            // (automatic), but flipping polarity here still tightens the low
-            // end for this particular IR pairing.
-            { "cabBPhase", 1.0f }, { "cabBlend", 24.0f },
+            // No polarity-invert here -- flipping cabB's phase against cabA
+            // can cause real, audible phasing/comb-filtering depending on
+            // the IR pairing and isn't something a factory preset should
+            // gamble on; leave it to the user's own ears per-rig.
+            { "cabBlend", 24.0f },
             { "eqOn", 1.0f }, { "eqBand1", -2.5f }, { "eqBand2", -1.5f },
             { "eqBand3", -0.8f }, { "eqBand5", 1.4f }, { "eqBand6", 1.0f },
             { "eqBand8", 0.8f }, { "eqBand9", -1.8f },
@@ -268,7 +257,7 @@ private:
         // boost" use case: raises level and adds a little upper-mid push
         // without the amp itself audibly breaking up. Dry, on purpose --
         // a boost pedal's whole job is to change nothing else.
-        makePreset ("07 Transparent Boost", {
+        makePreset ("06 Transparent Boost", {
             { "odOrder", 0.0f }, { "klonOn", 1.0f }, { "klonGain", 0.08f },
             { "klonTreble", 0.46f }, { "klonLevel", 0.66f },
             { "ampVoice", 0.0f }, { "ampDrive", 0.15f }, { "ampTone", 0.58f },
@@ -277,11 +266,11 @@ private:
             { "cabBOn", 0.0f }, { "cabBlend", 0.0f }
         });
         // Both drives stacked hard into a cranked Boutique voice -- the
-        // opposite end of the gain range from "07 Transparent Boost",
+        // opposite end of the gain range from "06 Transparent Boost",
         // thickened by one wide chorus (named in the title; no reverb on
         // top of it, so the "wall" reads as the chorus doing its job, not
         // several effects blurred together).
-        makePreset ("08 Wall of Fuzz + Chorus", {
+        makePreset ("07 Wall of Fuzz + Chorus", {
             { "compOn", 1.0f }, { "compThreshold", 55.0f }, { "compRatio", 40.0f },
             { "compAttack", 10.0f }, { "compRelease", 2.0f }, { "compMakeup", 1.5f },
             { "odOrder", 1.0f }, { "ts9On", 1.0f }, { "ts9Variant", 0.0f },
@@ -300,7 +289,7 @@ private:
         // Snappy optical comp, bright Vintage voice, Plexer's Echo mode at a
         // short slapback delay time -- the classic rockabilly slap, not a
         // wash of repeats. No reverb riding along underneath it.
-        makePreset ("09 Slapback Rockabilly", {
+        makePreset ("08 Slapback Rockabilly", {
             { "compOn", 1.0f }, { "compThreshold", 38.0f }, { "compRatio", 45.0f },
             { "compAttack", -20.0f }, { "compRelease", 1.0f }, { "compMakeup", 0.8f },
             { "odOrder", 0.0f }, { "ts9On", 1.0f }, { "ts9Variant", 1.0f },
@@ -316,7 +305,7 @@ private:
         // other preset here uses Plexer. Mod on for the characteristic
         // chorus-like wobble on the repeats, plus a Plate tail behind
         // them -- both named in the title since both are audibly present.
-        makePreset ("10 Copier Dreams + Plate Verb", {
+        makePreset ("09 Copier Dreams + Plate Verb", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.32f }, { "ampTone", 0.58f },
             { "ampOutput", -2.5f },
             { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },

@@ -144,13 +144,20 @@ on/off toggle regardless) via the Overdrive Order switch.
   **Hall** (clear, spacious, RT60 0.8-4.5s), **Plate** (metallic, extended
   highs, RT60 1.0-5.5s, longer line-length scale and denser post-tank
   diffusion than Hall, the way a real plate's whole surface resonates almost
-  simultaneously). The 8 lines keep Freeverb's classic tunings as a spacing
-  pattern (chosen so their resonances land at different-enough frequencies
-  to stay decorrelated -- doubly important now that the Householder matrix
-  explicitly couples all 8 every sample), with Room's extra spread-boost
-  factor preserved from the previous design so shrinking the tank for a
-  small room doesn't also shrink that spacing into a "phasing"/comb-y
-  quality. Two further stages layer on top of the FDN core, applied to its
+  simultaneously). The 8 lines originally kept Freeverb's classic tunings as
+  a spacing pattern (1116/1188/1277/1356/1422/1491/1557/1617) -- fine for
+  what Freeverb actually needed them for (8 *independent* per-channel combs,
+  each only ever feeding back into itself) but wrong here: 7 of those 8
+  numbers share a factor of 3, invisible in an independent comb bank but
+  audible as pitched/metallic ringing once the Householder matrix genuinely
+  couples all 8 lines together every sample (confirmed against Hall
+  specifically sounding metallic, which its own "clear, spacious" design
+  intent above says it shouldn't). Replaced with 8 primes spanning the same
+  range and near-identical mean (1117/1193/1277/1361/1423/1493/1559/1619) --
+  primes guarantee every pair is coprime, removing the shared-periodicity
+  mechanism outright. Room's extra spread-boost factor is preserved from the
+  previous design so shrinking the tank for a small room doesn't also
+  shrink that spacing into a "phasing"/comb-y quality. Two further stages layer on top of the FDN core, applied to its
   extracted stereo taps rather than inside the shared tank: a per-channel
   multi-tap **early-reflection** generator (per-model pattern -- Room
   modest/dense, Hall sparse/spread, Plate near-instant/ultra-dense), since
@@ -164,7 +171,7 @@ on/off toggle regardless) via the Overdrive Order switch.
   `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
-  preset). Ships with 10 factory presets; each preset's name is required to
+  preset). Ships with 9 factory presets; each preset's name is required to
   acknowledge every "wet"/character effect (Tremolo, July chorus/vibrato,
   Plexer/Copier delay, Reverb) it actually engages, so several are
   deliberately 100% dry rather than carrying modulation or space just for
@@ -225,7 +232,16 @@ empirically-measured `outputCalibration` constant (documented in-file)
 bringing that back to a sensible level, plus a wide tanh safety rail as a
 backstop — the diode pair itself is what actually limits the level, same
 as in real hardware; the safety rail is insurance against the calibration
-guess being off, not a routine level-setter.
+guess being off, not a routine level-setter. Both constants were originally
+tuned conservatively (Bull 150,000, Breaker 1.2) and read as "not enough
+gain/fuzz" even fully cranked — a harness sweep confirmed Breaker's ideal-
+op-amp diode clamp caps its raw output around ~0.5-0.6V regardless of
+amplitude or Drive (physically correct, matching a real TS9's diode clamp),
+which the original 1.2 multiplier never brought past ~0.6-0.7 out of the
+3.0 safety ceiling. Raised to Bull 650,000 / Breaker 4.5, both re-verified
+to reach a genuinely hot ~1.9-2.0 at max Gain/Drive + loud input (real
+~4x/~3.75x loudness increases) while staying proportionally quieter at low
+settings/quiet input.
 
 `AmpModule`'s Bassman/Tone-stack network was **not** touched in this pass —
 it's already exactly circuit-derived (Yeh & Smith's transfer function),
@@ -344,7 +360,11 @@ input, while staying at 0% for low Drive/quiet playing so touch
 sensitivity survives) — then re-verified for numerical safety across
 every sample rate/oversampling combination the plugin actually offers
 (44.1–192kHz base rates × 1x/2x/4x) plus noise-burst/impulse stress,
-all finite and bounded.
+all finite and bounded. Still read as "not enough distortion/fuzz" against
+the Klon/TS9 gain increases below, so `outputCalibration` was raised again
+to 0.10 — harness-verified to reach up to ~80% pinned (genuinely heavy,
+fuzz-territory clipping) at max Drive + loud input, still 0% pinned at
+low Drive/quiet playing.
 
 Known, deliberate simplification: both stages are modeled cathode-bypassed
 (a fixed bias point). The real 5E3's V1 is unbypassed, which real hardware
@@ -354,6 +374,25 @@ blocking behaviour, not that specific cathode-degeneration detail — a
 scope boundary, not an oversight.
 
 ## UI
+
+`layoutHorizontalRackSection()` colours a section's title/toggle text
+dark-on-light or light-on-dark based on `plateIndex` (Compressor/Tremolo/
+Reverb use the plugin's actual light cream/brass plate art, everything
+else a dark plate) — but each knob's own caption label was coloured once
+in `buildSection()` from a separate, never-correctly-set `lightLabels`
+flag, so Compressor's captions ("Comp"/"Attack"/"Tilt"/"Mid"/"Level")
+stayed the pale tan meant for dark plates, nearly invisible against its
+actual cream background even though the section title right next to them
+read fine. Fixed by having the per-knob colouring reuse the same
+`lightFace` plate-brightness check the title already uses, rather than a
+second, independently-set flag that only one of the two ever got right.
+
+July's Waveform/D-C-V switches and Delay's Plexer-Copier/mode switches
+were each pinned to their card's top and bottom edges, leaving most of the
+card's height as dead space between two controls that are really one
+paired cluster (which waveform + how wet; which engine + that engine's own
+secondary toggle). Both now stack close together with a small fixed gap,
+centred vertically in the card.
 
 The editor window is a taller 1200x760 canvas (was 1200x660). Every existing
 element keeps its original absolute size — nothing was scaled up. Most of

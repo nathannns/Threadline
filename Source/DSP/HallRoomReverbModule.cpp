@@ -2,11 +2,24 @@
 
 namespace
 {
-    // FDN line tuning, in samples at 44.1kHz -- Freeverb's own classic
-    // values, chosen to avoid coincident resonances. Reused here as the 8
-    // shared FDN line lengths (scaled per Model/sample-rate in
-    // prepareTank()) rather than for 8 independent per-channel combs.
-    constexpr int lineTuning[HallRoomReverbModule::numLines] { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+    // FDN line tuning, in samples at 44.1kHz. Freeverb's own classic values
+    // used to live here (1116/1188/1277/1356/1422/1491/1557/1617) -- fine
+    // for what they were designed for (8 INDEPENDENT parallel combs, where
+    // each line only ever feeds back into itself), but wrong for what this
+    // module actually needs: 7 of those 8 numbers share a factor of 3, and
+    // several also share a factor of 2. That's invisible in an independent
+    // comb bank, but this module genuinely couples all 8 lines together
+    // every sample through a Householder matrix (see file header) -- a
+    // shared factor across most of the coupled lines means the whole
+    // network's impulse response develops a dominant periodicity at that
+    // factor, which is exactly what reads as pitched/metallic ringing
+    // rather than a diffuse tail (confirmed against the "Hall" model
+    // specifically sounding metallic). Replaced with 8 primes spanning
+    // the same range and a near-identical mean (so the RT60/size tuning
+    // elsewhere, which is derived from this array's mean length, doesn't
+    // need retuning) -- primes guarantee every pair is coprime, removing
+    // the shared-periodicity mechanism outright rather than just reducing it.
+    constexpr int lineTuning[HallRoomReverbModule::numLines] { 1117, 1193, 1277, 1361, 1423, 1493, 1559, 1619 };
 
     // Dattorro's own published input-diffuser lengths and coefficients
     // (JAES 1997, "Effect Design Part 1") -- fixed regardless of Model, so
