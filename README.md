@@ -266,17 +266,45 @@ plausible until measured:
    gain an independent closed-form small-signal calculation predicts
    (both landed on ≈−36×, to three figures) — and confirming a silent
    input produces exactly zero output at rest, not a slowly-drifting one.
+3. **The plate load is not an RC network.** A first version modeled the
+   plate resistor `R_a` and the interstage coupling cap as if they sat in
+   parallel at the plate node (an `R_a`-and-coupling-cap "RC network"), the
+   same bilinear-transform pattern used elsewhere in this file. That's
+   wrong: the coupling cap actually sits in *series* to the next stage's
+   grid, not in parallel with the plate resistor, and va_ac (the plate's AC
+   deviation, `V_a0`/`I_a0` already subtracted out) is a pure zero-mean
+   signal by construction — already "coupled," no capacitor needed to make
+   it so. The mistaken parallel RC turned each stage into an unintended
+   ~80Hz lowpass; cascaded through two stages, that's exactly what made
+   the whole amp sound muffled and boxy, with the drive's harmonic content
+   chopped off before it could read as clear. The real fix is Ohm's law —
+   `V_a_ac = -R_a·I_a_ac` — but that alone removes the only damping in the
+   one-sample-delayed feedback this stage uses (see BYOD's quasi-static
+   pattern, cited above) and goes numerically unstable almost immediately
+   (verified: pins to the safety ceiling regardless of input). A tiny
+   capacitor stays in the plate-load bilinear transform purely as a
+   numerical stabiliser for that feedback loop, not to model any real
+   component — its value (220pF against `R_a`, a ~7.2kHz pole) was found
+   by sweeping 47pF–2nF against noise-burst/impulse/extreme-drive stress
+   tests and picking a value with comfortable margin above where it goes
+   unstable (~50–90pF) while sitting well above the audio band it must
+   not audibly filter. Verified with a frequency sweep after the fix:
+   output magnitude now varies under 5% from 100Hz to 8kHz, versus the
+   drastic rolloff the mistaken 80Hz-per-stage version had.
 
-The plate-load RC network (`R_a`, coupling cap) uses the same direct
-bilinear transform `BassmanToneStack` already uses elsewhere in this file,
-cross-checked against a sub-stepped Euler integration of the same circuit.
-Blocking distortion is now the grid current genuinely charging the input
+Blocking distortion is the grid current genuinely charging the input
 coupling cap through the grid-leak resistor (chasing a target of
 `I_g(V_g)·R_g`, Ohm's law, with time constant `R_g·C_in`) rather than a
 fixed-rate heuristic — an early version used a placeholder coupling-cap
 value roughly 40,000× too small, giving a sub-millisecond "blocking" time
 constant that clamped almost the entire signal; corrected to a real
 preamp-scale coupling cap once the harness made the mismatch obvious.
+
+The drive knob's input-gain floor and the output calibration were also
+re-derived after fixing the topology bug above — removing the unintended
+lowpass let substantially more real signal level through, so the
+calibration constants needed re-measuring from fresh harness numbers
+rather than being carried over.
 
 Known, deliberate simplification: both stages are modeled cathode-bypassed
 (a fixed bias point). The real 5E3's V1 is unbypassed, which real hardware

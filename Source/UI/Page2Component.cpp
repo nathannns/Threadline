@@ -25,7 +25,6 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
 {
     ampImage = juce::ImageCache::getFromMemory (BinaryData::tweed_amp_png, BinaryData::tweed_amp_pngSize);
     ampToggle.setRenderedImageStyle (false);
-    ampToggle.setButtonText ("ON");
     ampToggle.setTitle ("Amp bypass");
     ampToggle.setHelpText ("Enable or bypass the amp stage");
     addAndMakeVisible (ampToggle);
@@ -87,8 +86,6 @@ Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
     setupCabSlot (cabBSection, *this, processor.apvts, "Cab B", "cabBOn", "cabBMix", SectionPlate::Cab);
     cabASection.toggle.setRenderedImageStyle (false);
     cabBSection.toggle.setRenderedImageStyle (false);
-    cabASection.toggle.setButtonText ("ON");
-    cabBSection.toggle.setButtonText ("ON");
     cabAPhaseButton.setButtonText ("POLARITY");
     cabBPhaseButton.setButtonText ("POLARITY");
 

@@ -29,7 +29,6 @@ namespace
 Page4Component::Page4Component (ThreadlineAudioProcessor& p)
 {
     eqToggle.setRenderedImageStyle (false);
-    eqToggle.setButtonText ("ON");
     addAndMakeVisible (eqToggle);
     eqToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, "eqOn", eqToggle);

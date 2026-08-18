@@ -108,6 +108,10 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         processor.apvts, "masterBypass", powerButton);
 
+    addAndMakeVisible (muteButton);
+    muteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.apvts, "inputMute", muteButton);
+
     // UI-only state (not an APVTS parameter) -- purely a display preference,
     // not something that should be recalled from a saved preset.
     addAndMakeVisible (eyeButton);
@@ -362,6 +366,7 @@ void ThreadlineAudioProcessorEditor::resized()
     addPresetButton.setBounds (rect (708, 28, 40, 36));
     savePresetButton.setBounds (rect (754, 28, 40, 36));
     deletePresetButton.setBounds (rect (800, 28, 40, 36));
+    muteButton.setBounds (rect (886, 18, 48, 56));
     optionsMenuButton.setBounds (rect (956, 18, 48, 56));
     eyeButton.setBounds (rect (1014, 18, 48, 56));
     powerButton.setBounds (rect (1084, 18, 56, 56));

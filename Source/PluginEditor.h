@@ -88,6 +88,52 @@ public:
     }
 };
 
+// Sits between the preset bar and the options/eye/power cluster. Silences
+// the input before it reaches any module -- for silent patch changes or
+// checking dry level without the whole plugin's bypass state changing.
+// Lights red when engaged (muted), matching the usual mixing-console
+// convention, rather than the amber "active" colour every other toggle
+// here uses -- muted should read as an alarm, not as "on".
+class MuteButton : public juce::ToggleButton
+{
+public:
+    MuteButton()
+    {
+        setClickingTogglesState (true);
+        setWantsKeyboardFocus (true);
+        setTitle ("Mute input");
+        setHelpText ("Silence the input before it reaches any effect");
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat().reduced (4.0f);
+        if (isDown()) bounds.translate (0.0f, 1.0f);
+        const auto muted = getToggleState();
+        const auto colour = muted ? juce::Colour (0xffd8503f) : juce::Colour (0xff6a5a4e);
+        g.setColour (colour);
+        g.drawEllipse (bounds, 2.5f);
+
+        auto glyph = bounds.reduced (bounds.getWidth() * 0.24f);
+        juce::Path speaker;
+        const auto boxW = glyph.getWidth() * 0.42f;
+        speaker.addRectangle (glyph.getX(), glyph.getCentreY() - glyph.getHeight() * 0.18f,
+                              boxW, glyph.getHeight() * 0.36f);
+        speaker.startNewSubPath (glyph.getX() + boxW, glyph.getCentreY() - glyph.getHeight() * 0.18f);
+        speaker.lineTo (glyph.getRight(), glyph.getY());
+        speaker.lineTo (glyph.getRight(), glyph.getBottom());
+        speaker.lineTo (glyph.getX() + boxW, glyph.getCentreY() + glyph.getHeight() * 0.18f);
+        speaker.closeSubPath();
+        g.strokePath (speaker, juce::PathStrokeType (2.0f));
+        if (muted)
+            g.drawLine (glyph.getX() - 2.0f, glyph.getBottom() + 2.0f,
+                        glyph.getRight() + 2.0f, glyph.getY() - 2.0f, 2.4f);
+
+        if (hasKeyboardFocus (true))
+            g.drawEllipse (bounds.expanded (2.0f), 1.4f);
+    }
+};
+
 // Copied from Rockalizer's preset header: compact vector icons remain crisp at
 // every editor scale and avoid platform-dependent emoji rendering.
 class PresetIconButton final : public juce::Button
@@ -351,12 +397,13 @@ private:
     PresetIconButton addPresetButton { "New preset", PresetIconButton::Icon::add };
     PresetIconButton savePresetButton { "Save preset", PresetIconButton::Icon::save };
     PresetIconButton deletePresetButton { "Delete preset", PresetIconButton::Icon::remove };
+    MuteButton muteButton;
     PowerButton powerButton;
     EyeButton eyeButton;
     GearButton optionsMenuButton;
     OptionsPanel optionsGroup;
     bool optionsVisible = false;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment, muteAttachment;
 
     // --- Tab strip: Dirt (Comp/Klon/TS9), Amp (Amp/Cab), Wet (Trem/Chorus/Delay/Reverb), EQ (9-band + HPF/LPF) ---
     std::array<TabPill, 4> tabPills {

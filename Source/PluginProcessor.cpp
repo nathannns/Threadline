@@ -265,6 +265,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // --- Master bypass (preset bar power button) ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("masterBypass"), "Bypass", false));
 
+    // --- Mute input (preset bar mute button) ---
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("inputMute"), "Mute Input", false));
+
     return { params.begin(), params.end() };
 }
 
@@ -340,6 +343,12 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         // A mono host exposes connector 1 only; connector 2 is unavailable.
         buffer.clear();
     }
+
+    // --- Mute Input: silence what feeds the chain from here on, without
+    // resetting any module's internal state -- a delay/reverb tail already
+    // in flight keeps decaying naturally instead of cutting off abruptly.
+    if (pBool ("inputMute"))
+        buffer.clear();
 
     // --- Noise Gate ---
     noiseGate.setEnabled (pBool ("gateOn"));

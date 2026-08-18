@@ -170,12 +170,13 @@ public:
         // Grid-signal scale reaching V1 -- the one driveAmount-controlled
         // gain in the preamp now (V2A's own drive comes naturally from
         // however hard V1's real current model already clipped, not a
-        // second independent multiplier -- see class comment). Quadratic
-        // taper keeps the lower two-thirds of the knob usably graduated
-        // (harness-verified: 0.005 keeps a full-scale sample comfortably
-        // near clean/edge-of-breakup, 0.15 is solidly in the 5E3's
-        // characteristic aggressive-but-graceful saturation).
-        const auto inputVoltsScale = 0.005f + driveAmount * driveAmount * 0.145f;
+        // second independent multiplier -- see class comment). Linear taper
+        // (a first quadratic attempt left the bottom half of the knob doing
+        // almost nothing) with a floor high enough that the amp is never
+        // fully clean even at Drive=0 -- matching the real 5E3's famously
+        // low-headroom, always-a-little-dirty character, and restoring
+        // comparable loudness/engagement to the tanh model this replaced.
+        const auto inputVoltsScale = 0.035f + driveAmount * 0.25f;
         const auto powerDrive = 1.15f + driveAmount * 2.7f;
 
         for (int i = 0; i < samples; ++i)
@@ -318,11 +319,16 @@ private:
         // mu overridden per-instance for the 12AY7 stage).
         float G = 1.371e-3f, mu = 96.2f, gamma = 1.349f, C = 3.917f;
         float Gg = 5.911e-4f, xi = 1.264f, Cg = 11.71f, Ig0 = 8.025e-8f;
-        // Real 5E3 preamp values (Robinette schematic): 100k plate resistor,
-        // shared-order-of-magnitude coupling/grid-leak network; Vb is a
-        // representative preamp B+ node voltage for these stages.
-        float Ra = 100000.0f, Cout = 0.02e-6f, Rg = 1.0e6f, Cin = 0.02e-6f;
+        // Real 5E3 plate resistor (Robinette schematic) and grid-leak network.
+        float Ra = 100000.0f, Rg = 1.0e6f, Cin = 0.02e-6f;
         float biasPoint = -1.5f, Vb = 300.0f;
+        // NOT a real coupling-cap value -- see processSample()'s comment.
+        // This exists purely to damp the one-sample-delayed feedback below;
+        // 220pF against Ra gives a ~7.2kHz pole, chosen empirically (swept
+        // 47pF-2nF against noise/impulse/extreme-drive stress) as comfortably
+        // inside the stable region (unstable below ~50-90pF) while sitting
+        // well above the audio band it must not be heard shaping.
+        float Cout = 220.0e-12f;
 
         float vaAcPrev = 0.0f, gridCharge = 0.0f, iAcPrev = 0.0f;
         float Va0 = 150.0f, Ia0 = 0.0f, restingGridCharge = 0.0f;
@@ -405,12 +411,28 @@ private:
 
             const auto iaAc = anodeCurrent (vg, Va0 + vaAcPrev) - Ia0;
 
-            // Direct bilinear transform of the plate-load RC (R=Ra, C=Cout)
-            // driven by the AC current -- same technique BassmanToneStack
-            // below uses, and for the same reason accumulated in double:
-            // K grows with sample rate (up to ~3e6 at the highest supported
-            // oversampled rates) and float precision on (1-K)/(1+K) alone
-            // isn't enough headroom.
+            // The plate load is really just Ra (Ohm's law: va_ac = -Ra*iaAc)
+            // -- there is no real capacitor in parallel with it in the actual
+            // circuit; the interstage coupling cap sits in SERIES to the next
+            // stage's grid instead, which needs no separate simulation here
+            // since va_ac is already a pure zero-mean AC deviation by
+            // construction (Va0/Ia0 are subtracted out above), i.e. already
+            // "coupled". An earlier version modeled Cout as parallel with Ra
+            // by mistake, which turned each stage into an unintended ~80Hz
+            // lowpass -- cascaded across two stages that's exactly what made
+            // the whole amp sound muffled/boxy ("behind a wall") with the
+            // drive's harmonic content chopped off before it could read as
+            // clear. Pure Ohm's law (Cout removed outright) is what the real
+            // circuit does, but it also removes the only damping in this
+            // one-sample-delayed feedback loop and goes numerically unstable
+            // almost immediately (verified: blows up to the safety ceiling
+            // regardless of input). So Cout stays, but only as a deliberately
+            // tiny numerical stabiliser (bilinear R=Ra/C=Cout, same technique
+            // BassmanToneStack below uses, accumulated in double for the same
+            // reason: K grows into the millions at oversampled rates and
+            // float precision on (1-K)/(1+K) alone isn't enough headroom) --
+            // its value is chosen for stability margin, not to model any real
+            // component (see Cout's own comment above).
             const double K = 2.0 * sampleRate * (double) Ra * (double) Cout;
             const double vaAcD = ((double) Ra * (-(double) iaAc + (double) iAcPrev)
                                    - (1.0 - K) * (double) vaAcPrev) / (1.0 + K);
@@ -542,11 +564,15 @@ private:
     BassmanToneStack bassmanStack;
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> sagDetectorLP {};
-    // V2A's raw plate-voltage output (real volts, tens of volts under
-    // drive) back to sample scale, plus a tanh safety rail backstopping
+    // V2A's raw plate-voltage output (real volts, tens to hundreds of volts
+    // under drive) back to sample scale, plus a tanh safety rail backstopping
     // that empirical calibration -- harness-verified end to end (see
     // TriodeStage's class comment), same established pattern as Klon/TS9's
-    // own output calibration constants.
+    // own output calibration constants. Re-measured after fixing the plate
+    // load's topology bug (see TriodeStage::processSample) -- fixing that
+    // let much more real signal level and high-frequency content through,
+    // so this needed re-deriving from fresh harness numbers, not just
+    // carried over from before the fix.
     static constexpr float outputCalibration = 0.02f;
     static constexpr float safetyCeiling = 3.0f;
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
