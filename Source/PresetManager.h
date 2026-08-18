@@ -72,14 +72,19 @@ public:
 
         // Hardware/session choices are global, not tone-preset parameters.
         // Preserve them across every preset load, including prev/next and
-        // the automatic load following deletion.
+        // the automatic load following deletion. inputMute belongs in this
+        // list for the same reason masterBypass does -- muting to switch
+        // presets quietly shouldn't itself un-mute the instant the new
+        // preset loads.
         const auto masterBypass = apvts.getRawParameterValue ("masterBypass")->load();
         const auto oversampling = apvts.getRawParameterValue ("ampOversampling")->load();
         const auto inputSource = apvts.getRawParameterValue ("inputSource")->load();
+        const auto inputMute = apvts.getRawParameterValue ("inputMute")->load();
         apvts.replaceState (tree);
         restoreGlobalParameter ("masterBypass", masterBypass);
         restoreGlobalParameter ("ampOversampling", oversampling);
         restoreGlobalParameter ("inputSource", inputSource);
+        restoreGlobalParameter ("inputMute", inputMute);
         currentPresetName = file.getFileNameWithoutExtension();
         return true;
     }
@@ -144,6 +149,16 @@ private:
         const auto makePreset = [this, &original] (const juce::String& name,
                                         std::initializer_list<std::pair<const char*, float>> values)
         {
+            // True "ensure": skip any factory preset that already exists on
+            // disk. This used to build (and silently overwrite) all 10 on
+            // every single launch -- meaning any user edit to a factory
+            // preset, saved under its original name, would quietly revert
+            // back to these defaults the next time the plugin opened. Only
+            // missing ones get (re)created, e.g. on first run or after a
+            // preset was deleted.
+            if (getPresetsFolder().getChildFile (juce::File::createLegalFileName (name) + ".xml").existsAsFile())
+                return;
+
             // juce::ValueTree has reference semantics -- replaceState(original)
             // does NOT deep-copy, so it and the APVTS's live internal state end
             // up sharing the same underlying tree. Every setValueNotifyingHost

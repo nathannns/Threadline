@@ -164,8 +164,30 @@ on/off toggle regardless) via the Overdrive Order switch.
   `Resources/ImpulseResponses/HallRoom/` but are no longer loaded.
 - `GraphicEQModule` — 9-band post-effects EQ plus switchable HPF/LPF.
 - `PresetManager` — real save/load to disk-backed XML presets (one file per
-  preset). Ships with 6 factory presets covering clean, edge-of-breakup,
-  driven lead, vibrato, ambient, and tight rhythm tones.
+  preset). Ships with 10 factory presets; each preset's name is required to
+  acknowledge every "wet"/character effect (Tremolo, July chorus/vibrato,
+  Plexer/Copier delay, Reverb) it actually engages, so several are
+  deliberately 100% dry rather than carrying modulation or space just for
+  variety. `ensureTestingPresets()` only (re)creates a factory preset that's
+  missing on disk — it used to unconditionally rebuild all of them on every
+  launch, which would silently discard a user's edits to a factory preset
+  saved under its original name.
+  Two real bugs were found and fixed generating this set: `makePreset()`'s
+  reset-to-baseline step (`apvts.replaceState(original)`) looked like a
+  clean per-preset restart but wasn't one — `juce::ValueTree` has reference
+  semantics, so that call aliased the APVTS's live state to the same
+  underlying tree `original` pointed at, and every subsequent
+  `setValueNotifyingHost()` mutated that shared tree, corrupting `original`
+  itself for every later preset in the loop. In practice this meant one
+  preset turning on July's Vibrato mode leaked into every preset generated
+  after it, despite them never touching that parameter — exactly the
+  "why does everything have vibrato" symptom it produced. Fixed with
+  `original.createCopy()`, forcing a genuine independent deep copy each
+  time. Separately, `inputMute` (the toolbar mute button) wasn't in the
+  list of hardware/session parameters `loadPreset()` preserves across a
+  preset switch (alongside `masterBypass`/`ampOversampling`/`inputSource`),
+  so muting to switch presets quietly would un-mute the instant the new
+  preset loaded — added to that list.
 
 Several modules started as direct ports from the Rockalizer repo
 (`ChorusModule`, `EchoModule`, `TremoloModule`) but have since diverged
@@ -305,6 +327,24 @@ re-derived after fixing the topology bug above — removing the unintended
 lowpass let substantially more real signal level through, so the
 calibration constants needed re-measuring from fresh harness numbers
 rather than being carried over.
+
+That first retune fixed loudness/tone but not feel — a follow-up harness
+sweep of raw (uncalibrated) output against the drive knob's input scale
+showed the triode's own current-limiting makes that curve steep only
+across roughly scale 0.005–0.08 and much flatter beyond it (0.08–1.5 only
+gains another ~60% on top), so a 0.035–0.285 taper sat almost entirely in
+the flat region — the knob barely changed the sound across most of its
+travel. Separately, the output calibration (0.02) never actually drove a
+sample into the safety-ceiling tanh's hard-clip region even at max Drive
+and loud input (0% pinned in the harness), so the amp could reach smooth
+tube saturation but never genuine fuzz-level hard clipping. Retuned to
+0.008–0.098 (spanning the real steep region) and 0.065 (harness-verified
+to reach real double-digit-percent pinned time at high Drive + loud
+input, while staying at 0% for low Drive/quiet playing so touch
+sensitivity survives) — then re-verified for numerical safety across
+every sample rate/oversampling combination the plugin actually offers
+(44.1–192kHz base rates × 1x/2x/4x) plus noise-burst/impulse stress,
+all finite and bounded.
 
 Known, deliberate simplification: both stages are modeled cathode-bypassed
 (a fixed bias point). The real 5E3's V1 is unbypassed, which real hardware
