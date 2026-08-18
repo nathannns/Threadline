@@ -144,7 +144,17 @@ private:
         const auto makePreset = [this, &original] (const juce::String& name,
                                         std::initializer_list<std::pair<const char*, float>> values)
         {
-            apvts.replaceState (original);
+            // juce::ValueTree has reference semantics -- replaceState(original)
+            // does NOT deep-copy, so it and the APVTS's live internal state end
+            // up sharing the same underlying tree. Every setValueNotifyingHost
+            // call below then mutates that shared tree, corrupting "original"
+            // itself for every *subsequent* preset in this loop. That's a
+            // confirmed bug: it's exactly why presets after "04 Vibrato Swirl"
+            // kept inheriting its chorusOn/chorusDCV values despite never
+            // setting them -- each preset's leftover state kept leaking into
+            // the next one's supposedly-clean baseline. createCopy() forces a
+            // genuine independent deep copy each time so that can't happen.
+            apvts.replaceState (original.createCopy());
             for (const auto& value : values)
                 if (auto* parameter = apvts.getParameter (value.first))
                     parameter->setValueNotifyingHost (parameter->convertTo0to1 (value.second));

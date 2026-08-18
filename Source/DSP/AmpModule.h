@@ -170,13 +170,17 @@ public:
         // Grid-signal scale reaching V1 -- the one driveAmount-controlled
         // gain in the preamp now (V2A's own drive comes naturally from
         // however hard V1's real current model already clipped, not a
-        // second independent multiplier -- see class comment). Linear taper
-        // (a first quadratic attempt left the bottom half of the knob doing
-        // almost nothing) with a floor high enough that the amp is never
-        // fully clean even at Drive=0 -- matching the real 5E3's famously
-        // low-headroom, always-a-little-dirty character, and restoring
-        // comparable loudness/engagement to the tanh model this replaced.
-        const auto inputVoltsScale = 0.035f + driveAmount * 0.25f;
+        // second independent multiplier -- see class comment). A harness
+        // sweep of raw (uncalibrated) output against this scale showed the
+        // triode's own current-limiting makes it a STEEP curve only across
+        // roughly scale=0.005-0.08 (raw output ~11 to ~98) and then a much
+        // flatter one beyond that (0.08-1.5 only reaches ~157) -- an earlier
+        // 0.035-0.285 taper sat almost entirely in that flat region, so the
+        // knob barely did anything (matching the "drive isn't behaving
+        // right" complaint) even though it wasn't the cause of the earlier
+        // loudness/mud complaint (that was the plate-load topology bug
+        // above). Retuned to actually span the steep part.
+        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
         const auto powerDrive = 1.15f + driveAmount * 2.7f;
 
         for (int i = 0; i < samples; ++i)
@@ -568,12 +572,15 @@ private:
     // under drive) back to sample scale, plus a tanh safety rail backstopping
     // that empirical calibration -- harness-verified end to end (see
     // TriodeStage's class comment), same established pattern as Klon/TS9's
-    // own output calibration constants. Re-measured after fixing the plate
-    // load's topology bug (see TriodeStage::processSample) -- fixing that
-    // let much more real signal level and high-frequency content through,
-    // so this needed re-deriving from fresh harness numbers, not just
-    // carried over from before the fix.
-    static constexpr float outputCalibration = 0.02f;
+    // own output calibration constants. Raised from an initial 0.02 (which
+    // stayed graceful/smooth but never actually reached the safety rail --
+    // 0% of samples pinned even at max Drive/loud input, i.e. no genuine
+    // hard-clipped "fuzz" was reachable) to 0.065, which the same harness
+    // sweep confirmed reaches real double-digit-percent pinned time at high
+    // Drive+loud input while staying at 0% for low Drive/quiet playing, so
+    // touch sensitivity is preserved rather than trading one problem for
+    // another.
+    static constexpr float outputCalibration = 0.065f;
     static constexpr float safetyCeiling = 3.0f;
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;
