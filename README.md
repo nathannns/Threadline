@@ -71,8 +71,12 @@ on/off toggle regardless) via the Overdrive Order switch.
   curve's asymmetric throb (fast dip, gentler recovery), single Amount knob.
 - `ChorusModule` ("July" in the UI) — modeled on the Julia pedal's exact
   control surface: Rate, Depth, Lag (LFO center delay time), a Sine/Triangle
-  waveform switch, and a Dry/Chorus/Vibrato 3-way switch in place of a
-  continuous knob.
+  waveform switch, and a Dry/Chorus/Vibrato 3-way switch — plus one addition
+  beyond Julia's own panel, a continuous Mix knob. D-C-V now picks the
+  character only (Dry always forces silence outright; Chorus/Vibrato pick
+  the modulation type), while Mix sets the actual dry/wet blend percentage
+  for whichever of those two is selected, rather than each being pinned to
+  one fixed blend amount (42%/100%) with no way to dial it in.
 - **Delay** — one shared section/on-off toggle, two selectable engines
   (`delayModel`); only the active engine's knobs matter for the sound. Both
   engines' feedback knobs (Sustain / Regen) are derived the same way below
@@ -499,11 +503,18 @@ Gate/Input/Output footer is shorter (84px, was 108) with every control
 inside it scaled down by the same ratio rather than clipped, and the page
 content area above it grew into the space that freed up, on top of what
 was already reserved -- the gap right above the footer is 16px now, was
-40. The Amp page's photo is drawn bigger again (1.7x its fitted size, was
-1.5x) with a real gap (28px) between it and the knob bar below, instead of
-them almost touching; the clip region extends a little past the photo
-frame's own bottom edge into that gap so the larger photo has real room to
-spill into without touching the bar.
+40. The Amp page's background is `tweed_main.png` (a full stage scene --
+curtain, brick walls, spotlights, the amp itself already framed within
+it), replacing the earlier `tweed_amp.png` close-up cutout. Drawn at its
+own native pixel size, centred, with no scaling and no crop of any kind --
+the knob bar and Cab A/B cards below are opaque and painted afterward, so
+they still cleanly cover it wherever the two overlap.
+
+The odOrder rocker switch (Bull-first/Breaker-first) was centred in the
+whole remaining column height below its label, leaving a large, uneven gap
+between the switch and its own "BULL FIRST"/"BREAKER FIRST" caption pinned
+to the bottom of the card. Now sits directly above that caption with a
+small fixed gap instead.
 
 Klon is displayed as **Bull** throughout the UI and in every one of its
 parameters' DAW-visible display names (`Bull On`, `Bull Gain`, `Bull
@@ -513,6 +524,55 @@ choices) -- parameter IDs stay `klon*`/`odOrder` internally, and the
 referencing the module are unaffected. Same pattern as Plexer/Copier
 already displaying EchoModule/CarbonCopyModule's real-pedal names while
 keeping their own internal identifiers.
+
+## Signal continuity on toggle (Comp/Klon/Breaker)
+
+Whether a stage's signal is "buffered" here really means one specific
+thing: does toggling it on/off introduce a discontinuity (a click/pop, or
+an abrupt level jump) into the audio stream, or does the transition happen
+smoothly. Tremolo/July/Echo/Copier were already fixed for this in an
+earlier pass (fade the effect's own amount to 0, then reset, rather than
+snapping to silence mid-cycle) — Compressor/Klon/Breaker were not, and
+confirmed to still hard-cut instantly (`if (! enabled) return;`, no fade at
+all) when investigated here. Concretely: a drive/distortion stage's wet
+output can sit at a meaningfully different instantaneous value than the
+dry signal at the moment of a toggle, so an instant switch between the two
+is a real, audible discontinuity — not a hypothetical one, and not
+specific to digital plugins either (it's the same reason "buffered
+bypass" exists as a design choice in real pedal hardware, there to avoid a
+switch-induced pop, load-related tone loss across a pedalboard, and
+DC-offset/RF issues true-bypass switching is prone to).
+
+Fixed by crossfading each stage's output from a snapshot of its own dry
+input to its normal processed output over ~15ms whenever its on/off state
+changes, rather than adding fade-aware internals to three DSP modules with
+three different architectures — Compressor's gain-reduction envelope,
+and Klon/TS9's oversampled WDF clippers, are unrelated pieces of state
+that didn't need touching to fix this, and touching them risked
+introducing a new bug into circuitry that had just been carefully
+harness-verified. The crossfade lives one level up in `PluginProcessor`
+instead: each stage's dry input is snapshotted immediately before it
+runs, and `crossfadeToggle()` blends the stage's already-processed output
+back toward that snapshot using a `juce::SmoothedValue` ramp. Each stage
+only actually runs while active or still fading out, settling back to a
+fully-skipped, zero-cost state once the fade completes -- toggling it
+doesn't leave it silently running (and paying its oversampling cost, for
+Klon/TS9) forever after being turned off.
+
+Deliberately **not** done: making each stage's own *reported* latency
+change with its on/off state, or running its oversampler at 100% duty
+cycle just to keep the plugin's actual internal delay constant whether a
+stage is bypassed or not. `setLatencySamples()` is set once in
+`prepareToPlay` from a fixed worst-case sum (Klon + TS9 + Amp's
+oversampling latency, regardless of which stages are currently on) and
+never changes again during a session -- changing it dynamically would
+force the host to renegotiate PDC (plugin delay compensation) on every
+single toggle, which is a far more disruptive glitch (typically a brief
+audio engine reset/dropout in most DAWs) than the sub-millisecond timing
+drift that not doing so leaves on the table. A guitar stomp-pedal effect
+being toggled mid-performance doesn't need sample-accurate phase alignment
+against other tracks the way, say, parallel drum processing might; the
+actually-audible problem was the click, and that's what got fixed.
 
 ## Build
 

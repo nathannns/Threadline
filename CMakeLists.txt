@@ -20,7 +20,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 juce_add_binary_data(ThreadlineData SOURCES
-    Resources/Images/tweed_amp.png
+    Resources/Images/tweed_main.png
     Resources/Images/plugin_background_subtle.png
     Resources/Images/knob_pointer.png
     Resources/Images/knob_effects.png

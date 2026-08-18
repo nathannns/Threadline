@@ -23,7 +23,7 @@ namespace
 
 Page2Component::Page2Component (ThreadlineAudioProcessor& p) : processor (p)
 {
-    ampImage = juce::ImageCache::getFromMemory (BinaryData::tweed_amp_png, BinaryData::tweed_amp_pngSize);
+    ampImage = juce::ImageCache::getFromMemory (BinaryData::tweed_main_png, BinaryData::tweed_main_pngSize);
     ampToggle.setRenderedImageStyle (false);
     ampToggle.setTitle ("Amp bypass");
     ampToggle.setHelpText ("Enable or bypass the amp stage");
@@ -165,30 +165,17 @@ void Page2Component::paint (juce::Graphics& g)
 {
     if (ampImage.isValid() && ! ampImageFrameBounds.isEmpty())
     {
-        // `onlyReduceInSize` capped the photo at its native pixel size once
-        // the frame grew past that, so "give the photo more room" stopped
-        // having any visible effect -- draw it explicitly bigger than the
-        // size that would otherwise fit the frame instead. Clip region
-        // extends a bit past the frame's own bottom edge into the (now
-        // deliberately larger) gap reserved before the knob bar in
-        // resized(), so the boosted photo has real room to spill into
-        // without touching the bar itself.
-        const auto frame = ampImageFrameBounds.toFloat().reduced (18.0f);
-        const auto imageWidth = static_cast<float> (ampImage.getWidth());
-        const auto imageHeight = static_cast<float> (ampImage.getHeight());
-        const auto fitScale = juce::jmin (frame.getWidth() / imageWidth, frame.getHeight() / imageHeight);
-        constexpr float sizeBoost = 1.7f;
-        const auto drawWidth = imageWidth * fitScale * sizeBoost;
-        const auto drawHeight = imageHeight * fitScale * sizeBoost;
-        auto imageBounds = juce::Rectangle<float> (drawWidth, drawHeight).withCentre (frame.getCentre());
-
-        auto clipRegion = ampImageFrameBounds;
-        clipRegion.setBottom (ampImageFrameBounds.getBottom() + 22);
-
-        g.saveState();
-        g.reduceClipRegion (clipRegion);
-        g.drawImage (ampImage, imageBounds, juce::RectanglePlacement::stretchToFit);
-        g.restoreState();
+        // tweed_main.png drawn at its own native pixel size -- no scaling
+        // transform, no crop, no clip region. Centred on the frame; if it
+        // doesn't fit the frame exactly that's fine, since the knob bar and
+        // Cab A/B cards below are opaque and painted afterward, so they
+        // still cover it cleanly wherever the two overlap.
+        const auto imageWidth = ampImage.getWidth();
+        const auto imageHeight = ampImage.getHeight();
+        const auto frame = ampImageFrameBounds;
+        const auto x = frame.getCentreX() - imageWidth / 2;
+        const auto y = frame.getCentreY() - imageHeight / 2;
+        g.drawImageAt (ampImage, x, y);
     }
 
     paintCard (g, ampKnobFrameBounds);

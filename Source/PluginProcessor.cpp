@@ -1,6 +1,32 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+namespace
+{
+    // Crossfades `wetInPlace` (already a stage's fully-processed output)
+    // toward `dry` (that same stage's own input, snapshotted before it ran)
+    // over `mix`'s existing ramp time, rather than snapping instantly
+    // between the two when the stage's on/off state changes -- the click/
+    // pop fix for Comp/Klon/TS9 (see PluginProcessor.h's own comment on why
+    // this lives here rather than inside those three modules).
+    void crossfadeToggle (juce::AudioBuffer<float>& wetInPlace, const juce::AudioBuffer<float>& dry,
+                          juce::SmoothedValue<float>& mix, bool active)
+    {
+        mix.setTargetValue (active ? 1.0f : 0.0f);
+        const auto channels = juce::jmin (wetInPlace.getNumChannels(), dry.getNumChannels());
+        for (int i = 0; i < wetInPlace.getNumSamples(); ++i)
+        {
+            const auto m = mix.getNextValue();
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                auto* w = wetInPlace.getWritePointer (ch);
+                const auto* d = dry.getReadPointer (ch);
+                w[i] = d[i] * (1.0f - m) + w[i] * m;
+            }
+        }
+    }
+}
+
 ThreadlineAudioProcessor::ThreadlineAudioProcessor()
     : AudioProcessor (BusesProperties()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
@@ -165,11 +191,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 100.0f, 0.1f), 30.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusWaveform"), "July Waveform",
         juce::StringArray { "Sine", "Triangle" }, 0));
-    // A continuous 0-100 knob made it unclear where "Dry", "Chorus", and
-    // "Vibrato" actually fell on the sweep. Three explicit stops instead —
-    // still the same underlying dry/wet crossfade (see ChorusModule).
+    // A continuous 0-100 knob on its own made it unclear where "Dry",
+    // "Chorus", and "Vibrato" actually fell on the sweep, so D-C-V stays
+    // three explicit character stops (Dry always forces silence outright;
+    // Chorus/Vibrato pick the modulation type -- comb-filtered wobble
+    // against a dry reference, vs modulated delay alone with no dry
+    // reference left to comb against). chorusMix below is the actual
+    // continuous wet/dry amount for whichever of those two is selected --
+    // decoupling "which character" from "how much of it" rather than
+    // baking one fixed blend percentage into each D-C-V stop.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("chorusDCV"), "July D-C-V",
         juce::StringArray { "Dry", "Chorus", "Vibrato" }, 1));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("chorusMix"), "July Mix",
+        Range (0.0f, 100.0f, 0.1f), 42.0f));
 
     // --- Delay --- two selectable engines sharing one on/off toggle and one
     // Delay section: Plexer (our name for an Echoplex-style tape echo —
@@ -307,6 +341,18 @@ void ThreadlineAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     copier.prepare (spec);
     hallRoomReverb.prepare (spec);
     graphicEQ.prepare (spec);
+
+    constexpr double toggleFadeSeconds = 0.015;
+    compWetAmount.reset (sampleRate, toggleFadeSeconds);
+    klonWetAmount.reset (sampleRate, toggleFadeSeconds);
+    ts9WetAmount.reset (sampleRate, toggleFadeSeconds);
+    compWetAmount.setCurrentAndTargetValue (pBool ("compOn") ? 1.0f : 0.0f);
+    klonWetAmount.setCurrentAndTargetValue (pBool ("klonOn") ? 1.0f : 0.0f);
+    ts9WetAmount.setCurrentAndTargetValue (pBool ("ts9On") ? 1.0f : 0.0f);
+    compWasActive = pBool ("compOn");
+    klonWasActive = pBool ("klonOn");
+    ts9WasActive = pBool ("ts9On");
+    dryScratchBuffer.setSize (2, samplesPerBlock);
 }
 
 void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -381,35 +427,86 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     // --- Pre-FX page bypass (double-press the Pre-FX tab icon) ANDs into
     // each stage's own on/off toggle below, rather than gating this whole
-    // block -- Comp/Klon/TS9 already hard-cut instantly when disabled (no
-    // click-free fade to preserve), so this is exactly equivalent to
-    // wrapping the block, with less duplicated code.
+    // block.
     const auto preFxSectionOn = pBool ("preFxSectionOn");
 
-    // --- Compressor ---
-    compressor.setEnabled (preFxSectionOn && pBool ("compOn"));
-    compressor.setParameters (p ("compThreshold"), p ("compRatio"), p ("compAttack"),
-                               p ("compRelease"), p ("compMakeup"));
-    compressor.process (buffer);
+    // --- Compressor --- crossfades to/from dry over ~15ms on toggle (see
+    // PluginProcessor.h) rather than hard-cutting instantly; only actually
+    // runs while active or still fading out, settling to a cheap no-op once
+    // fully off.
+    const auto compActive = preFxSectionOn && pBool ("compOn");
+    if (compActive || compWasActive)
+    {
+        dryScratchBuffer.setSize (buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            dryScratchBuffer.copyFrom (ch, 0, buffer, ch, 0, buffer.getNumSamples());
+        compressor.setEnabled (true);
+        compressor.setParameters (p ("compThreshold"), p ("compRatio"), p ("compAttack"),
+                                   p ("compRelease"), p ("compMakeup"));
+        compressor.process (buffer);
+        crossfadeToggle (buffer, dryScratchBuffer, compWetAmount, compActive);
+        compWasActive = compActive || compWetAmount.isSmoothing();
+        if (! compWasActive)
+            compressor.setEnabled (false);
+    }
+    else
+        compressor.setEnabled (false);
 
     // --- Klon + TS9 (Breaker): order ahead of the Amp is swappable via
     // odOrder — each stage's own on/off toggle still applies regardless of
-    // which one the signal hits first.
-    klon.setEnabled (preFxSectionOn && pBool ("klonOn"));
+    // which one the signal hits first, and each gets the same crossfade
+    // treatment as Compressor above, snapshotting dry at its own actual
+    // position in the chain (which differs depending on odOrder).
+    const auto klonActive = preFxSectionOn && pBool ("klonOn");
+    const auto ts9Active = preFxSectionOn && pBool ("ts9On");
     klon.setParameters (p ("klonGain"), p ("klonTreble"), p ("klonLevel"));
-    ts9.setEnabled (preFxSectionOn && pBool ("ts9On"));
     ts9.setVariant (static_cast<TS9Module::Variant> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
     ts9.setParameters (p ("ts9Drive"), p ("ts9Tone"), p ("ts9Level"));
 
+    auto runKlon = [&]
+    {
+        if (klonActive || klonWasActive)
+        {
+            dryScratchBuffer.setSize (buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                dryScratchBuffer.copyFrom (ch, 0, buffer, ch, 0, buffer.getNumSamples());
+            klon.setEnabled (true);
+            klon.process (buffer);
+            crossfadeToggle (buffer, dryScratchBuffer, klonWetAmount, klonActive);
+            klonWasActive = klonActive || klonWetAmount.isSmoothing();
+            if (! klonWasActive)
+                klon.setEnabled (false);
+        }
+        else
+            klon.setEnabled (false);
+    };
+    auto runTs9 = [&]
+    {
+        if (ts9Active || ts9WasActive)
+        {
+            dryScratchBuffer.setSize (buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                dryScratchBuffer.copyFrom (ch, 0, buffer, ch, 0, buffer.getNumSamples());
+            ts9.setEnabled (true);
+            ts9.process (buffer);
+            crossfadeToggle (buffer, dryScratchBuffer, ts9WetAmount, ts9Active);
+            ts9WasActive = ts9Active || ts9WetAmount.isSmoothing();
+            if (! ts9WasActive)
+                ts9.setEnabled (false);
+        }
+        else
+            ts9.setEnabled (false);
+    };
+
     if ((int) p ("odOrder") == 0)
     {
-        klon.process (buffer);
-        ts9.process (buffer);
+        runKlon();
+        runTs9();
     }
     else
     {
-        ts9.process (buffer);
-        klon.process (buffer);
+        runTs9();
+        runKlon();
     }
 
     // --- Amp page bypass (double-press the Amp tab icon) ANDs into the
@@ -497,14 +594,14 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         ? ChorusModule::Waveform::triangle : ChorusModule::Waveform::sine;
     if (chorusActive)
     {
-        // Dry / Chorus / Vibrato stops -> the underlying dry/wet percentage
-        // ChorusModule's crossfade expects. Chorus sits at 42%: enough dry
-        // signal left for the comb-filtered wobble that IS chorus, without
-        // drowning it out.
-        constexpr float dcvStops[3] { 0.0f, 42.0f, 100.0f };
+        // D-C-V picks the character (Dry always forces silence outright,
+        // regardless of the Mix knob -- selecting Dry means "off"); Chorus
+        // and Vibrato both hand the actual wet amount to the Mix knob,
+        // rather than each being pinned to one fixed blend percentage.
         const auto dcvIndex = juce::jlimit (0, 2, (int) p ("chorusDCV"));
+        const auto wetPercent = dcvIndex == 0 ? 0.0f : p ("chorusMix");
         chorus.setParameters (p ("chorusRate"), p ("chorusDepth"), p ("chorusLag"),
-                              chorusWaveform, dcvStops[dcvIndex], true);
+                              chorusWaveform, wetPercent, true);
         chorus.process (buffer);
         chorusWasActive = true;
     }

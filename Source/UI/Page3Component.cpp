@@ -32,9 +32,13 @@ Page3Component::Page3Component (ThreadlineAudioProcessor& p) : processor (p)
     applyKnobStyle (tremSection, PhotoKnob::Style::Tremolo);
 
     // July's exact control surface: Rate, Depth, Lag (LFO center delay
-    // time), a Sine/Triangle waveform switch, and D-C-V (Dry-Chorus-Vibrato).
+    // time), a Sine/Triangle waveform switch, and D-C-V (Dry-Chorus-Vibrato)
+    // -- plus Mix, not part of the real Julia's own panel, added so the
+    // wet/dry blend is actually adjustable rather than pinned to one fixed
+    // percentage per D-C-V stop (see chorusMix in PluginProcessor.cpp).
     buildSection (chorusSection, *this, processor.apvts, "July", "chorusOn", {
-        { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusLag", "Lag" }
+        { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusLag", "Lag" },
+        { "chorusMix", "Mix" }
     }, false, SectionPlate::Chorus);
     applyKnobStyle (chorusSection, PhotoKnob::Style::Chorus);
     constexpr int waveformRadioGroup = 9004;
@@ -282,12 +286,12 @@ void Page3Component::resized()
         dcvButtons[1].setBounds (controlsLeft + dcvWidth + 4, rowY2, dcvWidth, rowHeight);
         dcvButtons[2].setBounds (controlsLeft + (dcvWidth + 4) * 2, rowY2, controlWidth - (dcvWidth + 4) * 2, rowHeight);
 
-        if (chorusSection.knobs.size() == 3)
+        if (chorusSection.knobs.size() == 4)
         {
             const auto knobsLeft = chorusBounds.getX() + juce::jlimit (112, 210, chorusBounds.getWidth() / 5) + 18;
             const auto knobsRight = controlsLeft - 18;
             const auto knobsWidth = knobsRight - knobsLeft;
-            const float positions[] { 0.14f, 0.5f, 0.86f };
+            const float positions[] { 0.10f, 0.37f, 0.63f, 0.90f };
             for (size_t i = 0; i < chorusSection.knobs.size(); ++i)
             {
                 auto& slider = chorusSection.knobs[i]->slider;

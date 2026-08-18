@@ -121,8 +121,14 @@ void Page1Component::resized()
                                            klonBounds.getY() + 14, 110,
                                            klonBounds.getHeight() - 28);
     auto orderLabelArea = orderArea.removeFromBottom (juce::jmin (16, orderArea.getHeight() / 4));
-    odOrderSwitch.setBounds (orderArea.withSizeKeepingCentre (
-        juce::jmin (22, orderArea.getWidth()), juce::jmin (40, orderArea.getHeight())));
+    // Switch sits directly above its label with a small fixed gap, rather
+    // than centred in the whole remaining (much taller) column -- that
+    // centring left a large, uneven gap between the switch and the label
+    // pinned to the bottom of the card.
+    orderArea.removeFromBottom (4);
+    const auto orderSwitchHeight = juce::jmin (40, orderArea.getHeight());
+    odOrderSwitch.setBounds (orderArea.removeFromBottom (orderSwitchHeight).withSizeKeepingCentre (
+        juce::jmin (22, orderArea.getWidth()), orderSwitchHeight));
     odOrderLabel.setBounds (orderLabelArea);
 
     const auto breakerBounds = ts9Section.bounds;
