@@ -103,6 +103,7 @@ target_sources(Threadline
         Source/PresetManager.h
         Source/UI/ThreadlineComponents.h
         Source/UI/SectionBuilder.h
+        Source/UI/Pedalboard/PedalDisplayNames.h
         Source/UI/Pedalboard/PedalTile.h
         Source/UI/Pedalboard/PedalTiles.h
         Source/UI/Pedalboard/PedalTileFactory.h
@@ -170,6 +171,7 @@ target_sources(Threadline
         Source/DSP/PedalNodes/DeskNode.h
         Source/DSP/PedalNodes/GraphicEQNode.h
         Source/DSP/PedalNodes/OutputGainNode.h
+        Source/DSP/PedalNodes/ParallelNode.h
 )
 
 target_compile_features(Threadline PRIVATE cxx_std_17)

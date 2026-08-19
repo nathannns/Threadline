@@ -471,6 +471,28 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("deskStyle"), "Desk Style",
         juce::StringArray { "Subtle", "Classic", "Hot" }, 1));
 
+    // --- Parallel Box (ParallelModule via ParallelNode) --- a single fixed
+    // two-slot container: any two OTHER pedals can be assigned into Slot A /
+    // Slot B, each processed on its own copy of the dry signal and blended
+    // back together via Blend, instead of only ever running in series. The
+    // pedalboard UI (PedalboardComponent's add-menu + ParallelTile's own
+    // slot pickers) keeps a pedal id single-instance across the whole board
+    // -- once assigned into a slot here it's removed from the normal
+    // serial "+ Add Pedal" pool, and vice versa -- so no pedal id is ever
+    // live in two places at once and every param id stays globally unique,
+    // exactly like every other pedal already assumes.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("parallelOn"), "Parallel On", false));
+    {
+        juce::StringArray slotChoices { "None" };
+        slotChoices.addArray (PedalboardOrder::parallelSlotChoiceIds());
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("parallelSlotA"), "Parallel Slot A",
+            slotChoices, 0));
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("parallelSlotB"), "Parallel Slot B",
+            slotChoices, 0));
+    }
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("parallelBlend"), "Parallel Blend",
+        Range (0.0f, 100.0f, 0.1f), 50.0f));
+
     // --- 9-Band Graphic EQ (after the wet effects, before output) ---
     // Page-level bypass for the whole EQ tab (9 bands + HPF/LPF together),
     // independent of eqOn/eqHpfOn/eqLpfOn -- same double-press pattern as

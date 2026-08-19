@@ -1,9 +1,12 @@
 #pragma once
 
 #include "PedalTile.h"
+#include "PedalDisplayNames.h"
 #include "../../DSP/CabModule.h"
 #include "../../DSP/GraphicEQModule.h"
 #include "../../DSP/TapTempo.h"
+#include "../../DSP/PedalboardOrder.h"
+#include "../../PluginProcessor.h"
 
 // One or more knobs (+ optional combos below them) -- covers every pedal
 // whose whole control surface is "N continuous knobs and maybe a couple of
@@ -453,4 +456,169 @@ protected:
 private:
     std::unique_ptr<TileKnob> up, down, mix;
     std::unique_ptr<TileToggle> fastToggle;
+};
+
+// A single box holding two independently user-chosen pedals -- Effect A on
+// top, Effect B below -- each processed in parallel on its own copy of the
+// dry signal and blended back together via a shared Blend knob (see
+// ParallelNode.h). Slot A / Slot B are ordinary AudioParameterChoice params
+// (parallelSlotA/parallelSlotB); whichever id each names gets its own
+// fully-working nested tile embedded live via `createChildTile` (a
+// callback into PedalTileFactory::createTile, injected at construction to
+// avoid a header cycle between this file and PedalTileFactory.h).
+//
+// A pedal chosen into a slot here must never simultaneously sit in the
+// main strip, or its DSP would run twice in one block (see ParallelNode.h)
+// -- enforced by both this tile and PedalboardComponent's own "+ Add
+// Pedal" menu independently excluding whatever the other currently holds,
+// resynced on a 4Hz timer (mirrors AmpTile/DelayTile's existing
+// live-poll-and-swap pattern elsewhere in this file). That timer means a
+// pedal freed from one side takes up to ~250ms to reappear as pickable on
+// the other -- fine for a deliberate manual reassignment, never hit by
+// anything automated.
+class ParallelTile : public PedalTileComponent, private juce::Timer
+{
+public:
+    ParallelTile (ThreadlineAudioProcessor& processorIn,
+                  std::function<std::unique_ptr<PedalTileComponent> (const juce::String&)> makeChildTile)
+        : PedalTileComponent (processorIn.apvts, "parallel", "Parallel", "parallelOn"),
+          processor (processorIn), createChildTile (std::move (makeChildTile))
+    {
+        slotALabel.setText ("Effect A", juce::dontSendNotification);
+        slotBLabel.setText ("Effect B", juce::dontSendNotification);
+        for (auto* l : { &slotALabel, &slotBLabel })
+        {
+            l->setJustificationType (juce::Justification::centred);
+            l->setFont (juce::FontOptions (11.0f, juce::Font::bold));
+            l->setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+            addAndMakeVisible (l);
+        }
+
+        populateSlotCombo (slotACombo);
+        populateSlotCombo (slotBCombo);
+        addAndMakeVisible (slotACombo);
+        addAndMakeVisible (slotBCombo);
+        slotAAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            processor.apvts, "parallelSlotA", slotACombo);
+        slotBAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            processor.apvts, "parallelSlotB", slotBCombo);
+
+        blend = makeTileKnob (*this, processor.apvts, "parallelBlend", "Blend");
+
+        rebuildChildIfNeeded (lastSlotA, childTileA, "parallelSlotA");
+        rebuildChildIfNeeded (lastSlotB, childTileB, "parallelSlotB");
+        refreshComboAvailability();
+        startTimerHz (4);
+    }
+
+    int getPreferredWidth() const override { return 260; }
+
+protected:
+    void resizedBody (juce::Rectangle<int> body) override
+    {
+        auto blendArea = body.removeFromBottom (54);
+        const auto half = body.getHeight() / 2;
+        auto topArea = body.removeFromTop (half);
+        body.removeFromTop (4);
+        auto bottomArea = body;
+
+        layoutSlot (topArea, slotALabel, slotACombo, childTileA.get());
+        layoutSlot (bottomArea, slotBLabel, slotBCombo, childTileB.get());
+
+        blend->label.setBounds (blendArea.removeFromTop (14));
+        blend->slider.setBounds (blendArea.reduced (30, 0));
+    }
+
+private:
+    void populateSlotCombo (juce::ComboBox& combo)
+    {
+        combo.addItem ("None", 1);
+        const auto& ids = PedalboardOrder::parallelSlotChoiceIds();
+        for (int i = 0; i < ids.size(); ++i)
+            combo.addItem (PedalDisplayNames::displayNameFor (ids[i]), i + 2);
+        combo.setColour (juce::ComboBox::backgroundColourId, ThreadlineColours::panelDark);
+        combo.setColour (juce::ComboBox::textColourId, ThreadlineColours::textCream);
+        combo.setColour (juce::ComboBox::outlineColourId, ThreadlineColours::cardBorder);
+    }
+
+    static void layoutSlot (juce::Rectangle<int> area, juce::Label& label, juce::ComboBox& combo,
+                             PedalTileComponent* child)
+    {
+        label.setBounds (area.removeFromTop (14));
+        combo.setBounds (area.removeFromTop (22).reduced (2, 0));
+        if (child != nullptr)
+        {
+            area.removeFromTop (4);
+            child->setBounds (area);
+        }
+    }
+
+    juce::String slotIdFor (const char* paramId) const
+    {
+        const auto choiceIndex = (int) processor.apvts.getRawParameterValue (paramId)->load();
+        if (choiceIndex <= 0)
+            return {};
+        const auto& ids = PedalboardOrder::parallelSlotChoiceIds();
+        const auto idx = choiceIndex - 1;
+        return idx >= 0 && idx < ids.size() ? ids[idx] : juce::String();
+    }
+
+    void rebuildChildIfNeeded (juce::String& lastId, std::unique_ptr<PedalTileComponent>& child, const char* paramId)
+    {
+        const auto currentId = slotIdFor (paramId);
+        if (currentId == lastId)
+            return;
+        lastId = currentId;
+        child.reset();
+        if (currentId.isNotEmpty())
+        {
+            child = createChildTile (currentId);
+            if (child != nullptr)
+            {
+                // Clicking the nested tile's own "X" clears this slot back
+                // to "None" -- reads as "remove from the box", the same
+                // meaning that button has everywhere else in the strip.
+                child->onRemoveClicked = [this, paramId] (const juce::String&)
+                {
+                    if (auto* parameter = processor.apvts.getParameter (paramId))
+                        parameter->setValueNotifyingHost (parameter->convertTo0to1 (0.0f));
+                };
+                addAndMakeVisible (*child);
+            }
+        }
+        resized();
+    }
+
+    void refreshComboAvailability()
+    {
+        auto inUse = processor.getActivePedalOrder();
+        inUse.removeString ("parallel");
+
+        auto forA = inUse; if (lastSlotB.isNotEmpty()) forA.add (lastSlotB);
+        auto forB = inUse; if (lastSlotA.isNotEmpty()) forB.add (lastSlotA);
+
+        const auto& ids = PedalboardOrder::parallelSlotChoiceIds();
+        for (int i = 0; i < ids.size(); ++i)
+        {
+            slotACombo.setItemEnabled (i + 2, ! forA.contains (ids[i]));
+            slotBCombo.setItemEnabled (i + 2, ! forB.contains (ids[i]));
+        }
+    }
+
+    void timerCallback() override
+    {
+        rebuildChildIfNeeded (lastSlotA, childTileA, "parallelSlotA");
+        rebuildChildIfNeeded (lastSlotB, childTileB, "parallelSlotB");
+        refreshComboAvailability();
+    }
+
+    ThreadlineAudioProcessor& processor;
+    std::function<std::unique_ptr<PedalTileComponent> (const juce::String&)> createChildTile;
+
+    juce::Label slotALabel, slotBLabel;
+    juce::ComboBox slotACombo, slotBCombo;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> slotAAttachment, slotBAttachment;
+    std::unique_ptr<PedalTileComponent> childTileA, childTileB;
+    juce::String lastSlotA, lastSlotB;
+    std::unique_ptr<TileKnob> blend;
 };

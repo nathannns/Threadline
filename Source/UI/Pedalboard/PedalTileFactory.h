@@ -1,30 +1,18 @@
 #pragma once
 
 #include "PedalTiles.h"
+#include "PedalDisplayNames.h"
 #include "../../PluginProcessor.h"
 
-// id -> tile registry. The 13 ids themselves come from
+// id -> tile registry. The ids themselves come from
 // PedalboardOrder::allIdsInDefaultOrder() (Source/DSP/PedalboardOrder.h);
 // this is the one place that knows how to turn each of those raw string
-// tokens into an actual on-screen tile and a friendly display name.
+// tokens into an actual on-screen tile.
 namespace PedalTileFactory
 {
     inline juce::String displayNameFor (const juce::String& id)
     {
-        static const std::map<juce::String, juce::String> names {
-            { "noiseGate", "Gate" }, { "inputGain", "Input" }, { "compressor", "Comp" },
-            { "lowDynamic", "Low Dynamic" },
-            { "klon", "Bull" }, { "ts9", "Breaker" },
-            { "fangs", "Fangs" }, { "bison", "Bison" }, { "growl", "Growl" },
-            { "tape", "Tape" }, { "amp", "Amp" }, { "cab", "Cab" },
-            { "tremolo", "Tremolo" }, { "chorus", "July" }, { "dimChorus", "Ensemble" },
-            { "delay", "Delay" }, { "spaceEcho", "Satellite" },
-            { "reverb", "Reverb" }, { "spring", "Spring" }, { "channelEQ", "Redface" },
-            { "desk", "Desk" },
-            { "eq", "EQ" }, { "outputGain", "Output" }
-        };
-        const auto it = names.find (id);
-        return it != names.end() ? it->second : id;
+        return PedalDisplayNames::displayNameFor (id);
     }
 
     inline std::unique_ptr<PedalTileComponent> createTile (const juce::String& id, ThreadlineAudioProcessor& processor)
@@ -179,6 +167,16 @@ namespace PedalTileFactory
 
         if (id == "eq")
             return std::make_unique<EQTile> (apvts);
+
+        // A single box holding two independently user-chosen pedals, run in
+        // parallel on their own copy of the dry signal and blended back
+        // together -- see ParallelNode.h. Needs the whole processor (not
+        // just apvts) so it can query which ids are already in use
+        // elsewhere on the board when building its own Slot A/Slot B
+        // picker choices.
+        if (id == "parallel")
+            return std::make_unique<ParallelTile> (processor,
+                [&processor] (const juce::String& childId) { return createTile (childId, processor); });
 
         // "inputGain"/"noiseGate"/"outputGain" are intentionally not
         // handled here -- they're pinned permanently (Input first, Gate

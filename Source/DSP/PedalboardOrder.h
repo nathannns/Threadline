@@ -18,7 +18,26 @@ namespace PedalboardOrder
             "noiseGate", "inputGain", "compressor", "lowDynamic", "klon", "ts9",
             "fangs", "bison", "growl", "tape", "amp",
             "cab", "tremolo", "chorus", "dimChorus", "delay", "spaceEcho", "reverb",
-            "spring", "channelEQ", "desk", "eq", "outputGain"
+            "spring", "channelEQ", "desk", "parallel", "eq", "outputGain"
+        };
+        return ids;
+    }
+
+    // The pedal ids selectable into the Parallel Box's Slot A / Slot B choice
+    // params (see ParallelNode.h / ParallelTile) -- every reorderable id
+    // except the 3 permanently-pinned utility stages and "parallel" itself
+    // (a box can't contain itself). This is also the fixed index order for
+    // the parallelSlotA/parallelSlotB AudioParameterChoice params -- NEVER
+    // reorder/remove entries after ship, append only, same durability
+    // contract as allIdsInDefaultOrder() above. Index 0 in the *param's*
+    // choice list is always a synthetic "None" prepended by the caller, so
+    // param choice index N (N>=1) maps to parallelSlotChoiceIds()[N-1].
+    inline const juce::StringArray& parallelSlotChoiceIds()
+    {
+        static const juce::StringArray ids {
+            "compressor", "lowDynamic", "klon", "ts9", "fangs", "bison", "growl",
+            "tape", "amp", "cab", "tremolo", "chorus", "dimChorus", "delay",
+            "spaceEcho", "reverb", "spring", "channelEQ", "desk", "eq"
         };
         return ids;
     }
@@ -59,7 +78,7 @@ namespace PedalboardOrder
         // (all default off) sit right after Bull/Breaker as three more
         // gain-stage options in the same neighbourhood of the chain.
         ids.addArray ({ "fangs", "bison", "growl", "tape", "amp", "cab", "tremolo", "chorus", "dimChorus",
-                        "delay", "spaceEcho", "reverb", "spring", "channelEQ", "desk",
+                        "delay", "spaceEcho", "reverb", "spring", "channelEQ", "desk", "parallel",
                         "eq", "outputGain" });
         return buildOrderTree (ids);
     }

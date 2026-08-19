@@ -168,13 +168,26 @@ void PedalboardComponent::layoutTiles()
 
 void PedalboardComponent::showAddMenu (juce::Component& anchor, int insertIndex)
 {
+    // Pedals currently parked in the Parallel box's Slot A/Slot B (see
+    // ParallelTile) are excluded here too -- a pedal id must never be live
+    // in two places on the board at once (see ParallelNode.h).
+    auto parkedInParallel = [this] (const char* paramId)
+    {
+        const auto choiceIndex = (int) processor.apvts.getRawParameterValue (paramId)->load();
+        const auto& ids = PedalboardOrder::parallelSlotChoiceIds();
+        const auto idx = choiceIndex - 1;
+        return choiceIndex > 0 && idx >= 0 && idx < ids.size() ? ids[idx] : juce::String();
+    };
+    const auto slotA = parkedInParallel ("parallelSlotA");
+    const auto slotB = parkedInParallel ("parallelSlotB");
+
     const auto& allIds = processor.getAllPedalIds();
     juce::PopupMenu menu;
     std::vector<juce::String> menuIds;
     int itemId = 1;
     for (auto& id : allIds)
     {
-        if (isPinned (id) || middleOrder.contains (id))
+        if (isPinned (id) || middleOrder.contains (id) || id == slotA || id == slotB)
             continue;
         menu.addItem (itemId, PedalTileFactory::displayNameFor (id));
         menuIds.push_back (id);
@@ -201,6 +214,16 @@ void PedalboardComponent::showAddMenu (juce::Component& anchor, int insertIndex)
 void PedalboardComponent::removePedal (const juce::String& id)
 {
     middleOrder.removeString (id);
+    if (id == "parallel")
+    {
+        // Free whatever pedals were parked in the box's two slots back into
+        // the normal pool -- otherwise they'd stay invisible forever
+        // (excluded from the strip because a slot still names them, but
+        // never processed because the box itself is gone).
+        for (auto* paramId : { "parallelSlotA", "parallelSlotB" })
+            if (auto* parameter = processor.apvts.getParameter (paramId))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (0.0f));
+    }
     publishOrder();
     // Deferred: this runs from inside the removed tile's own remove-button
     // onClick callback, which JUCE is still executing on that (about-to-be-

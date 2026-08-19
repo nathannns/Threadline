@@ -22,6 +22,7 @@
 #include "PedalNodes/DeskNode.h"
 #include "PedalNodes/GraphicEQNode.h"
 #include "PedalNodes/OutputGainNode.h"
+#include "PedalNodes/ParallelNode.h"
 
 PedalChainRunner::PedalChainRunner (juce::AudioProcessorValueTreeState& apvtsToUse) : apvts (apvtsToUse)
 {
@@ -50,6 +51,11 @@ PedalChainRunner::PedalChainRunner (juce::AudioProcessorValueTreeState& apvtsToU
     registry.push_back (std::make_unique<DeskNode> (apvts));
     registry.push_back (std::make_unique<GraphicEQNode> (apvts));
     registry.push_back (std::make_unique<OutputGainNode> (apvts, outputLevel));
+    // Constructed last so its resolver lambda can look up any other node in
+    // `registry` by id at call time -- findById() searches the whole vector
+    // regardless of a node's own position within it, so this ordering only
+    // matters for readability, not correctness.
+    registry.push_back (std::make_unique<ParallelNode> (apvts, [this] (const juce::String& id) { return findById (id); }));
 }
 
 PedalNode* PedalChainRunner::findById (const juce::String& id) const
