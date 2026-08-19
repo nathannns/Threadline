@@ -439,7 +439,18 @@ public:
                 if (voice == Voice::vintage5E3)
                     toned = toneFilter[ch].processSample (triode1);
                 else
-                    toned = bassmanStack.processSample (ch, triode1);
+                    // The real passive Fender/Marshall tone-stack network
+                    // this models has substantial broadband insertion loss
+                    // by its own nature (verified analytically: ~-11 to
+                    // -12dB around 440Hz-1kHz at flat/noon settings, a
+                    // genuine property of this passive RC topology, not a
+                    // bug) -- a real 5E3-family amp's own gain-staging
+                    // budgets for exactly this loss with headroom to spare
+                    // in the stage after it; this makeup gain is that
+                    // same compensation, applied right where the loss
+                    // actually happens rather than as an end-of-chain
+                    // fudge factor.
+                    toned = bassmanStack.processSample (ch, triode1) * bassmanStackMakeupGain;
 
                 // triodeV2A returns real plate-swing volts (can run to tens
                 // of volts under drive); outputCalibration/safetyCeiling
@@ -642,7 +653,11 @@ private:
             auto t1 = triodeFenderV1[ch].processSample (x * inputVoltsScale);
             t1 = fenderInterstageCoupling[ch].processSample (t1);
 
-            const auto toned = fenderToneStack.processSample (ch, t1);
+            // Deluxe 63's own real component values give this network even
+            // more loss than Boutique's (~-15 to -20dB around 440Hz-1kHz,
+            // analytically verified) -- same makeup-gain treatment, sized
+            // to this network's own loss rather than reusing Boutique's.
+            const auto toned = fenderToneStack.processSample (ch, t1) * fenderToneStackMakeupGain;
 
             const auto t2Raw = triodeFenderV2[ch].processSample (toned);
             const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
@@ -1451,8 +1466,21 @@ private:
     static constexpr float outputCalibration = 0.10f;
     static constexpr float safetyCeiling = 3.0f;
     // Direct output-level boost for the Vintage 5E3/Boutique path only
-    // (~+6dB) -- see its own use in process() for why this exists.
+    // (~+6dB) -- see its own use in process() for why this exists. Applies
+    // to Vintage too, which doesn't go through either lossy tone-stack
+    // network below (toneFilter is a plain lowpass, negligible passband
+    // loss), so this is the piece of the fix that isn't explained by tone-
+    // stack insertion loss alone.
     static constexpr float vintageOutputBoost = 2.0f;
+    // Makeup gain for the real passive tone-stack networks' own analytically-
+    // measured insertion loss (see each's own use in process()) -- ~11.75dB
+    // for Boutique's Bassman-derived network, ~15.67dB for Deluxe 63's own
+    // component values, both at ~1kHz, a representative guitar-relevant
+    // frequency for a single broadband compensation constant (matching how
+    // a real amp's own fixed-gain makeup stage isn't frequency-selective
+    // either).
+    static constexpr float bassmanStackMakeupGain = 3.87f;   // +11.75dB
+    static constexpr float fenderToneStackMakeupGain = 6.07f; // +15.67dB
     // Compensates the gain V1 lost by switching to a genuinely unbypassed
     // (self-biased) cathode -- that local negative feedback is real and
     // intentional (see TriodeStage's cathodeUnbypassed mode), but it also

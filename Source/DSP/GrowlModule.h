@@ -99,6 +99,22 @@ public:
         // touch).
         sourceResistance = juce::jmap (bias01, 1000.0f, 220000.0f);
         biasCurrent = 3.0e-6f + fuzzAmount * 40.0e-6f;
+
+        // Quiescent (silent-input) collector current -- subtracted from the
+        // running ic1 in process() so stage1Out carries only the AC
+        // deviation, the same "iaAc = anodeCurrent(...) - Ia0" AC-coupling
+        // pattern AmpModule's TriodeStage/PentodeStage already use. Without
+        // this, stage1Out carried the FULL DC-biased collector current (up
+        // to a couple mA through an 8.2k load, i.e. tens of real volts) into
+        // stage two's Thevenin input -- a huge constant offset that swamped
+        // the much smaller AC ripple riding on top of it once stage2's own
+        // diode pair (with its own ~0.6V-scale linear range) saturated hard
+        // against that offset. Solved once here (not per-sample) with its
+        // own throwaway Newton-Raphson state, since the quiescent point only
+        // changes when Bias/Fuzz change, not every sample.
+        float quiescentVb = 0.0f;
+        const auto ib1Quiescent = solveBaseCurrent (0.0f, quiescentVb);
+        ic1Quiescent = ibKnee * beta * std::tanh (ib1Quiescent / ibKnee);
     }
 
     void process (juce::AudioBuffer<float>& buffer)
@@ -132,9 +148,29 @@ public:
                 // model, the same tier of simplification KlonModule/
                 // TS9Module already make for their own op-amps (ideal,
                 // not modeled transistor-level).
-                constexpr float beta = 110.0f, ibKnee = 6.0e-6f;
+                // ibKnee sets where the tanh's saturating "knee" sits
+                // relative to Q1's actual base current -- found via the
+                // math (not just audition): the quiescent (silent-input)
+                // ib1 at this circuit's realistic Bias/Fuzz range already
+                // sits around 3-48uA (biasCurrent alone, before any audio
+                // signal), so a knee at the previous 6uA left the stage
+                // ALREADY deep in tanh's flat region even at rest -- real
+                // audio riding on top of that DC point barely moved ic1 at
+                // all (tanh's derivative near saturation is close to zero),
+                // which is what "everything is muted when Growl is on"
+                // actually was: not silence from a broken signal path, but
+                // a transistor stage with no headroom left to swing in.
+                // 150uA keeps the knee comfortably above the realistic
+                // quiescent range so normal playing stays in the responsive
+                // part of the curve, only truly saturating on hard peaks --
+                // the "soft-saturating at high drive" behaviour this was
+                // always meant to have.
                 const auto ic1 = ibKnee * beta * std::tanh (ib1 / ibKnee);
-                const auto stage1Out = -ic1 * collectorLoadOhms;
+                // AC-coupled: subtract the quiescent collector current (see
+                // setParameters()'s own comment) so only the signal-driven
+                // deviation reaches stage two, not the full DC-biased
+                // current riding on top of it.
+                const auto stage1Out = -(ic1 - ic1Quiescent) * collectorLoadOhms;
                 auto clipped = stage2[ch].processSample (stage1Out * stage2DriveScale) * outputCalibration;
                 clipped = safetyCeiling * std::tanh (clipped / safetyCeiling);
                 osBlock.setSample ((int) ch, i, clipped);
@@ -223,6 +259,8 @@ private:
     Stage2Clipper stage2[2];
     float baseVoltage[2] { 0.0f, 0.0f };
     static constexpr float inputScale = 0.02f; // line-level audio -> representative small-signal base-junction volts
+    static constexpr float beta = 110.0f, ibKnee = 150.0e-6f;
+    float ic1Quiescent = 0.0f; // see setParameters()'s own comment
     static constexpr float collectorLoadOhms = 8200.0f;
     static constexpr float stage2DriveScale = 40.0f;
     // Empirically-tuned via a standalone harness (same discipline as

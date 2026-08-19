@@ -42,6 +42,15 @@ private:
     {
     public:
         InsertPedalButton() : juce::Button ("Insert pedal here") { setTooltip ("Insert a pedal here"); }
+
+        // Guarantees this sits above whichever neighbouring tile it
+        // overlaps while hovered -- without this, a tile raised to front
+        // during its own drag (see PedalTileComponent::mouseDown) could sit
+        // above an insert button occupying the same gap, silently eating
+        // hover/click even though the button is still fully visible-ish
+        // underneath.
+        void mouseEnter (const juce::MouseEvent&) override { toFront (false); }
+
         void paintButton (juce::Graphics& g, bool highlighted, bool down) override
         {
             if (! highlighted && ! down)

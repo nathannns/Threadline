@@ -1,7 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
 #include "WDFCore.h"
-#include "ComplementaryToneStack.h"
 
 // "Fangs" -- an original op-amp diode-feedback fuzz/distortion, the
 // general archetype behind pedals like the ProCo Rat and MXR Distortion+
@@ -27,9 +26,16 @@
 // second reactive one-port (WDF::Capacitor, genuinely solved each
 // sample), not a gain-dependent filter coefficient bolted on afterward.
 //
-// Post-clip "Filter" is a ComplementaryToneStack (see that file) -- the
-// same general dark<->scoop<->bright sweep BisonModule's Tone control
-// uses below.
+// Post-clip "Filter" is a genuine treble-cut lowpass sweep -- the real
+// RAT-family "Filter" control is exactly this (darker at one end,
+// progressively brighter/more open toward the other, same convention
+// TS9Module's own Tone knob already uses), NOT a mid-scoop notch. An
+// earlier version of this file used the shared ComplementaryToneStack
+// (built for BisonModule's genuinely notch-shaped Tone control below)
+// here too, which meant Filter's default center position applied a deep
+// notch by default -- audibly "muffled/behind a wall" -- rather than
+// reading as a neutral, open passthrough the way a RAT-style pedal
+// actually behaves at noon on its Filter knob.
 class FangsModule
 {
 public:
@@ -91,8 +97,9 @@ public:
         oversampling->initProcessing (spec.maximumBlockSize);
         for (auto& c : clipper)
             c.prepare (sampleRate * (double) oversampling->getOversamplingFactor());
-        for (auto& t : tone)
-            t.prepare (sampleRate);
+        for (auto& f : filterLowpass)
+            f.prepare (spec);
+        updateFilter();
 
         dryDelay.prepare (spec);
         dryDelay.setMaximumDelayInSamples (64);
@@ -107,8 +114,8 @@ public:
             oversampling->reset();
         for (auto& c : clipper)
             c.reset();
-        for (auto& t : tone)
-            t.reset();
+        for (auto& f : filterLowpass)
+            f.reset();
         dryDelay.reset();
     }
 
@@ -123,9 +130,14 @@ public:
     void setParameters (float gain01, float filter01, float level01, float mix01)
     {
         gainAmount = juce::jlimit (0.0f, 1.0f, gain01);
-        filterBlend = juce::jlimit (0.0f, 1.0f, filter01);
         outputLevel = juce::jlimit (0.0f, 2.0f, level01 * 2.0f);
         mix = juce::jlimit (0.0f, 1.0f, mix01);
+        filter01 = juce::jlimit (0.0f, 1.0f, filter01);
+        if (! juce::approximatelyEqual (filter01, lastFilter01))
+        {
+            lastFilter01 = filter01;
+            updateFilter();
+        }
     }
 
     void process (juce::AudioBuffer<float>& buffer)
@@ -178,7 +190,7 @@ public:
             auto* wet = wetBuffer.getReadPointer (ch);
             for (int i = 0; i < numSamples; ++i)
             {
-                const auto toned = tone[ch].processSample (wet[i], filterBlend);
+                const auto toned = filterLowpass[ch].processSample (wet[i]);
                 dryDelay.pushSample (ch, dry[i]);
                 const auto delayedDry = dryDelay.popSample (ch);
                 dry[i] = (delayedDry * (1.0f - mix) + toned * mix) * outputLevel;
@@ -187,8 +199,20 @@ public:
     }
 
 private:
+    void updateFilter()
+    {
+        if (sampleRate <= 0.0)
+            return;
+        // Dark<->bright treble-cut sweep, same convention/range family as
+        // TS9Module's own Tone control.
+        const auto cutoff = juce::jmap (lastFilter01, 800.0f, 12000.0f);
+        auto coeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, cutoff, 0.707f);
+        for (auto& f : filterLowpass)
+            *f.coefficients = *coeffs;
+    }
+
     juce::dsp::DelayLine<float> dryDelay;
-    ComplementaryToneStack tone[2];
+    juce::dsp::IIR::Filter<float> filterLowpass[2];
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::AudioBuffer<float> wetBuffer;
     FangsClipper clipper[2];
@@ -202,6 +226,6 @@ private:
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;
     int channelCount = 2;
-    float gainAmount = 0.3f, outputLevel = 1.0f, mix = 1.0f, filterBlend = 0.5f;
+    float gainAmount = 0.3f, outputLevel = 1.0f, mix = 1.0f, lastFilter01 = 0.5f;
     bool enabled = false;
 };
