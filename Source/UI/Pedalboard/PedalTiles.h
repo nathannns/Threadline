@@ -8,6 +8,17 @@
 #include "../../DSP/PedalboardOrder.h"
 #include "../../PluginProcessor.h"
 
+// A real 3:4 (width:height) stompbox proportion against the strip's own
+// standard row height (375, see PedalboardComponent::tileHeight) -- shared
+// by every simple, GenericKnobsTile-based pedal (Comp, Bull, Breaker,
+// Fangs, Bison, Growl, Tape, Tremolo, July, Ensemble, Satellite, Reverb,
+// Spring, Desk) plus LowDynamicTile/Dynamix, uniformly, rather than each
+// sizing itself to its own knob count. The wider multi-control tiles (Amp,
+// Cab, Delay, EQ, ChannelEQ, Parallel) keep their own content-driven width
+// instead -- forcing e.g. EQ's 9 bands or Delay's dual-engine controls
+// into this same narrow box would clip/cram them.
+static constexpr int stompTileWidth = 281; // 375 * 3/4, rounded
+
 // One or more knobs (+ optional combos below them) -- covers every pedal
 // whose whole control surface is "N continuous knobs and maybe a couple of
 // discrete choices": NoiseGate, Compressor, Klon, TS9, Tremolo, Chorus,
@@ -27,15 +38,11 @@ public:
             combos.push_back (makeTileCombo (*this, apvtsIn, paramId, label, choices));
     }
 
-    // Narrow, real-stompbox-like proportions: knobs pack into a 2-column
-    // grid (1 column only when there's just a single knob) rather than
-    // spreading into one wide row, so the tile stays tall and narrow like
-    // a real pedal instead of short and wide.
-    int getPreferredWidth() const override
-    {
-        const auto columns = juce::jmin (2, (int) knobs.size());
-        return juce::jmax (188, columns * 119 + 38);
-    }
+    // Uniform 3:4 stompbox proportions (see stompTileWidth) -- knobs pack
+    // into a 2-column grid (1 column only when there's just a single knob)
+    // within that fixed width rather than the tile sizing itself to its
+    // own knob count.
+    int getPreferredWidth() const override { return stompTileWidth; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
@@ -431,7 +438,7 @@ public:
         fastToggle = makeTileToggle (*this, apvtsIn, "lowDynamicFast", "Fast");
     }
 
-    int getPreferredWidth() const override { return 275; }
+    int getPreferredWidth() const override { return stompTileWidth; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
