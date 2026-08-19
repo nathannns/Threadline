@@ -510,11 +510,12 @@ public:
     // body room) reads far better than stacking them, which previously
     // either clipped the lower slot or pushed it off-screen.
     int getPreferredWidth() const override { return 675; }
-    // Scaled along with the strip's own standard tileHeight -- kept
-    // modestly taller than that standard since it still needs room for its
-    // own header plus two nested pedals' worth of content, but shrunk/grown
-    // proportionally rather than left at an old absolute size.
-    int getPreferredHeight() const override { return 425; }
+    // No height override -- this box is the same height as every other
+    // tile in the strip (PedalTileComponent's own default, -1, means "use
+    // the strip's standard row height"), so it sits flush in the row
+    // instead of sticking up taller than its neighbors. Each nested pedal
+    // still fits: positionScaledChild() scales it to fill whatever room
+    // its slot actually has.
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
