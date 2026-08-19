@@ -515,16 +515,27 @@ public:
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto blendArea = body.removeFromBottom (54);
-        auto leftArea = body.removeFromLeft (body.getWidth() / 2 - 4);
-        body.removeFromLeft (8);
-        auto rightArea = body;
+        // Cancels out the base class's own 6px horizontal / 4px vertical
+        // margin around `body` -- Effect A/B are meant to sit flush against
+        // this box's own left/right/bottom edges, with no visible gap and
+        // no dead space below them, so this tile alone gets the full
+        // post-header area back rather than the usual inset every other
+        // tile's body gets.
+        auto full = body.expanded (6, 4);
+
+        constexpr int centerWidth = 64;
+        auto leftArea = full.removeFromLeft ((full.getWidth() - centerWidth) / 2);
+        auto centerArea = full.removeFromLeft (centerWidth);
+        auto rightArea = full;
 
         layoutSlot (leftArea, addSlotAButton, childTileA.get());
         layoutSlot (rightArea, addSlotBButton, childTileB.get());
 
+        // Blend lives in the slim center column between A and B, not in
+        // its own row below both.
+        auto blendArea = centerArea.withSizeKeepingCentre (centerWidth, 100);
         blend->label.setBounds (blendArea.removeFromTop (14));
-        blend->slider.setBounds (blendArea.reduced (30, 0));
+        blend->slider.setBounds (blendArea);
     }
 
 private:
