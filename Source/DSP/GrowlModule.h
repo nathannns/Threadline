@@ -93,6 +93,16 @@ public:
         fuzzAmount = juce::jlimit (0.0f, 1.0f, fuzz01);
         outputLevel = juce::jlimit (0.0f, 2.0f, level01 * 2.0f);
         mix = juce::jlimit (0.0f, 1.0f, mix01);
+        // Audit-caught inefficiency: the quiescent-point solve below only
+        // needs to re-run when Bias/Fuzz actually change (it doesn't
+        // depend on level01/mix01 at all), same change-detection pattern
+        // KlonModule's lastTreble01 already uses -- previously ran a full
+        // Newton-Raphson solve every single block regardless.
+        if (juce::approximatelyEqual (bias01, lastBias01) && juce::approximatelyEqual (fuzzAmount, lastFuzzAmount))
+            return;
+        lastBias01 = bias01;
+        lastFuzzAmount = fuzzAmount;
+
         // Real Fuzz-Face-style source impedances span roughly 1k (heavily
         // loaded, "starved"/compressed) to 220k (barely loaded, near-
         // open-circuit -- transparent, cleans up readily on a light
@@ -275,6 +285,7 @@ private:
     int channelCount = 2;
     float sourceResistance = 47000.0f;
     float biasCurrent = 5.0e-6f;
+    float lastBias01 = -1.0f, lastFuzzAmount = -1.0f; // sentinel forces the first setParameters() call through
     float fuzzAmount = 0.5f, outputLevel = 1.0f, mix = 1.0f;
     bool enabled = false;
 };
