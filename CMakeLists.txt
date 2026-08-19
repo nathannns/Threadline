@@ -193,3 +193,21 @@ target_link_libraries(Threadline
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- AmpModule CPU benchmark ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# runs the real AmpModule::process() code directly (no plugin/host
+# wrapper) many times and reports actual wall-clock cost per block against
+# the real-time budget. See Source/AmpBenchmark.cpp.
+juce_add_console_app(AmpBenchmark PRODUCT_NAME "AmpBenchmark")
+juce_generate_juce_header(AmpBenchmark)
+target_sources(AmpBenchmark PRIVATE Source/AmpBenchmark.cpp)
+target_compile_features(AmpBenchmark PRIVATE cxx_std_17)
+target_link_libraries(AmpBenchmark
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
