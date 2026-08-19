@@ -127,13 +127,21 @@ void CarbonCopyModule::process (juce::AudioBuffer<float>& buffer)
         {
             const auto input = buffer.getSample (channel, sample);
             const auto delayed = readDelay (channel, distance);
-            // The darkening filter sits inside the feedback path, so it's
-            // applied again on every repeat -- the tail gets progressively
-            // duller, not just uniformly coloured once.
-            const auto darkened = darkenFilter[channel].processSample (delayed);
+            // The darkening filter models the record head's own band-
+            // limiting, which a real BBD-based delay applies to everything
+            // being written to the bucket-brigade line -- fresh input and
+            // recirculated feedback combined first, same "combine then
+            // colour" pattern Space Echo/Plexer use, rather than only
+            // darkening the feedback contribution after the fact. Applied
+            // again on every repeat since it sits in the write path (the
+            // tail still gets progressively duller, not just uniformly
+            // coloured once), but now the very first repeat carries it
+            // too, matching real BBD hardware's own per-pass band-limiting
+            // rather than reading as a clean first echo.
+            const auto toRecord = input + delayed * feedback;
+            const auto darkened = darkenFilter[channel].processSample (toRecord);
 
-            const auto writeSample = input + darkened * feedback;
-            delayBuffer.setSample (channel, writeIndex, writeRail[channel].process (writeSample, 1.4f, 3.2f));
+            delayBuffer.setSample (channel, writeIndex, writeRail[channel].process (darkened, 1.4f, 3.2f));
 
             // A crossfade, not Plexer's additive mixing -- real analog delay
             // pedals like this one just blend wet/dry. Equal-power (not
