@@ -156,7 +156,13 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
 
-    setSize (1200, 760);
+    // 1200 was sized against the pedalboard's original (smaller) tile
+    // dimensions -- after this session's 3:4 ratio + 1.25x scaling pass,
+    // that width only fit ~3.5 tiles before the strip needed scrolling.
+    // 1600 shows roughly 5 at a glance instead, a better first impression
+    // of "here's your board" without immediately reaching for the
+    // scrollbar.
+    setSize (1600, 780);
     setResizable (true, true);
     setResizeLimits (760, 700, 3000, 1200);
 
