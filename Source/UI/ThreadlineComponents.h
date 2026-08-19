@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include <BinaryData.h>
+#include "ThreadlineFonts.h"
 
 // Small horizontal-bar peak meter. Polled by the editor's timer.
 class LevelMeterBar : public juce::Component
@@ -312,9 +313,7 @@ public:
             if (hovered && isEnabled()) colour = colour.brighter (0.18f);
             if (! isEnabled()) colour = colour.withAlpha (0.35f);
             g.setColour (colour);
-            g.setFont (juce::FontOptions (juce::jlimit (14.0f, 22.0f,
-                                                       (float) getHeight() * 0.46f),
-                                          juce::Font::bold));
+            g.setFont (ThreadlineFonts::semiBold (juce::jlimit (14.0f, 22.0f, (float) getHeight() * 0.46f)));
             g.drawFittedText (getButtonText(), bounds.reduced (3, 0).toNearestInt(),
                               wordmarkCentred ? juce::Justification::centred
                                               : juce::Justification::centredLeft, 1);
@@ -355,7 +354,7 @@ public:
             g.drawRoundedRectangle (bounds.expanded (1.0f), 6.0f, 1.4f);
         }
         g.setColour (on ? juce::Colour (0xff171311) : juce::Colour (0xffc7b89f));
-        g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+        g.setFont (ThreadlineFonts::medium (9.5f));
         const auto label = getButtonText().isNotEmpty() ? getButtonText() : (on ? "ON" : "OFF");
         g.drawText (label, bounds, juce::Justification::centred);
     }

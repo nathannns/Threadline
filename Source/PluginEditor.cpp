@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include <BinaryData.h>
+#include "UI/ThreadlineFonts.h"
 
 ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p), pedalboard (p)

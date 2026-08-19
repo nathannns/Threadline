@@ -49,6 +49,10 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/RackPlates/plate_reverb.png
     Resources/Images/RackPlates/plate_eq.png
     Resources/Reference/threadline_logo.png
+    Resources/Fonts/IBMPlexSans-Regular.ttf
+    Resources/Fonts/IBMPlexSans-Medium.ttf
+    Resources/Fonts/IBMPlexSans-SemiBold.ttf
+    Resources/Fonts/IBMPlexSans-Bold.ttf
     Resources/ImpulseResponses/HallRoom/large_hall.wav
     Resources/ImpulseResponses/HallRoom/large_stage.wav
     Resources/ImpulseResponses/HallRoom/small_room.wav

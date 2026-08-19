@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "UI/ThreadlineFonts.h"
 
 // Amp/pedal-styled LookAndFeel with clean, non-illuminated controls.
 class ThreadlineLookAndFeel : public juce::LookAndFeel_V4
@@ -14,6 +15,19 @@ public:
         setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff1a1a1a));
         setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff444444));
         setColour (juce::ComboBox::textColourId, juce::Colours::white);
+    }
+
+    // Routes every default (LookAndFeel-resolved) piece of UI text through
+    // IBM Plex Sans -- Regular normally, SemiBold when a call site asked
+    // for bold emphasis (matches the "important headings/names" tier of
+    // the weight hierarchy, since that's what existing bold-flagged text
+    // in this codebase is almost always used for). Components that want
+    // the Medium (controls/buttons) tier specifically request it directly
+    // via ThreadlineFonts::medium(), since "bold or not" alone can't
+    // distinguish 3 weight tiers.
+    juce::Typeface::Ptr getTypefaceForFont (const juce::Font& font) override
+    {
+        return font.isBold() ? ThreadlineFonts::semiBoldTypeface() : ThreadlineFonts::regularTypeface();
     }
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -85,7 +99,7 @@ public:
         }
 
         g.setColour (juce::Colours::white.withAlpha (button.getToggleState() ? 0.95f : 0.65f));
-        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.setFont (ThreadlineFonts::medium (12.0f));
         g.drawText (button.getButtonText(), bounds.toNearestInt(), juce::Justification::centred);
     }
 };

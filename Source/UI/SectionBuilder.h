@@ -57,8 +57,7 @@ public:
     {
         auto bounds = button.getLocalBounds().reduced (7, 2);
         if (down) bounds.translate (0, 1);
-        g.setFont (juce::FontOptions (juce::jlimit (9.5f, 12.5f, (float) button.getHeight() * 0.38f),
-                                      juce::Font::bold));
+        g.setFont (ThreadlineFonts::medium (juce::jlimit (9.5f, 12.5f, (float) button.getHeight() * 0.38f)));
         auto colour = button.getToggleState() ? juce::Colour (0xff18120f) : ThreadlineColours::textCream;
         if (! button.isEnabled()) colour = juce::Colour (0xff81776b);
         g.setColour (colour);
@@ -72,8 +71,7 @@ public:
         auto bounds = button.getLocalBounds().reduced (6, 2);
         if (down) bounds.translate (0, 1);
         g.setColour (button.getToggleState() ? juce::Colour (0xff18120f) : ThreadlineColours::textCream);
-        g.setFont (juce::FontOptions (juce::jlimit (9.0f, 11.5f, (float) button.getHeight() * 0.36f),
-                                      juce::Font::bold));
+        g.setFont (ThreadlineFonts::medium (juce::jlimit (9.0f, 11.5f, (float) button.getHeight() * 0.36f)));
         g.drawFittedText (button.getButtonText(), bounds, juce::Justification::centred, 1);
     }
 
@@ -250,9 +248,8 @@ inline void layoutHorizontalRackSection (SectionUI& section, juce::Rectangle<int
         : juce::jlimit (112, 210, area.getWidth() / 5);
     auto identity = area.removeFromLeft (identityWidth);
     section.titleLabel.setJustificationType (juce::Justification::centred);
-    section.titleLabel.setFont (juce::FontOptions (juce::jlimit (14.0f, 22.0f,
-                                                   static_cast<float> (area.getHeight()) * 0.28f),
-                                                   juce::Font::bold));
+    section.titleLabel.setFont (ThreadlineFonts::semiBold (juce::jlimit (14.0f, 22.0f,
+                                                   static_cast<float> (area.getHeight()) * 0.28f)));
     const auto lightFace = section.plateIndex == SectionPlate::Compressor
                         || section.plateIndex == SectionPlate::Tremolo
                         || section.plateIndex == SectionPlate::Reverb;
@@ -315,7 +312,7 @@ inline void buildSection (SectionUI& section, juce::Component& parent,
 {
     section.plateIndex = plateIndex;
     section.titleLabel.setText (title, juce::dontSendNotification);
-    section.titleLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    section.titleLabel.setFont (ThreadlineFonts::semiBold (14.0f));
     section.titleLabel.setColour (juce::Label::textColourId,
         lightLabels ? juce::Colours::white : ThreadlineColours::textCream);
     section.titleLabel.setJustificationType (juce::Justification::centredLeft);
@@ -351,7 +348,7 @@ inline void buildSection (SectionUI& section, juce::Component& parent,
         auto knob = std::make_unique<KnobUI>();
         knob->label.setText (labelText, juce::dontSendNotification);
         knob->label.setJustificationType (juce::Justification::centred);
-        knob->label.setFont (juce::FontOptions (12.0f));
+        knob->label.setFont (ThreadlineFonts::medium (12.0f));
         knob->label.setColour (juce::Label::textColourId,
             lightLabels ? juce::Colours::white : ThreadlineColours::textDim);
         knob->label.attachToComponent (&knob->slider, false);

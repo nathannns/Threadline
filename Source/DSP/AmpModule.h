@@ -509,6 +509,18 @@ public:
                 // of the drive; this is an instantaneous, level-dependent
                 // soft-knee on the transformer's own output, so a hard
                 // transient still gets capped even before sag has caught up.
+                // A harness sweep confirmed this path's raw output already
+                // matches Vox/Deluxe 63's (~0.55 peak at max Drive/loudest
+                // input, nearly identical) -- reported as still too quiet
+                // regardless, so this is a direct, guaranteed level increase
+                // (not a "found bug" fix) applied only to the original
+                // Vintage 5E3/Boutique path. Applied BEFORE the OT knee
+                // (not after) so the knee's own existing soft-clip still
+                // catches the boosted signal at high Drive/loud input
+                // rather than letting it clip hard, unclamped, past full
+                // scale downstream.
+                power *= vintageOutputBoost;
+
                 constexpr float otKnee = 0.65f;
                 const auto otMagnitude = std::abs (power);
                 if (otMagnitude > otKnee)
@@ -1438,6 +1450,9 @@ private:
     // range rather than the knob just being uniformly hotter everywhere.
     static constexpr float outputCalibration = 0.10f;
     static constexpr float safetyCeiling = 3.0f;
+    // Direct output-level boost for the Vintage 5E3/Boutique path only
+    // (~+6dB) -- see its own use in process() for why this exists.
+    static constexpr float vintageOutputBoost = 2.0f;
     // Compensates the gain V1 lost by switching to a genuinely unbypassed
     // (self-biased) cathode -- that local negative feedback is real and
     // intentional (see TriodeStage's cathodeUnbypassed mode), but it also
