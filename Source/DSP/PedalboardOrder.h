@@ -94,9 +94,7 @@ namespace PedalboardOrder
 
     // Idempotent -- no-ops if a PEDALBOARD child already exists. Call after
     // every apvts.replaceState(): setStateInformation, PresetManager::
-    // loadPreset, and PresetManager's own construction (before
-    // ensureTestingPresets captures its baseline, so every factory preset
-    // inherits a correct default order automatically).
+    // loadPreset, and PresetManager's own construction.
     inline void ensureExists (juce::AudioProcessorValueTreeState& apvts)
     {
         if (! apvts.state.getChildWithName ("PEDALBOARD").isValid())
