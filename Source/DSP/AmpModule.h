@@ -254,9 +254,28 @@ public:
             }
 
             // Fender AB763 voice -- see class comment for full sourcing.
+            // Real Deluxe Reverb schematic (both Normal and Vibrato channel
+            // V1 stages) shows a 1.5k cathode resistor WITH its own 25uF
+            // bypass cap -- i.e. bypassed, standard full-gain Fender first
+            // stage, unlike the 5E3's V1 above (that one's genuinely
+            // unbypassed, a deliberate 5E3-specific design choice). Audit-
+            // caught: this previously set cathodeUnbypassed=true here too,
+            // likely carried over from the 5E3 case by mistake.
+            //
+            // Rk still has to be solved for correctly though -- it's what
+            // sets the real DC operating point regardless of whether the
+            // cathode is AC-bypassed. Two-pass trick: solve self-biased
+            // first purely to find the equilibrium cathode voltage Rk
+            // settles to, capture that as an equivalent fixed biasPoint,
+            // then re-solve in the (correct, faster) fixed-bias mode with
+            // that exact point baked in -- reuses TriodeStage's existing
+            // self-bias solver as-is rather than adding a new one.
             triodeFenderV1[ch].Vb = 415.0f;
-            triodeFenderV1[ch].cathodeUnbypassed = true; // real 1.5k V1 cathode, unbypassed (see class comment)
             triodeFenderV1[ch].Rk = 1500.0f;
+            triodeFenderV1[ch].cathodeUnbypassed = true;
+            triodeFenderV1[ch].prepare (processingSampleRate);
+            triodeFenderV1[ch].biasPoint = -triodeFenderV1[ch].vk0;
+            triodeFenderV1[ch].cathodeUnbypassed = false;
             triodeFenderV1[ch].prepare (processingSampleRate);
             triodeFenderV2[ch].Vb = 415.0f;
             triodeFenderV2[ch].prepare (processingSampleRate);

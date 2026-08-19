@@ -122,14 +122,16 @@ namespace PedalTileFactory
         // Roland RE-201-style 3-head tape echo, a separate pedal from
         // Plexer/Copier above (see SpaceEchoModule.h for why). Bass/Treble
         // shelving pair replaces a single Tone knob, matching the real
-        // unit's tone stack.
+        // unit's tone stack. Reverb is the real unit's own built-in spring
+        // tank, blended independently of Mix (the tape repeats).
         if (id == "spaceEcho")
             return std::make_unique<GenericKnobsTile> (apvts, id, "Satellite", "spaceEchoOn",
                 std::vector<std::pair<juce::String, juce::String>> {
                     { "spaceEchoTime", "Time" }, { "spaceEchoRepeats", "Repeats" },
                     { "spaceEchoBass", "Bass" }, { "spaceEchoTreble", "Treble" },
                     { "spaceEchoWobble", "Wobble" },
-                    { "spaceEchoDrive", "Drive" }, { "spaceEchoMix", "Mix" } },
+                    { "spaceEchoDrive", "Drive" }, { "spaceEchoMix", "Mix" },
+                    { "spaceEchoReverb", "Reverb" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
                     { "spaceEchoPattern", "",
                       juce::StringArray { "Straight", "Bounce", "Gallop", "Cluster", "Wash", "Ping-Pong" } } });
