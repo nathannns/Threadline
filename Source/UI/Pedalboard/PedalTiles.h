@@ -545,8 +545,19 @@ private:
         child.setBounds (0, 0, naturalWidth, naturalHeight);
         const auto scale = juce::jmin (1.0f, juce::jmin ((float) slotArea.getWidth() / (float) naturalWidth,
                                                            (float) slotArea.getHeight() / (float) naturalHeight));
-        child.setTransform (juce::AffineTransform::scale (scale)
-                                 .translated ((float) slotArea.getX(), (float) slotArea.getY()));
+        // Whichever axis isn't the binding constraint on `scale` (almost
+        // always width here, since naturalHeight is what caps it) leaves
+        // leftover room in `slotArea` -- centered on both axes, rather
+        // than anchored at the slot's top-left, so that leftover space is
+        // split evenly instead of all piling up on one side (previously:
+        // invisibly absorbed into the inter-slot gap for the left slot,
+        // but glaring dead space against the box's own edge for the right
+        // slot, since nothing sat beyond it to hide it).
+        const auto scaledWidth = (float) naturalWidth * scale;
+        const auto scaledHeight = (float) naturalHeight * scale;
+        const auto offsetX = (float) slotArea.getX() + ((float) slotArea.getWidth() - scaledWidth) * 0.5f;
+        const auto offsetY = (float) slotArea.getY() + ((float) slotArea.getHeight() - scaledHeight) * 0.5f;
+        child.setTransform (juce::AffineTransform::scale (scale).translated (offsetX, offsetY));
     }
 
     static void layoutSlot (juce::Rectangle<int> area, juce::TextButton& addButton, PedalTileComponent* child)
