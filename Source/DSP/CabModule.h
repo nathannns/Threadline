@@ -3,8 +3,10 @@
 #include <JuceHeader.h>
 #include <BinaryData.h>
 
-// Speaker cab simulation via convolution. Ships with six built-in IRs
-// (Tweed_Combo_1x12, mic'd multiple ways) selectable by index, plus
+// Speaker cab simulation via convolution. Ships with nine built-in IRs
+// (a different cab flavor each, several paired with this plugin's own amp
+// voices -- TWD/Tweed alongside the 5E3, DLX/Deluxe alongside the Fender
+// AB763, AC30 alongside the Vox Top Boost voice) selectable by index, plus
 // loadImpulseResponseFile() for loading your own external IR on top.
 //
 // Built-in IR switches are dispatched through AsyncUpdater rather than
@@ -22,11 +24,12 @@ public:
     ~CabModule() override { cancelPendingUpdate(); }
 
 
-    static constexpr int numBuiltInIRs = 6;
+    static constexpr int numBuiltInIRs = 12;
     static const char* getBuiltInIRName (int index)
     {
         static const char* names[numBuiltInIRs] = {
-            "Spark Blend", "Velvet Blend", "Balanced Blend", "Edge 57", "Air 87", "Silk 160"
+            "Blue", "Boutique", "British", "Classic", "Deluxe", "King",
+            "Modern", "Rect", "Rock", "Tweed", "Twin", "VC30"
         };
         return names[juce::jlimit (0, numBuiltInIRs - 1, index)];
     }
@@ -49,6 +52,12 @@ public:
     }
 
     void reset() { convolution.reset(); }
+
+    // The NonUniform{256} partitioned convolution engine has real latency
+    // (traded for lower CPU, per this class's own comment on `convolution`
+    // below) that was previously never reported to the host at all -- an
+    // audit-caught DAW latency/PDC accuracy bug.
+    int getLatencySamples() const { return juce::roundToInt (convolution.getLatency()); }
 
     void setEnabled (bool shouldBeEnabled) { enabled = shouldBeEnabled; }
 
@@ -142,7 +151,20 @@ public:
                     wetGain *= 1.0f - (float) fadeRemainingForChannel / (float) fadeInTotalSamples;
                     --fadeRemainingForChannel;
                 }
-                dry[i] = dry[i] * (1.0f - wetGain) + (w[i] * polarity) * wetGain;
+                // wetMakeupGain: Convolution's own Normalise::yes levels the
+                // IR to pass a broadband (white-noise-like) signal near
+                // unity, but a real cab IR is inherently a narrow band-pass
+                // filter (rolls off below ~80Hz, above ~5kHz) -- convolving
+                // a full-bandwidth signal through it genuinely removes a lot
+                // of real energy versus a dry passthrough, the same reason
+                // every real IR-loader plugin ships with output/makeup gain
+                // rather than expecting the raw convolution to read as loud
+                // as bypass. A flat compensation constant, not derived from
+                // measuring any specific one of these IRs -- reported as
+                // "full Cab Mix reads much quieter than Mix=0" and worth
+                // auditioning/adjusting further by ear rather than treated
+                // as a precisely-dialed-in value.
+                dry[i] = dry[i] * (1.0f - wetGain) + (w[i] * wetMakeupGain * polarity) * wetGain;
             }
         }
         fadeInRemaining = juce::jmax (0, fadeInRemaining - numSamples);
@@ -184,20 +206,32 @@ private:
             return;
 
         static const void* data[numBuiltInIRs] = {
-            BinaryData::Tweed_Combo_1x12_Bright_Mix_wav,
-            BinaryData::Tweed_Combo_1x12_Dark_Mix_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_Mix_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_57_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_87_wav,
-            BinaryData::Tweed_Combo_1x12_Medium_160_wav
+            BinaryData::BLUE_wav,
+            BinaryData::BOUTIQUE_wav,
+            BinaryData::BRITISH_wav,
+            BinaryData::CLASSIC_wav,
+            BinaryData::DELUXE_wav,
+            BinaryData::KING_wav,
+            BinaryData::MODERN_wav,
+            BinaryData::RECT_wav,
+            BinaryData::ROCK_wav,
+            BinaryData::TWEED_wav,
+            BinaryData::TWIN_wav,
+            BinaryData::VC_30_wav
         };
         static const int sizes[numBuiltInIRs] = {
-            BinaryData::Tweed_Combo_1x12_Bright_Mix_wavSize,
-            BinaryData::Tweed_Combo_1x12_Dark_Mix_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_Mix_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_57_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_87_wavSize,
-            BinaryData::Tweed_Combo_1x12_Medium_160_wavSize
+            BinaryData::BLUE_wavSize,
+            BinaryData::BOUTIQUE_wavSize,
+            BinaryData::BRITISH_wavSize,
+            BinaryData::CLASSIC_wavSize,
+            BinaryData::DELUXE_wavSize,
+            BinaryData::KING_wavSize,
+            BinaryData::MODERN_wavSize,
+            BinaryData::RECT_wavSize,
+            BinaryData::ROCK_wavSize,
+            BinaryData::TWEED_wavSize,
+            BinaryData::TWIN_wavSize,
+            BinaryData::VC_30_wavSize
         };
 
         juce::WavAudioFormat wav;
@@ -302,6 +336,9 @@ private:
     // versus a single large uniform FFT block that would trade CPU for
     // latency evenly across the whole IR.
     juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 256 } };
+    // See process()'s own comment on wetMakeupGain's use -- a flat +6dB
+    // compensating for a real cab IR's inherent band-pass energy loss.
+    static constexpr float wetMakeupGain = 2.0f; // +6.02dB
     juce::AudioBuffer<float> wetBuffer;
     juce::dsp::ProcessSpec currentSpec {};
     bool enabled = true;

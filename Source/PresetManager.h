@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "DSP/PedalboardOrder.h"
 
 // Real preset save/load, backed by individual XML files on disk (one per
 // preset, holding a copy of the APVTS ValueTree). Threadline ships with no
@@ -11,9 +12,18 @@ public:
     explicit PresetManager (juce::AudioProcessorValueTreeState& stateToManage)
         : apvts (stateToManage)
     {
+        // First, so ensureTestingPresets()'s captured baseline already
+        // carries a correct default pedalboard order.
+        PedalboardOrder::ensureExists (apvts);
         getPresetsFolder().createDirectory();
         ensureTestingPresets();
     }
+
+    // Wired up by ThreadlineAudioProcessor's constructor to
+    // chainRunner.resyncFromPersistedOrder() -- PresetManager has no direct
+    // reference to the chain runner, so loadPreset() calls this after every
+    // apvts.replaceState() instead.
+    std::function<void()> onOrderMayHaveChanged;
 
     static juce::File getPresetsFolder()
     {
@@ -85,6 +95,14 @@ public:
         restoreGlobalParameter ("ampOversampling", oversampling);
         restoreGlobalParameter ("inputSource", inputSource);
         restoreGlobalParameter ("inputMute", inputMute);
+        // Pedalboard order is NOT in the preserved-globals list above --
+        // each preset's own saved order loads normally, since the order
+        // genuinely is part of what defines a preset/tone, not a global
+        // hardware setting. Old presets predating this feature get a
+        // synthesized default (odOrder-respecting) order here.
+        PedalboardOrder::ensureExists (apvts);
+        if (onOrderMayHaveChanged)
+            onOrderMayHaveChanged();
         currentPresetName = file.getFileNameWithoutExtension();
         return true;
     }
@@ -146,8 +164,15 @@ private:
     {
         const auto original = apvts.copyState();
         const auto originalName = currentPresetName;
+        // orderOverride: empty = inherit the default pedalboard order
+        // already baked into `original`. Non-empty explicitly replaces it --
+        // needed for the couple of factory presets authored assuming
+        // Breaker runs before Bull, since general pedalboard reordering has
+        // subsumed the old odOrder param and no longer reads it live (see
+        // createParameterLayout's odOrder comment).
         const auto makePreset = [this, &original] (const juce::String& name,
-                                        std::initializer_list<std::pair<const char*, float>> values)
+                                        std::initializer_list<std::pair<const char*, float>> values,
+                                        const juce::StringArray& orderOverride = {})
         {
             // True "ensure": skip any factory preset that already exists on
             // disk. This used to build (and silently overwrite) all 10 on
@@ -173,7 +198,17 @@ private:
             for (const auto& value : values)
                 if (auto* parameter = apvts.getParameter (value.first))
                     parameter->setValueNotifyingHost (parameter->convertTo0to1 (value.second));
+            if (! orderOverride.isEmpty())
+                PedalboardOrder::setOrder (apvts, orderOverride);
             savePreset (name);
+        };
+
+        // The default order with Breaker (TS9) and Bull (Klon) swapped --
+        // for the couple of presets below authored with Breaker running
+        // first (formerly odOrder=1).
+        const juce::StringArray breakerFirst {
+            "noiseGate", "inputGain", "compressor", "ts9", "klon", "amp",
+            "cab", "tremolo", "chorus", "delay", "reverb", "eq", "outputGain"
         };
 
         // Naming rule: a preset's name must acknowledge every "wet"/character
@@ -203,6 +238,9 @@ private:
             { "cabBlend", 30.0f }
             // Dry -- Bull pushing the amp into breakup is the whole story.
         });
+        // odOrder is deprecated (see createParameterLayout) but kept set
+        // here for documentation/backward-compat continuity; breakerFirst
+        // is what actually places Breaker ahead of Bull now.
         makePreset ("03 Driven Lead + Slapback", {
             { "compOn", 1.0f }, { "compThreshold", 42.0f }, { "compRatio", 34.0f },
             { "compAttack", 12.0f }, { "compRelease", 1.5f }, { "compMakeup", 1.0f },
@@ -220,7 +258,7 @@ private:
             // this preset uses, named in its title.
             { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 0.0f },
             { "echoTime", 330.0f }, { "echoSustain", 30.0f }, { "echoVolume", 18.0f }
-        });
+        }, breakerFirst);
         makePreset ("04 Ambient Hall", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.24f }, { "ampTone", 0.61f },
             { "ampOutput", -2.0f },
@@ -252,7 +290,7 @@ private:
             { "eqHpfOn", 1.0f }, { "eqHpfFreq", 76.0f },
             { "eqLpfOn", 1.0f }, { "eqLpfFreq", 9000.0f }
             // Dry -- "tight" means controlled, not swimming in a tail.
-        });
+        }, breakerFirst);
         // Bull alone, gain low, amp barely pushed -- the "transparent
         // boost" use case: raises level and adds a little upper-mid push
         // without the amp itself audibly breaking up. Dry, on purpose --
@@ -285,7 +323,7 @@ private:
             { "chorusOn", 1.0f }, { "chorusWaveform", 1.0f },
             { "chorusRate", 0.55f }, { "chorusDepth", 45.0f }, { "chorusLag", 40.0f },
             { "chorusDCV", 1.0f } // Chorus
-        });
+        }, breakerFirst);
         // Snappy optical comp, bright Vintage voice, Plexer's Echo mode at a
         // short slapback delay time -- the classic rockabilly slap, not a
         // wash of repeats. No reverb riding along underneath it.

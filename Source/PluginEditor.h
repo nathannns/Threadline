@@ -2,10 +2,7 @@
 
 #include "PluginProcessor.h"
 #include "UI/SectionBuilder.h"
-#include "UI/Page1Component.h"
-#include "UI/Page2Component.h"
-#include "UI/Page3Component.h"
-#include "UI/Page4Component.h"
+#include "UI/Pedalboard/PedalboardComponent.h"
 #include <JuceHeader.h>
 
 // Top-right power/bypass ring — lit amber when the plugin is active, dims
@@ -44,52 +41,8 @@ public:
     }
 };
 
-// Left of the power/bypass ring — toggles numeric value readouts on every
-// knob in the editor. Off by default (just the rotary graphic, matching
-// every other Threadline control); pressed once draws an open eye and
-// reveals the numbers, pressed again draws it with a slash through it and
-// hides them again.
-class EyeButton : public juce::ToggleButton
-{
-public:
-    EyeButton()
-    {
-        setClickingTogglesState (true);
-        setWantsKeyboardFocus (true);
-        setTitle ("Show knob values");
-        setHelpText ("Show or hide the numeric value under every knob");
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        auto bounds = getLocalBounds().toFloat().reduced (4.0f);
-        if (isDown()) bounds.translate (0.0f, 1.0f);
-        const auto shown = getToggleState();
-        const auto colour = shown ? ThreadlineColours::accentBright : juce::Colour (0xff6a5a4e);
-        g.setColour (colour);
-        g.drawEllipse (bounds, 2.5f);
-
-        auto glyph = bounds.reduced (bounds.getWidth() * 0.18f);
-        juce::Path eye;
-        eye.startNewSubPath (glyph.getX(), glyph.getCentreY());
-        eye.quadraticTo (glyph.getCentreX(), glyph.getY(), glyph.getRight(), glyph.getCentreY());
-        eye.quadraticTo (glyph.getCentreX(), glyph.getBottom(), glyph.getX(), glyph.getCentreY());
-        eye.closeSubPath();
-        g.strokePath (eye, juce::PathStrokeType (2.0f));
-        if (shown)
-            g.fillEllipse (juce::Rectangle<float> (glyph.getWidth() * 0.26f, glyph.getWidth() * 0.26f)
-                                .withCentre (glyph.getCentre()));
-        else
-            g.drawLine (glyph.getX() - 1.0f, glyph.getBottom() + 1.0f,
-                        glyph.getRight() + 1.0f, glyph.getY() - 1.0f, 2.2f);
-
-        if (hasKeyboardFocus (true))
-            g.drawEllipse (bounds.expanded (2.0f), 1.4f);
-    }
-};
-
-// Sits between the preset bar and the options/eye/power cluster. Silences
-// the input before it reaches any module -- for silent patch changes or
+// Sits between the preset bar and the options/power cluster. Silences the
+// input before it reaches any module -- for silent patch changes or
 // checking dry level without the whole plugin's bypass state changing.
 // Lights red when engaged (muted), matching the usual mixing-console
 // convention, rather than the amber "active" colour every other toggle
@@ -230,139 +183,6 @@ public:
     }
 };
 
-// Compact icon-only page navigation. The accessible label remains available
-// as the button name and tooltip without adding another visual wordmark.
-class TabPill : public juce::Button
-{
-public:
-    enum class Icon { Dirt, Amp, Wet, EQ };
-
-    TabPill (const juce::String& labelText, Icon iconToShow)
-        : juce::Button (labelText), icon (iconToShow)
-    {
-        setTooltip (labelText);
-        setWantsKeyboardFocus (true);
-        setTitle (labelText);
-    }
-
-    // Double-pressing the icon bypasses/restores that whole page's section
-    // (see ThreadlineAudioProcessor's *SectionOn parameters) — separate
-    // from onClick, which just switches the visible page.
-    std::function<void()> onDoubleClick;
-
-    void mouseDoubleClick (const juce::MouseEvent&) override
-    {
-        if (onDoubleClick) onDoubleClick();
-    }
-
-    void setSectionBypassed (bool shouldBeBypassed)
-    {
-        if (bypassed == shouldBeBypassed) return;
-        bypassed = shouldBeBypassed;
-        repaint();
-    }
-
-    void paintButton (juce::Graphics& g, bool highlighted, bool down) override
-    {
-        auto bounds = getLocalBounds().toFloat().reduced (2.0f);
-        if (down) bounds.translate (0.0f, 1.0f);
-        const auto selected = getToggleState();
-
-        if (selected)
-        {
-            g.setColour (ThreadlineColours::accent.withAlpha (0.30f));
-            g.fillRoundedRectangle (bounds, 8.0f);
-            g.setColour (ThreadlineColours::accentBright.withAlpha (0.85f));
-            g.drawRoundedRectangle (bounds, 8.0f, 1.4f);
-        }
-        else if (highlighted)
-        {
-            g.setColour (juce::Colours::white.withAlpha (0.05f));
-            g.fillRoundedRectangle (bounds, 8.0f);
-        }
-
-        auto glyph = bounds.withSizeKeepingCentre (bounds.getHeight(), bounds.getHeight())
-                           .reduced (bounds.getHeight() * 0.25f);
-        // Bypassed overrides the selected/highlighted glyph colour with the
-        // same muted amber-brown PowerButton uses for its own bypassed
-        // state, so "this whole page is off" reads consistently regardless
-        // of whether you're currently looking at that page.
-        g.setColour (bypassed ? juce::Colour (0xff6a5a4e)
-                               : (selected ? juce::Colours::white.withAlpha (0.95f) : ThreadlineColours::textDim));
-
-        switch (icon)
-        {
-            case Icon::Dirt:
-            {
-                // Stomp-box: rounded rect body + a single knob dot.
-                juce::Rectangle<float> box (glyph.getX(), glyph.getCentreY() - glyph.getHeight() * 0.3f,
-                                             glyph.getWidth(), glyph.getHeight() * 0.6f);
-                g.drawRoundedRectangle (box, 2.5f, 1.8f);
-                g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (box.getCentre().translated (0, -box.getHeight() * 0.1f)));
-                break;
-            }
-            case Icon::Amp:
-            {
-                // Combo cabinet: rect body with two speaker circles.
-                g.drawRoundedRectangle (glyph, 2.0f, 1.8f);
-                auto speakerR = glyph.getWidth() * 0.18f;
-                g.drawEllipse (juce::Rectangle<float> (speakerR * 2, speakerR * 2)
-                                    .withCentre ({ glyph.getX() + glyph.getWidth() * 0.3f, glyph.getCentreY() }), 1.6f);
-                g.drawEllipse (juce::Rectangle<float> (speakerR * 2, speakerR * 2)
-                                    .withCentre ({ glyph.getX() + glyph.getWidth() * 0.7f, glyph.getCentreY() }), 1.6f);
-                break;
-            }
-            case Icon::Wet:
-            {
-                // Modulation waveform.
-                juce::Path wave;
-                wave.startNewSubPath (glyph.getX(), glyph.getCentreY());
-                wave.cubicTo (glyph.getX() + glyph.getWidth() * 0.25f, glyph.getY(),
-                               glyph.getX() + glyph.getWidth() * 0.25f, glyph.getY(),
-                               glyph.getCentreX(), glyph.getCentreY());
-                wave.cubicTo (glyph.getX() + glyph.getWidth() * 0.75f, glyph.getBottom(),
-                               glyph.getX() + glyph.getWidth() * 0.75f, glyph.getBottom(),
-                               glyph.getRight(), glyph.getCentreY());
-                g.strokePath (wave, juce::PathStrokeType (1.8f));
-                break;
-            }
-            case Icon::EQ:
-            {
-                // Graphic-EQ bars of varying height.
-                constexpr float heights[5] { 0.5f, 0.85f, 0.35f, 1.0f, 0.6f };
-                const auto barWidth = glyph.getWidth() / 5.0f * 0.6f;
-                for (int i = 0; i < 5; ++i)
-                {
-                    auto barHeight = glyph.getHeight() * heights[i];
-                    juce::Rectangle<float> bar (barWidth, barHeight);
-                    bar.setX (glyph.getX() + glyph.getWidth() * ((float) i + 0.5f) / 5.0f - barWidth * 0.5f);
-                    bar.setY (glyph.getBottom() - barHeight);
-                    g.fillRoundedRectangle (bar, barWidth * 0.3f);
-                }
-                break;
-            }
-        }
-        // A diagonal strike over the glyph, same idea as EyeButton's slash
-        // -- unambiguous even at this icon's small size, where a colour
-        // change alone could read as just "unfocused" rather than "off."
-        if (bypassed)
-        {
-            g.setColour (juce::Colour (0xffb0453a).withAlpha (0.85f));
-            g.drawLine (glyph.getX() - 1.0f, glyph.getBottom() + 1.0f,
-                        glyph.getRight() + 1.0f, glyph.getY() - 1.0f, 2.0f);
-        }
-        if (hasKeyboardFocus (true))
-        {
-            g.setColour (juce::Colours::white.withAlpha (0.75f));
-            g.drawRoundedRectangle (bounds, 8.0f, 1.3f);
-        }
-    }
-
-private:
-    Icon icon;
-    bool bypassed = false;
-};
-
 class ThreadlineAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -374,13 +194,8 @@ public:
 
 private:
     void timerCallback() override;
-    void switchToPage (int pageIndex);
     void showPresetMenu();
     void refreshPresetList();
-    // Walks the whole component tree so it picks up every PhotoKnob
-    // regardless of which page or section built it, rather than needing
-    // each page to expose its own knob list.
-    void setAllKnobValuesVisible (bool visible);
 
     ThreadlineAudioProcessor& processor;
     // Declared before all controls so it outlives every component using it.
@@ -399,29 +214,14 @@ private:
     PresetIconButton deletePresetButton { "Delete preset", PresetIconButton::Icon::remove };
     MuteButton muteButton;
     PowerButton powerButton;
-    EyeButton eyeButton;
     GearButton optionsMenuButton;
     OptionsPanel optionsGroup;
     bool optionsVisible = false;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment, muteAttachment;
 
-    // --- Tab strip: Dirt (Comp/Klon/TS9), Amp (Amp/Cab), Wet (Trem/Chorus/Delay/Reverb), EQ (9-band + HPF/LPF) ---
-    std::array<TabPill, 4> tabPills {
-        TabPill ("Pre-FX", TabPill::Icon::Dirt), TabPill ("Amp", TabPill::Icon::Amp),
-        TabPill ("Wet FX", TabPill::Icon::Wet), TabPill ("EQ", TabPill::Icon::EQ)
-    };
-    int currentPage = 0;
-
-    // --- Persistent side rails: Gate+Input stacked on the left, Output on
-    // the right, flanking the page content for every tab (not just Amp).
-    SectionUI gateSection;
-    juce::Label inputLabel, outputLabel;
-    PhotoKnob inputGainKnob, outputGainKnob;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputGainAttachment, outputGainAttachment;
-    LevelMeterBar inputMeter, outputMeter;
-    juce::Rectangle<int> utilityFrameBounds, gateCardBounds, inputCardBounds, outputCardBounds;
-
-    // Guitar/Line input calibration (see PluginProcessor::processBlock).
+    // Guitar/Line input calibration and amp oversampling quality -- global
+    // engine settings, not per-pedal, so they live in the Options panel
+    // rather than as a pedalboard tile.
     juce::ComboBox inputSourceBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> inputSourceAttachment;
     juce::ToggleButton input1Button { "INPUT 1" }, input2Button { "INPUT 2" };
@@ -430,11 +230,20 @@ private:
     juce::ComboBox ampOversamplingBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ampOversamplingAttachment;
 
-    // --- Pages ---
-    Page1Component page1;
-    Page2Component page2;
-    Page3Component page3;
-    Page4Component page4;
+    // --- The pedalboard: one flat, horizontally-scrolling strip of every
+    // other active pedal's tile, replacing the old 4-tab UI entirely. ---
+    PedalboardComponent pedalboard;
+
+    // --- Pinned Input/Gate/Output: Input always first and Output always
+    // last in the processing chain, Gate pinned right after Input (see
+    // PedalboardComponent's middleOrder/fullOrderForProcessor) -- shown in
+    // a persistent bottom bar, left-to-right Input > Gate > Output, rather
+    // than as ordinary draggable strip tiles.
+    std::unique_ptr<TileKnob> inputGainKnob, outputGainKnob, gateKnob;
+    std::unique_ptr<TileToggle> gateToggle;
+    juce::Label gateBarLabel;
+    LevelMeterBar inputMeter, outputMeter;
+    juce::Rectangle<int> bottomBarBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ThreadlineAudioProcessorEditor)
 };

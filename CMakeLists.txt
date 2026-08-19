@@ -52,12 +52,21 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/ImpulseResponses/HallRoom/large_hall.wav
     Resources/ImpulseResponses/HallRoom/large_stage.wav
     Resources/ImpulseResponses/HallRoom/small_room.wav
-    Resources/CabIR/Tweed_Combo_1x12_Bright_Mix.wav
-    Resources/CabIR/Tweed_Combo_1x12_Dark_Mix.wav
-    Resources/CabIR/Tweed_Combo_1x12_Medium_Mix.wav
-    Resources/CabIR/Tweed_Combo_1x12_Medium_57.wav
-    Resources/CabIR/Tweed_Combo_1x12_Medium_87.wav
-    Resources/CabIR/Tweed_Combo_1x12_Medium_160.wav
+    Resources/ImpulseResponses/Spring/spring_space_clean.wav
+    Resources/ImpulseResponses/Spring/spring_9100_clean.wav
+    Resources/ImpulseResponses/Spring/spring_echomixer_clean.wav
+    Resources/CabIR/BLUE.wav
+    Resources/CabIR/BOUTIQUE.wav
+    Resources/CabIR/BRITISH.wav
+    Resources/CabIR/CLASSIC.wav
+    Resources/CabIR/DELUXE.wav
+    Resources/CabIR/KING.wav
+    Resources/CabIR/MODERN.wav
+    Resources/CabIR/RECT.wav
+    Resources/CabIR/ROCK.wav
+    Resources/CabIR/TWEED.wav
+    Resources/CabIR/TWIN.wav
+    "Resources/CabIR/VC 30.wav"
 )
 
 juce_add_plugin(Threadline
@@ -90,20 +99,21 @@ target_sources(Threadline
         Source/PresetManager.h
         Source/UI/ThreadlineComponents.h
         Source/UI/SectionBuilder.h
-        Source/UI/Page1Component.h
-        Source/UI/Page1Component.cpp
-        Source/UI/Page2Component.h
-        Source/UI/Page2Component.cpp
-        Source/UI/Page3Component.h
-        Source/UI/Page3Component.cpp
-        Source/UI/Page4Component.h
-        Source/UI/Page4Component.cpp
+        Source/UI/Pedalboard/PedalTile.h
+        Source/UI/Pedalboard/PedalTiles.h
+        Source/UI/Pedalboard/PedalTileFactory.h
+        Source/UI/Pedalboard/PedalboardComponent.h
+        Source/UI/Pedalboard/PedalboardComponent.cpp
         Source/DSP/GraphicEQModule.h
         Source/DSP/Antialiasing.h
         Source/DSP/ChorusModule.cpp
         Source/DSP/ChorusModule.h
+        Source/DSP/DimensionChorusModule.cpp
+        Source/DSP/DimensionChorusModule.h
         Source/DSP/EchoModule.cpp
         Source/DSP/EchoModule.h
+        Source/DSP/SpaceEchoModule.cpp
+        Source/DSP/SpaceEchoModule.h
         Source/DSP/CarbonCopyModule.cpp
         Source/DSP/CarbonCopyModule.h
         Source/DSP/HallRoomReverbModule.cpp
@@ -113,10 +123,49 @@ target_sources(Threadline
         Source/DSP/NoiseGateModule.h
         Source/DSP/CompressorModule.h
         Source/DSP/PeakLevel.h
+        Source/DSP/WDFCore.h
         Source/DSP/KlonModule.h
         Source/DSP/TS9Module.h
+        Source/DSP/ComplementaryToneStack.h
+        Source/DSP/FangsModule.h
+        Source/DSP/BisonModule.h
+        Source/DSP/GrowlModule.h
+        Source/DSP/TapeModule.cpp
+        Source/DSP/TapeModule.h
         Source/DSP/AmpModule.h
         Source/DSP/CabModule.h
+        Source/DSP/SpringModule.cpp
+        Source/DSP/SpringModule.h
+        Source/DSP/ChannelEQModule.h
+        Source/DSP/LowDynamicModule.h
+        Source/DSP/DeskModule.h
+        Source/DSP/PedalNode.h
+        Source/DSP/PedalboardOrder.h
+        Source/DSP/PedalChainRunner.h
+        Source/DSP/PedalChainRunner.cpp
+        Source/DSP/PedalNodes/NoiseGateNode.h
+        Source/DSP/PedalNodes/InputGainNode.h
+        Source/DSP/PedalNodes/CompressorNode.h
+        Source/DSP/PedalNodes/LowDynamicNode.h
+        Source/DSP/PedalNodes/KlonNode.h
+        Source/DSP/PedalNodes/TS9Node.h
+        Source/DSP/PedalNodes/FangsNode.h
+        Source/DSP/PedalNodes/BisonNode.h
+        Source/DSP/PedalNodes/GrowlNode.h
+        Source/DSP/PedalNodes/TapeNode.h
+        Source/DSP/PedalNodes/AmpNode.h
+        Source/DSP/PedalNodes/CabUnitNode.h
+        Source/DSP/PedalNodes/TremoloNode.h
+        Source/DSP/PedalNodes/ChorusNode.h
+        Source/DSP/PedalNodes/DimensionChorusNode.h
+        Source/DSP/PedalNodes/DelayNode.h
+        Source/DSP/PedalNodes/SpaceEchoNode.h
+        Source/DSP/PedalNodes/ReverbNode.h
+        Source/DSP/PedalNodes/SpringNode.h
+        Source/DSP/PedalNodes/ChannelEQNode.h
+        Source/DSP/PedalNodes/DeskNode.h
+        Source/DSP/PedalNodes/GraphicEQNode.h
+        Source/DSP/PedalNodes/OutputGainNode.h
 )
 
 target_compile_features(Threadline PRIVATE cxx_std_17)

@@ -113,7 +113,79 @@ public:
     // unchanged, so Modern3Band is the same amp "engine" wearing a
     // different, more flexible — but still physically-derived — tone
     // section rather than a different circuit.
-    enum class Voice { vintage5E3 = 0, modern3Band = 1 };
+    //
+    // VoxAC30 is a genuinely different circuit, not a retuned 5E3: two
+    // 12AX7 preamp stages (reusing the same TriodeStage/Dempwolf-Zolzer
+    // equations above -- research confirmed the AC30/6 "Top Boost" circuit
+    // most players actually mean by "a Vox amp" -- the Beatles/Brian May
+    // chime tone -- replaced the earlier AC30/4's troublesome, microphonic
+    // EF86 pentode preamp with an all-12AX7 design; EF86 only appears in
+    // the earlier, less common AC30/4), an independent Bass/Treble shelf
+    // pair standing in for the real Top Boost tone network (that network
+    // is actually wrapped in its own local negative-feedback loop around a
+    // dedicated gain stage -- a genuinely different, active topology from
+    // Fender/Marshall's simple passive insertion; modeling that NFB loop
+    // itself is a topology change beyond this pass's scope, so this is an
+    // honestly-simplified series insertion at the same point in the chain
+    // instead, same spirit as the 12AY7 mu-substitution already flagged
+    // above), a real long-tailed-pair (differential/cathode-coupled) phase
+    // inverter (LongTailPairStage below -- Vox/Marshall-family amps' real
+    // PI topology, genuinely different from the 5E3's cathodyne, and this
+    // circuit's own most distinctive element), and a pair of real EL84
+    // beam-tetrode power tubes (PentodeStage below, Koren's model again,
+    // real EL84 parameters this time). Component values are real where a
+    // source was found (LTP tail resistor 47k, EL84 output transformer 4k
+    // plate-to-plate reflecting to 1k/tube, first preamp stage B+ 275V --
+    // ampbooks.com's Vox AC30 circuit analysis), and reasonable, honestly-
+    // approximate where one wasn't (preamp Ra=100k, matching this file's
+    // own 5E3 preamp convention; EL84 cathode-bias resistor picked at 270R
+    // per tube -- not sourced for this specific amp, chosen because it's
+    // what a harness sweep showed lands the idle plate current at ~31mA,
+    // squarely in a real EL84 class-A guitar amp's typical 25-35mA idle
+    // range, rather than the ~70mA an initially-sourced-but-likely-
+    // differently-measured 47R value produced). See LongTailPairStage's
+    // own comment for that stage's specific methodology.
+    // FenderAB763 is the blackface Fender Deluxe Reverb's normal channel
+    // (reverb/vibrato circuitry excluded -- this project already has
+    // dedicated Spring reverb and Tremolo pedals, so duplicating those
+    // inside the amp voice itself would be redundant, same reasoning
+    // already applied to every other voice here). Real, well-documented
+    // component values throughout (this circuit is one of the most
+    // thoroughly published in guitar amp history) -- sourced from Rob
+    // Robinette's own AB763 circuit-analysis writeup (robrobinette.com,
+    // already this file's established source for the 5E3) and Mercury
+    // Magnetics' published transformer spec:
+    //  - Preamp V1: 100k plate load, 1.5k unbypassed cathode (real values;
+    //    the deliberately-unbypassed treatment mirrors the 5E3's own V1
+    //    for the same local-negative-feedback/extra-headroom reason,
+    //    consistent with the AB763's own reputation for more clean
+    //    headroom than a tweed circuit at a given volume), ~415V B+.
+    //  - Tone stack: the SAME general Fender/Marshall passive network
+    //    Yeh & Smith's paper covers (BassmanToneStack above, now
+    //    generalized to accept different component values) -- real
+    //    blackface values where multiple independent sources agree
+    //    (250pF treble cap, identical to the tweed Bassman's own C1; 0.1uF
+    //    bass cap and 0.047uF mid cap, both genuinely different from
+    //    Bassman's 20nF/20nF; 6.8k mid resistor, genuinely different from
+    //    Bassman's 25k) -- R1/R2/R4 reused from the Bassman's own values
+    //    where no blackface-specific difference was found sourced.
+    //  - Phase inverter: a real long-tailed pair (12AX7 -- same tube and
+    //    equations as this file's other 12AX7 stages, LongTailPairStage
+    //    above, first built for the Vox voice), with the AB763's own
+    //    well-documented ASYMMETRIC plate loads (82k/100k -- a genuine,
+    //    deliberate real-circuit quirk balancing the two halves' differing
+    //    input drive, not a mistake to "fix"), ~22k tail resistor, ~325V
+    //    supply.
+    //  - Power stage: real 6V6GT tubes -- literally the same physical tube
+    //    (and so the exact same Koren SPICE parameters) already used for
+    //    the 5E3's power stage, just in a genuinely different bias scheme:
+    //    the AB763 is FIXED-bias (external ~-35V supply to the grids, no
+    //    cathode resistor), not self-biased like the 5E3 -- see
+    //    PentodeStage's own gridBiasOffset comment for how that's modeled
+    //    with the same struct. ~420V plate supply, ~415V screen, ~6k
+    //    plate-to-plate output transformer (Mercury Magnetics' published
+    //    spec) reflecting to 1.5k/tube.
+    enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3 };
 
     void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 2)
     {
@@ -148,7 +220,78 @@ public:
             cathodyneStage[ch].prepare (processingSampleRate);
             powerTubeA[ch].prepare (processingSampleRate);
             powerTubeB[ch].prepare (processingSampleRate);
+
+            // Vox AC30 voice -- see class comment for sourcing of each
+            // value. Both preamp triodes: real ampbooks.com first-stage B+
+            // (275V), otherwise TriodeStage's own 12AX7-fit defaults
+            // (Ra=100k matching this file's own preamp convention,
+            // cathodeUnbypassed=false/fixed-bias default -- Vox preamp
+            // stages are bypassed-cathode for max gain, unlike the 5E3's
+            // deliberately-unbypassed V1).
+            triodeVoxV1[ch].Vb = 275.0f;
+            triodeVoxV1[ch].prepare (processingSampleRate);
+            triodeVoxV2[ch].Vb = 275.0f;
+            triodeVoxV2[ch].prepare (processingSampleRate);
+            voxInterstageCoupling[ch].prepare (osSpec);
+            voxBassShelf[ch].prepare (osSpec);
+            voxTrebleShelf[ch].prepare (osSpec);
+
+            voxPI[ch].Ra1 = 100000.0f; voxPI[ch].Ra2 = 100000.0f;
+            voxPI[ch].Rtail = 47000.0f; voxPI[ch].Vb = 275.0f;
+            voxPI[ch].prepare (processingSampleRate);
+
+            // Real EL84 (Koren, Norman Koren's published SPICE library) --
+            // see class comment for the cathode-resistor derivation.
+            for (auto* tube : { &powerTubeVoxA[ch], &powerTubeVoxB[ch] })
+            {
+                tube->mu = 21.29f; tube->ex = 1.240f; tube->kg1 = 401.7f;
+                tube->kg2 = 4500.0f; tube->kp = 111.04f; tube->kvb = 17.9f;
+                tube->screenVoltage = 300.0f; // EL84 datasheet max screen rating, standard application choice
+                tube->Vb = 345.0f;            // ampbooks.com AC30 power-stage B+
+                tube->Ra = 1000.0f;           // 4k plate-to-plate OT / 4 (ampbooks.com), same halving rule as the 6V6 pair
+                tube->Rk = 270.0f;            // harness-derived (see class comment): lands idle current at ~31mA, real class-A EL84 territory
+                tube->prepare (processingSampleRate);
+            }
+
+            // Fender AB763 voice -- see class comment for full sourcing.
+            triodeFenderV1[ch].Vb = 415.0f;
+            triodeFenderV1[ch].cathodeUnbypassed = true; // real 1.5k V1 cathode, unbypassed (see class comment)
+            triodeFenderV1[ch].Rk = 1500.0f;
+            triodeFenderV1[ch].prepare (processingSampleRate);
+            triodeFenderV2[ch].Vb = 415.0f;
+            triodeFenderV2[ch].prepare (processingSampleRate);
+            fenderInterstageCoupling[ch].prepare (osSpec);
+
+            fenderPI[ch].Ra1 = 82000.0f; fenderPI[ch].Ra2 = 100000.0f; // real, deliberately asymmetric (see class comment)
+            fenderPI[ch].Rtail = 22000.0f;
+            fenderPI[ch].Vb = 325.0f;
+            fenderPI[ch].prepare (processingSampleRate);
+
+            for (auto* tube : { &powerTubeFenderA[ch], &powerTubeFenderB[ch] })
+            {
+                // Real 6V6GT (Koren) -- identical parameters to the 5E3's
+                // own power tubes above (literally the same physical tube).
+                tube->mu = 10.70f; tube->ex = 1.310f; tube->kg1 = 1672.0f;
+                tube->kg2 = 4500.0f; tube->kp = 41.16f; tube->kvb = 12.7f;
+                tube->screenVoltage = 415.0f; // Robinette: B+2 ~415V
+                tube->Vb = 420.0f;            // Robinette: B+1 ~420V loaded
+                tube->Ra = 1500.0f;           // ~6k plate-to-plate OT (Mercury Magnetics) / 4
+                // Fixed bias, not self-biased (see PentodeStage's own
+                // gridBiasOffset comment) -- a near-zero Rk plus the real
+                // ~-35V nominal fixed bias voltage (Robinette/community-
+                // measured AB763 bias specs), instead of the 5E3's Rk=250
+                // self-bias scheme.
+                tube->Rk = 1.0f;
+                tube->gridBiasOffset = -35.0f;
+                tube->prepare (processingSampleRate);
+            }
         }
+
+        // Real blackface component values (see class comment) -- R1/R2/R4
+        // reused from the Bassman defaults where no blackface-specific
+        // difference was found sourced.
+        fenderToneStack.C1 = 0.25e-9; fenderToneStack.C2 = 0.1e-6; fenderToneStack.C3 = 0.047e-6;
+        fenderToneStack.R3 = 6800.0;
         sagAttack = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.045));
         sagRelease = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.240));
         // One-pole ~180Hz tap feeding the sag detector — bass notes draw far
@@ -162,6 +305,8 @@ public:
         updateStaticFilters();
         updateToneFilter();
         bassmanStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+        fenderToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+        updateVoxToneFilters();
         reset();
     }
 
@@ -176,8 +321,20 @@ public:
             triodeV1[ch].reset(); triodeV2A[ch].reset();
             cathodyneStage[ch].reset();
             powerTubeA[ch].reset(); powerTubeB[ch].reset();
+
+            triodeVoxV1[ch].reset(); triodeVoxV2[ch].reset();
+            voxInterstageCoupling[ch].reset();
+            voxBassShelf[ch].reset(); voxTrebleShelf[ch].reset();
+            voxPI[ch].reset();
+            powerTubeVoxA[ch].reset(); powerTubeVoxB[ch].reset();
+
+            triodeFenderV1[ch].reset(); triodeFenderV2[ch].reset();
+            fenderInterstageCoupling[ch].reset();
+            fenderPI[ch].reset();
+            powerTubeFenderA[ch].reset(); powerTubeFenderB[ch].reset();
         }
         bassmanStack.reset();
+        fenderToneStack.reset();
         sagEnvelope = 0.0f;
         sagDetectorLP.fill (0.0f);
         outputGain.setCurrentAndTargetValue (targetOutputGain);
@@ -205,6 +362,8 @@ public:
         {
             lastBass01 = bass01; lastMid01 = mid01; lastTreble01 = treble01;
             bassmanStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+            fenderToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+            updateVoxToneFilters();
         }
     }
 
@@ -247,6 +406,17 @@ public:
 
         for (int i = 0; i < samples; ++i)
         {
+            if (voice == Voice::voxAC30)
+            {
+                processVoxSample (block, i, channels);
+                continue;
+            }
+            if (voice == Voice::fenderAB763)
+            {
+                processFenderSample (block, i, channels);
+                continue;
+            }
+
             float detector = 0.0f;
             std::array<float, 2> phaseInverterPlate {}, phaseInverterCathode {};
             for (int ch = 0; ch < channels; ++ch)
@@ -363,6 +533,146 @@ public:
     }
 
 private:
+    // Vox AC30 voice's per-sample signal path: two 12AX7 preamp stages
+    // (triodeVoxV1/V2) around a Bass/Treble shelf pair, a real long-tailed-
+    // pair phase inverter (voxPI), and a genuine EL84 push-pull power stage
+    // (powerTubeVoxA/B) -- see Voice::voxAC30's class comment for the full
+    // methodology and sourcing. Deliberately mirrors the 5E3 path's own
+    // per-sample structure (same sag detector, same output-transformer
+    // saturation knee, same shared calibration constants below -- a
+    // standalone harness confirmed those same constants land this
+    // different circuit's output in the same target range too, so no
+    // duplicate Vox-specific calibration constants were needed) rather than
+    // trying to unify the two into one parameterised function -- the actual
+    // per-tube processing calls differ enough (different tube instances,
+    // no tubeMismatch term since the LTP's own inherent asymmetry at
+    // higher drive already produces real even-harmonic content on its own,
+    // harness-verified) that forcing a shared implementation would obscure
+    // more than it would save.
+    void processVoxSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
+    {
+        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
+        const auto powerDrive = 1.15f + driveAmount * 2.7f;
+
+        float detector = 0.0f;
+        std::array<float, 2> plate1 {}, plate2 {};
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
+            auto t1 = triodeVoxV1[ch].processSample (x * inputVoltsScale);
+            t1 = voxInterstageCoupling[ch].processSample (t1);
+
+            auto toned = voxBassShelf[ch].processSample (t1);
+            toned = voxTrebleShelf[ch].processSample (toned);
+
+            const auto t2Raw = triodeVoxV2[ch].processSample (toned);
+            const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+
+            float p1, p2;
+            voxPI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            plate1[(size_t) ch] = p1;
+            plate2[(size_t) ch] = p2;
+
+            auto& bassTap = sagDetectorLP[(size_t) ch];
+            bassTap += sagDetectorLPCoefficient * (p1 - bassTap);
+            const auto weighted = std::abs (p1) * 0.5f + std::abs (bassTap) * 0.5f;
+            detector = juce::jmax (detector, weighted);
+        }
+
+        const auto coefficient = detector > sagEnvelope ? sagAttack : sagRelease;
+        sagEnvelope = coefficient * sagEnvelope + (1.0f - coefficient) * detector;
+        const auto sag = juce::jlimit (0.0f, 0.42f, sagEnvelope * (0.20f + 0.34f * driveAmount));
+
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto driveScale = effectiveDrive * powerStageInputScale;
+            const auto tubeA = powerTubeVoxA[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto tubeB = powerTubeVoxB[ch].processSample (plate2[(size_t) ch] * driveScale);
+            auto power = (tubeA - tubeB) * powerStageOutputScale;
+            power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+
+            constexpr float otKnee = 0.65f;
+            const auto otMagnitude = std::abs (power);
+            if (otMagnitude > otKnee)
+            {
+                const auto excess = otMagnitude - otKnee;
+                const auto headroom = 1.0f - otKnee;
+                const auto compressed = otKnee + headroom * std::tanh (excess / headroom);
+                power = std::copysign (compressed, power);
+            }
+
+            block.setSample (ch, i, transformerLowPass[ch].processSample (power));
+        }
+    }
+
+    // Fender AB763 voice's per-sample signal path -- see Voice::fenderAB763
+    // for full methodology/sourcing. Structurally mirrors processVoxSample()
+    // (same shared sag detector, OT saturation knee, and calibration
+    // constants -- this circuit's real fixed-bias power stage runs a
+    // genuinely lower idle current than the 5E3/Vox's self-biased tubes,
+    // which in a real amp is exactly why the AB763 has more clean headroom
+    // at a given volume; reusing the same calibration constants here is a
+    // reasonable starting point rather than a freshly-tuned one, same
+    // "first pass, needs auditioning" caveat as the Vox voice), but with
+    // its own tube instances and its own real tone stack (fenderToneStack)
+    // instead of a Bass/Treble shelf pair.
+    void processFenderSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
+    {
+        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
+        const auto powerDrive = 1.15f + driveAmount * 2.7f;
+
+        float detector = 0.0f;
+        std::array<float, 2> plate1 {}, plate2 {};
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
+            auto t1 = triodeFenderV1[ch].processSample (x * inputVoltsScale);
+            t1 = fenderInterstageCoupling[ch].processSample (t1);
+
+            const auto toned = fenderToneStack.processSample (ch, t1);
+
+            const auto t2Raw = triodeFenderV2[ch].processSample (toned);
+            const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+
+            float p1, p2;
+            fenderPI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            plate1[(size_t) ch] = p1;
+            plate2[(size_t) ch] = p2;
+
+            auto& bassTap = sagDetectorLP[(size_t) ch];
+            bassTap += sagDetectorLPCoefficient * (p1 - bassTap);
+            const auto weighted = std::abs (p1) * 0.5f + std::abs (bassTap) * 0.5f;
+            detector = juce::jmax (detector, weighted);
+        }
+
+        const auto coefficient = detector > sagEnvelope ? sagAttack : sagRelease;
+        sagEnvelope = coefficient * sagEnvelope + (1.0f - coefficient) * detector;
+        const auto sag = juce::jlimit (0.0f, 0.42f, sagEnvelope * (0.20f + 0.34f * driveAmount));
+
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto driveScale = effectiveDrive * powerStageInputScale;
+            const auto tubeA = powerTubeFenderA[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto tubeB = powerTubeFenderB[ch].processSample (plate2[(size_t) ch] * driveScale);
+            auto power = (tubeA - tubeB) * powerStageOutputScale;
+            power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+
+            constexpr float otKnee = 0.65f;
+            const auto otMagnitude = std::abs (power);
+            if (otMagnitude > otKnee)
+            {
+                const auto excess = otMagnitude - otKnee;
+                const auto headroom = 1.0f - otKnee;
+                const auto compressed = otKnee + headroom * std::tanh (excess / headroom);
+                power = std::copysign (compressed, power);
+            }
+
+            block.setSample (ch, i, transformerLowPass[ch].processSample (power));
+        }
+    }
+
     void updateStaticFilters()
     {
         auto inputHP = juce::dsp::IIR::Coefficients<float>::makeHighPass (processingSampleRate, 48.0f, 0.707f);
@@ -386,6 +696,22 @@ private:
             juce::jmin (cutoff, static_cast<float> (processingSampleRate * 0.42)), 0.62f);
         for (auto& filter : toneFilter)
             *filter.coefficients = *coefficients;
+    }
+
+    // Vox voice's simplified Bass/Treble shelf pair -- see Voice::voxAC30's
+    // own comment for why this stands in for the real Top Boost network.
+    void updateVoxToneFilters()
+    {
+        if (processingSampleRate <= 0.0)
+            return;
+        const auto bassGainDb = juce::jmap (lastBass01, -12.0f, 12.0f);
+        const auto trebleGainDb = juce::jmap (lastTreble01, -12.0f, 12.0f);
+        auto bassCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (
+            processingSampleRate, 200.0f, 0.65f, juce::Decibels::decibelsToGain (bassGainDb));
+        auto trebleCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
+            processingSampleRate, 2200.0f, 0.65f, juce::Decibels::decibelsToGain (trebleGainDb));
+        for (auto& f : voxBassShelf) *f.coefficients = *bassCoeffs;
+        for (auto& f : voxTrebleShelf) *f.coefficients = *trebleCoeffs;
     }
 
     // A single common-cathode triode gain stage: real grid/cathode current
@@ -629,6 +955,148 @@ private:
         }
     };
 
+    // Long-tailed-pair (differential/cathode-coupled) phase inverter: two
+    // triodes sharing one cathode resistor ("tail") to ground, one grid
+    // driven by the signal, the other referenced to a fixed grid-bias
+    // voltage (approximated here as a fixed DC value -- the real feedback-
+    // derived bias network is a topology detail beyond this pass's scope,
+    // same "honestly flagged" treatment as this file's other approximations).
+    // Reuses the exact same Dempwolf-Zolzer 12AX7 current equations
+    // TriodeStage above uses (this is architecturally still a 12AX7, just
+    // two of them sharing a cathode node instead of one self-biased alone),
+    // solving ONE shared cathode voltage from BOTH tubes' current sum via
+    // Kirchhoff's current law at that node: Ik1(Vg1,Vk,Va1) +
+    // Ik2(Vg2,Vk,Va2) == Vk/Rtail, via the same warm-started Newton-Raphson
+    // technique TriodeStage's own self-bias mode already uses for one tube.
+    // This is what makes the LTP's two plate outputs genuinely antiphase
+    // from real circuit behaviour (grid1 rising pulls the shared cathode
+    // up, which lowers grid2's effective Vgk and its current) rather than
+    // a constructed +V/-V pair -- verified in a standalone harness across
+    // a Drive sweep (0.05-8.0): the two plate outputs' cross-correlation
+    // stayed negative (genuinely antiphase) at every level tested, the DC
+    // bias-point solve converged to sane values (Vk0=3.15V, both plates
+    // resting at ~271.7V with Vb=275V), and output stayed bounded with no
+    // NaN/blow-up even well beyond realistic drive levels. No grid-current/
+    // blocking-distortion model here (unlike TriodeStage) -- the PI stage
+    // is driven by a much lower-level signal than the input stage typically
+    // sees pre-clipping, so its own grid rarely approaches conduction in
+    // normal operation, the same justification PentodeStage below gives for
+    // skipping it on the power tubes.
+    struct LongTailPairStage
+    {
+        float Ra1 = 100000.0f, Ra2 = 100000.0f;
+        float Rtail = 47000.0f; // real AC30 LTP tail resistor (ampbooks.com)
+        float Vb = 275.0f;
+        float grid2Bias = 0.0f;
+        float Cout = 220.0e-12f; // same numerical-stabiliser role as TriodeStage's own Cout
+
+        float vk = 0.0f, vk0 = 0.0f;
+        float va1AcPrev = 0.0f, ia1AcPrev = 0.0f, Va10 = 150.0f, Ia10 = 0.0f;
+        float va2AcPrev = 0.0f, ia2AcPrev = 0.0f, Va20 = 150.0f, Ia20 = 0.0f;
+        double sampleRate = 44100.0;
+
+        static float softplus (float x, float k) noexcept
+        {
+            const auto kx = k * x;
+            return (std::max (kx, 0.0f) + std::log1p (std::exp (-std::abs (kx)))) / k;
+        }
+        static float anodeCurrentStatic (float vg, float va) noexcept
+        {
+            constexpr float G = 1.371e-3f, mu = 96.2f, gamma = 1.349f, C = 3.917f;
+            const auto veff = vg + va / mu;
+            return G * std::pow (softplus (veff, C), gamma);
+        }
+
+        float solvePlate (float vgk, float Ra) const noexcept
+        {
+            float lo = 0.0f, hi = Vb;
+            for (int i = 0; i < 60; ++i)
+            {
+                const auto mid = 0.5f * (lo + hi);
+                if (anodeCurrentStatic (vgk, mid) > (Vb - mid) / Ra) hi = mid; else lo = mid;
+            }
+            return 0.5f * (lo + hi);
+        }
+
+        // Outer bisection over the shared cathode voltage Vk0; inner
+        // bisection solves each tube's own quiescent plate voltage given
+        // that Vk0 trial -- same nested structure TriodeStage's cathode-
+        // unbypassed solve already uses, just summing two tubes' currents
+        // for the tail-resistor balance instead of one.
+        void solveBiasPoint() noexcept
+        {
+            float vkLo = 0.0f, vkHi = Vb;
+            for (int outer = 0; outer < 40; ++outer)
+            {
+                const auto vkMid = 0.5f * (vkLo + vkHi);
+                const auto vgk1 = -vkMid;
+                const auto vgk2 = grid2Bias - vkMid;
+                const auto va1 = solvePlate (vgk1, Ra1);
+                const auto va2 = solvePlate (vgk2, Ra2);
+                const auto total = anodeCurrentStatic (vgk1, va1) + anodeCurrentStatic (vgk2, va2);
+                if (total * Rtail > vkMid) vkLo = vkMid; else vkHi = vkMid;
+            }
+            vk0 = 0.5f * (vkLo + vkHi);
+            const auto vgk1_0 = -vk0, vgk2_0 = grid2Bias - vk0;
+            Va10 = solvePlate (vgk1_0, Ra1); Ia10 = anodeCurrentStatic (vgk1_0, Va10);
+            Va20 = solvePlate (vgk2_0, Ra2); Ia20 = anodeCurrentStatic (vgk2_0, Va20);
+        }
+
+        void prepare (double newSampleRate) noexcept { sampleRate = newSampleRate; solveBiasPoint(); reset(); }
+        void reset() noexcept
+        {
+            vk = vk0;
+            va1AcPrev = va2AcPrev = 0.0f;
+            ia1AcPrev = ia2AcPrev = 0.0f;
+        }
+
+        // vin: the driven grid's signal voltage (real volts). Writes both
+        // plates' AC voltage swings -- genuinely antiphase, verified as
+        // described in the class comment above.
+        void processSample (float vin, float& plate1Out, float& plate2Out) noexcept
+        {
+            const auto vgActual1 = vin;
+            const auto vgActual2 = grid2Bias;
+            const auto va1 = Va10 + va1AcPrev;
+            const auto va2 = Va20 + va2AcPrev;
+            constexpr float G = 1.371e-3f, mu = 96.2f, gamma = 1.349f, C = 3.917f;
+
+            auto vkGuess = vk;
+            for (int iter = 0; iter < 5; ++iter)
+            {
+                const auto vgk1 = vgActual1 - vkGuess;
+                const auto vgk2 = vgActual2 - vkGuess;
+                const auto x1 = vgk1 + va1 / mu, x2 = vgk2 + va2 / mu;
+                const auto h1 = softplus (x1, C), h2 = softplus (x2, C);
+                const auto ik1 = G * std::pow (h1, gamma), ik2 = G * std::pow (h2, gamma);
+                const auto sig1 = 1.0f / (1.0f + std::exp (-C * x1));
+                const auto sig2 = 1.0f / (1.0f + std::exp (-C * x2));
+                const auto dIk1 = G * gamma * std::pow (h1, gamma - 1.0f) * sig1;
+                const auto dIk2 = G * gamma * std::pow (h2, gamma - 1.0f) * sig2;
+                const auto g = ik1 + ik2 - vkGuess / Rtail;
+                const auto dg = -dIk1 - dIk2 - 1.0f / Rtail;
+                if (std::abs (dg) > 1.0e-12f) vkGuess -= g / dg;
+            }
+            vk = juce::jlimit (0.0f, Vb, vkGuess);
+
+            const auto vgk1 = vgActual1 - vk, vgk2 = vgActual2 - vk;
+            const auto ia1Ac = anodeCurrentStatic (vgk1, va1) - Ia10;
+            const auto ia2Ac = anodeCurrentStatic (vgk2, va2) - Ia20;
+
+            const double K1 = 2.0 * sampleRate * (double) Ra1 * (double) Cout;
+            const double va1AcD = ((double) Ra1 * (-(double) ia1Ac + (double) ia1AcPrev)
+                                   - (1.0 - K1) * (double) va1AcPrev) / (1.0 + K1);
+            const double K2 = 2.0 * sampleRate * (double) Ra2 * (double) Cout;
+            const double va2AcD = ((double) Ra2 * (-(double) ia2Ac + (double) ia2AcPrev)
+                                   - (1.0 - K2) * (double) va2AcPrev) / (1.0 + K2);
+
+            plate1Out = (float) va1AcD;
+            plate2Out = (float) va2AcD;
+            ia1AcPrev = -ia1Ac; va1AcPrev = plate1Out;
+            ia2AcPrev = -ia2Ac; va2AcPrev = plate2Out;
+        }
+    };
+
     // 6V6GT beam-tetrode power tube: Norman Koren's pentode/beam-tetrode
     // SPICE model (E1 = Vg2/Kp * ln(1+exp(Kp*(1/mu + Vg1/Vg2))), Ia =
     // E1^Ex/Kg1 * atan(Va/Kvb), Ig2 = max(0, Vg2/mu + Vg1)^Ex / Kg2), a
@@ -665,6 +1133,17 @@ private:
         float Rk = 250.0f;
         float Rg = 1.0e6f, Cin = 0.02e-6f;
         float Cout = 220.0e-12f;
+        // Fixed-bias support (0 = self-biased, the 5E3/Vox default): a real
+        // fixed-bias power stage (no cathode resistor -- an external
+        // negative supply feeds the grids directly, cathode near ground)
+        // is modeled here by setting Rk to a near-zero value (forces the
+        // self-bias solve's own Vk to converge to ~0V regardless of
+        // current, same effect as a grounded cathode) and gridBiasOffset
+        // to the real fixed bias voltage (negative) -- applied into both
+        // the DC operating-point solve and the per-sample grid voltage
+        // below, so the tube's actual quiescent point reflects the real
+        // fixed bias rather than a self-derived one.
+        float gridBiasOffset = 0.0f;
 
         float vaAcPrev = 0.0f, gridCharge = 0.0f, iAcPrev = 0.0f;
         float Va0 = 150.0f, Ia0 = 0.0f, restingGridCharge = 0.0f;
@@ -702,7 +1181,7 @@ private:
             restingGridCharge = 0.0f;
             for (int iter = 0; iter < 20; ++iter)
             {
-                const auto vgActual0 = -restingGridCharge;
+                const auto vgActual0 = gridBiasOffset - restingGridCharge;
                 float vkLo = 0.0f, vkHi = Vb;
                 for (int outer = 0; outer < 40; ++outer)
                 {
@@ -754,7 +1233,7 @@ private:
 
         float processSample (float vin) noexcept
         {
-            const auto vgActual = vin - gridCharge;
+            const auto vgActual = vin + gridBiasOffset - gridCharge;
             const auto va = Va0 + vaAcPrev;
             auto vkGuess = vk;
             for (int iter = 0; iter < 6; ++iter)
@@ -816,6 +1295,17 @@ private:
     // since these are already linear 0-1 digital parameters).
     struct BassmanToneStack
     {
+        // Real '59 Bassman component values (Yeh & Smith's Fig. 1) by
+        // default -- override these BEFORE the first updateCoefficients()
+        // call to reuse this same verified transfer-function derivation
+        // for a different real amp in the same Fender/Marshall tone-stack
+        // family (the AB763 voice below does exactly this, with its own
+        // real, separately-sourced component values -- the underlying
+        // symbolic derivation is general to this whole topology, not
+        // specific to any one product's BOM).
+        double C1 = 0.25e-9, C2 = 20e-9, C3 = 20e-9;
+        double R1 = 250000.0, R2 = 1000000.0, R3 = 25000.0, R4 = 56000.0;
+
         void reset() { state.fill (ChannelState {}); }
 
         void updateCoefficients (double sampleRate, double bass01, double mid01, double treble01)
@@ -838,10 +1328,6 @@ private:
             // knob range untouched.
             if (l < 1.0e-3 && m > 1.0 - 1.0e-3)
                 l = 1.0e-3;
-
-            // '59 Bassman component values, per the paper's Fig. 1.
-            constexpr double C1 = 0.25e-9, C2 = 20e-9, C3 = 20e-9;
-            constexpr double R1 = 250000.0, R2 = 1000000.0, R3 = 25000.0, R4 = 56000.0;
 
             const auto b1 = t*C1*R1 + m*C3*R3 + l*(C1*R2 + C2*R2) + (C1*R3 + C2*R3);
             const auto b2 = t*(C1*C2*R1*R4 + C1*C3*R1*R4) - m*m*(C1*C3*R3*R3 + C2*C3*R3*R3)
@@ -917,6 +1403,25 @@ private:
     TriodeStage triodeV1[2], triodeV2A[2], cathodyneStage[2];
     PentodeStage powerTubeA[2], powerTubeB[2];
     BassmanToneStack bassmanStack;
+    // Vox AC30 voice's own preamp/PI/power-stage instances -- a genuinely
+    // different circuit, not sharing the 5E3 path's tube instances above
+    // (see Voice::voxAC30's own comment). inputCoupling/transformerLowPass
+    // above are reused for this voice too (generic DC-block/output-filter
+    // roles, not 5E3-specific), since only one voice's per-sample branch
+    // ever runs in a given block.
+    TriodeStage triodeVoxV1[2], triodeVoxV2[2];
+    LongTailPairStage voxPI[2];
+    PentodeStage powerTubeVoxA[2], powerTubeVoxB[2];
+    juce::dsp::IIR::Filter<float> voxInterstageCoupling[2];
+    juce::dsp::IIR::Filter<float> voxBassShelf[2], voxTrebleShelf[2];
+    // Fender AB763 voice's own preamp/PI/power-stage instances -- see
+    // Voice::fenderAB763's own comment. Reuses inputCoupling/
+    // transformerLowPass above too, same reasoning as the Vox voice.
+    TriodeStage triodeFenderV1[2], triodeFenderV2[2];
+    LongTailPairStage fenderPI[2];
+    PentodeStage powerTubeFenderA[2], powerTubeFenderB[2];
+    juce::dsp::IIR::Filter<float> fenderInterstageCoupling[2];
+    BassmanToneStack fenderToneStack;
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> sagDetectorLP {};
     // V2A's raw plate-voltage output (real volts, tens to hundreds of volts

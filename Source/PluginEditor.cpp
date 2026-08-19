@@ -1,44 +1,8 @@
 #include "PluginEditor.h"
 #include <BinaryData.h>
 
-namespace
-{
-    void setupUtilityKnob (juce::Label& label, PhotoKnob&, const juce::String& text)
-    {
-        label.setText (text, juce::dontSendNotification);
-        label.setJustificationType (juce::Justification::centred);
-        label.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-        label.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
-        label.setJustificationType (juce::Justification::centredLeft);
-    }
-
-    // Recurses the whole component tree so it finds every PhotoKnob
-    // regardless of which page or section built it.
-    void walkForKnobs (juce::Component& root, bool visible)
-    {
-        for (int i = 0; i < root.getNumChildComponents(); ++i)
-        {
-            auto* child = root.getChildComponent (i);
-            if (child == nullptr)
-                continue;
-            if (auto* knob = dynamic_cast<PhotoKnob*> (child))
-                knob->setValueVisible (visible);
-            walkForKnobs (*child, visible);
-        }
-    }
-
-    // Index-matched to tabPills / TabPill::Icon (Dirt=Pre-FX, Amp, Wet, EQ)
-    // -- the page-level bypass parameter each tab's icon double-press
-    // toggles, on top of that page's individual module toggles.
-    const char* sectionBypassParamId (int pageIndex)
-    {
-        static const char* ids[4] { "preFxSectionOn", "ampSectionOn", "wetFxSectionOn", "eqSectionOn" };
-        return ids[juce::jlimit (0, 3, pageIndex)];
-    }
-}
-
 ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor& p)
-    : AudioProcessorEditor (&p), processor (p), page1 (p), page2 (p), page3 (p), page4 (p)
+    : AudioProcessorEditor (&p), processor (p), pedalboard (p)
 {
     setLookAndFeel (&buttonLookAndFeel);
     logoImage = juce::ImageCache::getFromMemory (BinaryData::threadline_logo_png, BinaryData::threadline_logo_pngSize);
@@ -112,11 +76,6 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     muteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         processor.apvts, "inputMute", muteButton);
 
-    // UI-only state (not an APVTS parameter) -- purely a display preference,
-    // not something that should be recalled from a saved preset.
-    addAndMakeVisible (eyeButton);
-    eyeButton.onClick = [this] { setAllKnobValuesVisible (eyeButton.getToggleState()); };
-
     // --- Rockalizer-style Options panel and gear behavior ---
     optionsGroup.setColour (juce::GroupComponent::outlineColourId, ThreadlineColours::cardBorder);
     optionsGroup.setColour (juce::GroupComponent::textColourId, ThreadlineColours::textDim);
@@ -130,56 +89,9 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
         if (optionsVisible)
             optionsGroup.toFront (false);
         optionsMenuButton.toFront (false);
-        eyeButton.toFront (false);
         powerButton.toFront (false);
     };
     addAndMakeVisible (optionsMenuButton);
-
-    // --- Tab strip ---
-    for (int i = 0; i < (int) tabPills.size(); ++i)
-    {
-        addAndMakeVisible (tabPills[(size_t) i]);
-        tabPills[(size_t) i].onClick = [this, i] { switchToPage (i); };
-        // Double-pressing a tab icon bypasses (or restores) that whole
-        // page's section, independent of switching which page is visible.
-        tabPills[(size_t) i].onDoubleClick = [this, i]
-        {
-            if (auto* parameter = processor.apvts.getParameter (sectionBypassParamId (i)))
-                parameter->setValueNotifyingHost (parameter->getValue() > 0.5f ? 0.0f : 1.0f);
-        };
-    }
-    tabPills[0].setToggleState (true, juce::dontSendNotification);
-
-    // --- Persistent Gate / Input / Output strip ---
-    buildSection (gateSection, *this, processor.apvts, "Gate", "gateOn", {
-        { "gateAmount", "Amount" }
-    }, false, SectionPlate::Gate);
-    // The footer uses one wordmark above each knob; the gate parameter's
-    // attached "Amount" caption would overlap its toggle and steal clicks.
-    if (! gateSection.knobs.empty())
-    {
-        gateSection.knobs[0]->label.setVisible (false);
-        gateSection.knobs[0]->slider.setStyle (PhotoKnob::Style::Gold);
-    }
-    gateSection.titleLabel.setVisible (false);
-    gateSection.toggle.setButtonText ("GATE");
-    gateSection.toggle.setWordmarkStyle (true);
-    gateSection.toggle.setWordmarkCentred (true);
-
-    setupUtilityKnob (inputLabel, inputGainKnob, "Input");
-    setupUtilityKnob (outputLabel, outputGainKnob, "Output");
-    inputGainKnob.setStyle (PhotoKnob::Style::Gold);
-    outputGainKnob.setStyle (PhotoKnob::Style::Gold);
-    addAndMakeVisible (inputLabel);
-    addAndMakeVisible (outputLabel);
-    addAndMakeVisible (inputGainKnob);
-    addAndMakeVisible (outputGainKnob);
-    addAndMakeVisible (inputMeter);
-    addAndMakeVisible (outputMeter);
-    inputGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        processor.apvts, "inputGain", inputGainKnob);
-    outputGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        processor.apvts, "outputGain", outputGainKnob);
 
     for (auto* button : { &input1Button, &input2Button })
     {
@@ -215,26 +127,25 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     ampOversamplingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "ampOversampling", ampOversamplingBox);
 
-    // --- Pages ---
-    addAndMakeVisible (page1);
-    addAndMakeVisible (page2);
-    addAndMakeVisible (page3);
-    addAndMakeVisible (page4);
-    switchToPage (0);
+    // --- Pedalboard ---
+    addAndMakeVisible (pedalboard);
 
-    // Same reference canvas and resize policy as Rockalizer.
-    // Taller than Rockalizer's original 1200x660 canvas. Every existing
-    // element keeps its original absolute size (see the `content` rect and
-    // footer y-offsets in resized()) -- the extra 100px becomes a genuinely
-    // empty reserved gap between the page content and the footer, headroom
-    // for future controls rather than scaling anything already there.
+    // --- Pinned Input / Gate / Output bottom bar ---
+    inputGainKnob = makeTileKnob (*this, processor.apvts, "inputGain", "Input");
+    outputGainKnob = makeTileKnob (*this, processor.apvts, "outputGain", "Output");
+    gateKnob = makeTileKnob (*this, processor.apvts, "gateAmount", "Amount");
+    gateToggle = makeTileToggle (*this, processor.apvts, "gateOn", "On");
+    gateBarLabel.setText ("Gate", juce::dontSendNotification);
+    gateBarLabel.setFont (juce::FontOptions (13.5f, juce::Font::bold));
+    gateBarLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    gateBarLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (gateBarLabel);
+    addAndMakeVisible (inputMeter);
+    addAndMakeVisible (outputMeter);
+
     setSize (1200, 760);
     setResizable (true, true);
-    // Same 900-1600 width range as before; height limits recomputed for the
-    // new 1200:760 aspect ratio (were tuned for 1200:660) so min/max zoom
-    // still land at the same relative width bounds.
-    setResizeLimits (900, 570, 1600, 1013);
-    getConstrainer()->setFixedAspectRatio (1200.0 / 760.0);
+    setResizeLimits (760, 700, 3000, 1200);
 
     startTimerHz (30);
 }
@@ -242,27 +153,6 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
 ThreadlineAudioProcessorEditor::~ThreadlineAudioProcessorEditor()
 {
     setLookAndFeel (nullptr);
-}
-
-void ThreadlineAudioProcessorEditor::switchToPage (int pageIndex)
-{
-    currentPage = pageIndex;
-    page1.setVisible (pageIndex == 0);
-    page2.setVisible (pageIndex == 1);
-    page3.setVisible (pageIndex == 2);
-    page4.setVisible (pageIndex == 3);
-
-    for (int i = 0; i < (int) tabPills.size(); ++i)
-        tabPills[(size_t) i].setToggleState (i == pageIndex, juce::dontSendNotification);
-}
-
-void ThreadlineAudioProcessorEditor::setAllKnobValuesVisible (bool visible)
-{
-    // Recurses through every page (visible or not, so the state still holds
-    // when the user switches tabs) and the persistent Gate/Input/Output
-    // rail, catching every PhotoKnob wherever it lives rather than needing
-    // each page to expose its own knob list.
-    walkForKnobs (*this, visible);
 }
 
 void ThreadlineAudioProcessorEditor::refreshPresetList()
@@ -321,115 +211,86 @@ void ThreadlineAudioProcessorEditor::showPresetMenu()
 void ThreadlineAudioProcessorEditor::paint (juce::Graphics& g)
 {
     paintThreadlineBackground (g, getLocalBounds());
-
     paintCard (g, presetCardBounds, 8.0f);
-
-    // Gate, Input and Output read as one compact global utility strip.
-    paintCard (g, utilityFrameBounds);
+    paintCard (g, bottomBarBounds, 8.0f);
 }
 
 void ThreadlineAudioProcessorEditor::timerCallback()
 {
     inputMeter.setLevel (processor.getInputLevel());
     outputMeter.setLevel (processor.getOutputLevel());
-
-    // Keeps each tab icon's bypassed strike in sync with the actual
-    // parameter -- it can change via preset load or automation, not just a
-    // double-press here.
-    for (int i = 0; i < (int) tabPills.size(); ++i)
-    {
-        const auto* raw = processor.apvts.getRawParameterValue (sectionBypassParamId (i));
-        if (raw != nullptr)
-            tabPills[(size_t) i].setSectionBypassed (raw->load() < 0.5f);
-    }
 }
 
 void ThreadlineAudioProcessorEditor::resized()
 {
-    const auto scaleX = static_cast<float> (getWidth()) / 1200.0f;
-    const auto scaleY = static_cast<float> (getHeight()) / 760.0f;
-    const auto rect = [scaleX, scaleY] (int x, int y, int w, int h)
-    {
-        return juce::Rectangle<int> (juce::roundToInt (static_cast<float> (x) * scaleX),
-                                     juce::roundToInt (static_cast<float> (y) * scaleY),
-                                     juce::roundToInt (static_cast<float> (w) * scaleX),
-                                     juce::roundToInt (static_cast<float> (h) * scaleY));
-    };
+    constexpr int headerHeight = 96;
+    auto header = getLocalBounds().removeFromTop (headerHeight);
 
-    // Exact Rockalizer preset bar geometry.
-    presetCardBounds = rect (342, 18, 530, 56);
-    prevPresetButton.setBounds (rect (352, 28, 38, 36));
-    presetBox.setBounds (rect (398, 28, 256, 36));
-    presetDropdownButton.setBounds (rect (618, 28, 36, 36));
-    presetDropdownButton.toFront (false);
-    nextPresetButton.setBounds (rect (662, 28, 38, 36));
-    addPresetButton.setBounds (rect (708, 28, 40, 36));
-    savePresetButton.setBounds (rect (754, 28, 40, 36));
-    deletePresetButton.setBounds (rect (800, 28, 40, 36));
-    muteButton.setBounds (rect (886, 18, 48, 56));
-    optionsMenuButton.setBounds (rect (956, 18, 48, 56));
-    eyeButton.setBounds (rect (1014, 18, 48, 56));
-    powerButton.setBounds (rect (1084, 18, 56, 56));
-    logoComponent.setBounds (rect (46, 10, 252, 80));
+    logoComponent.setBounds (header.removeFromLeft (230).reduced (10));
     logoComponent.toFront (false);
 
-    // Footer frame -- shorter than it used to be (84 tall, was 108) so the
-    // persistent strip reads as a slimmer bar; every control inside is
-    // scaled down by the same ~0.78 ratio rather than just clipped.
-    utilityFrameBounds = rect (28, 670, 1144, 84);
-    gateCardBounds = rect (60, 672, 110, 80);
-    inputCardBounds = rect (545, 672, 110, 80);
-    outputCardBounds = rect (1030, 672, 110, 80);
-    gateSection.toggle.setBounds (rect (60, 674, 110, 18));
-    if (! gateSection.knobs.empty())
-        gateSection.knobs[0]->slider.setBounds (rect (60, 692, 110, 60));
-    inputLabel.setJustificationType (juce::Justification::centred);
-    inputLabel.setBounds (rect (545, 674, 110, 18));
-    inputGainKnob.setBounds (rect (545, 692, 110, 60));
-    outputLabel.setJustificationType (juce::Justification::centred);
-    outputLabel.setBounds (rect (1030, 674, 110, 18));
-    outputGainKnob.setBounds (rect (1030, 692, 110, 60));
-    inputMeter.setBounds (rect (235, 720, 290, 10));
-    outputMeter.setBounds (rect (720, 720, 290, 10));
+    powerButton.setBounds (header.removeFromRight (68).reduced (6, 20));
+    optionsMenuButton.setBounds (header.removeFromRight (54).reduced (6, 20));
+    muteButton.setBounds (header.removeFromRight (54).reduced (6, 20));
 
-    // Navigation and pages occupy the space between Rockalizer's header/footer.
-    // Tab row is 2x its original 42px height (was 88-130) to fit 2x icons;
-    // the content rect below (see `content` further down) starts that same
-    // 48px later so nothing overlaps and the footer's position is unchanged.
-    auto tabRow = rect (28, 88, 1144, 90);
-    const auto pillWidth = juce::roundToInt (92 * scaleX);
-    const auto pillGap = juce::roundToInt (16 * scaleX);
-    const auto groupWidth = 4 * pillWidth + 3 * pillGap;
-    auto tabArea = tabRow.withSizeKeepingCentre (groupWidth, tabRow.getHeight()).reduced (0, 15);
-    for (auto& pill : tabPills)
-    {
-        pill.setBounds (tabArea.removeFromLeft (pillWidth));
-        tabArea.removeFromLeft (pillGap);
-    }
+    presetCardBounds = header.withSizeKeepingCentre (juce::jmin (530, header.getWidth() - 20), 56)
+                             .withY (header.getY() + (headerHeight - 56) / 2);
+    auto presetArea = presetCardBounds.reduced (10, 10);
+    prevPresetButton.setBounds (presetArea.removeFromLeft (36));
+    presetArea.removeFromLeft (6);
+    presetBox.setBounds (presetArea.removeFromLeft (juce::jmax (80, presetArea.getWidth() - 190)));
+    presetArea.removeFromLeft (6);
+    presetDropdownButton.setBounds (presetArea.removeFromLeft (34));
+    presetDropdownButton.toFront (false);
+    presetArea.removeFromLeft (6);
+    nextPresetButton.setBounds (presetArea.removeFromLeft (36));
+    presetArea.removeFromLeft (6);
+    addPresetButton.setBounds (presetArea.removeFromLeft (36));
+    presetArea.removeFromLeft (4);
+    savePresetButton.setBounds (presetArea.removeFromLeft (36));
+    presetArea.removeFromLeft (4);
+    deletePresetButton.setBounds (presetArea.removeFromLeft (36));
 
-    // Floating Rockalizer-style options panel below the gear button.
-    optionsGroup.setBounds (rect (898, 82, 282, 132));
-    input1Button.setBounds (juce::roundToInt (12.0f * scaleX), juce::roundToInt (30.0f * scaleY),
-                            juce::roundToInt (72.0f * scaleX), juce::roundToInt (32.0f * scaleY));
-    input2Button.setBounds (juce::roundToInt (88 * scaleX), juce::roundToInt (30 * scaleY),
-                            juce::roundToInt (72 * scaleX), juce::roundToInt (32 * scaleY));
-    inputSourceBox.setBounds (juce::roundToInt (164 * scaleX), juce::roundToInt (30 * scaleY),
-                              juce::roundToInt (106 * scaleX), juce::roundToInt (32 * scaleY));
-    ampQualityLabel.setBounds (juce::roundToInt (14 * scaleX), juce::roundToInt (74 * scaleY),
-                               juce::roundToInt (142 * scaleX), juce::roundToInt (28 * scaleY));
-    ampOversamplingBox.setBounds (juce::roundToInt (164 * scaleX), juce::roundToInt (72 * scaleY),
-                                  juce::roundToInt (106 * scaleX), juce::roundToInt (32 * scaleY));
+    // Floating options panel, anchored under the gear button.
+    optionsGroup.setBounds (optionsMenuButton.getRight() - 282, headerHeight, 282, 132);
+    input1Button.setBounds (12, 30, 72, 32);
+    input2Button.setBounds (88, 30, 72, 32);
+    inputSourceBox.setBounds (164, 30, 106, 32);
+    ampQualityLabel.setBounds (14, 74, 142, 28);
+    ampOversamplingBox.setBounds (164, 72, 106, 32);
 
-    // --- Every page receives the same remaining content rectangle. ---
-    // Starts 48px later than the original 660-tall canvas's y=130 to make
-    // room for the taller tab row above. Height extends further still now
-    // (476, was 428) -- the footer got shorter and the gap above it got
-    // tighter (16px, was 40px), and that freed space went entirely to
-    // content, so every page's own content -- the effects rack, the amp
-    // knobs/cab row, the EQ -- sits closer to the bottom bar.
-    auto content = rect (16, 178, 1168, 476);
-    page1.setBounds (content);
-    page2.setBounds (content);
-    page3.setBounds (content);
-    page4.setBounds (content);
+    constexpr int bottomBarHeight = 140;
+    // `bottomBarBounds` (the member) stays the FULL bar rect -- it's reused
+    // by paint() for the background card, so all the left/right carving
+    // below happens on a local copy instead of mutating it in place.
+    bottomBarBounds = getLocalBounds().removeFromBottom (bottomBarHeight).reduced (16, 12);
+    auto barContent = bottomBarBounds;
+
+    auto inputArea = barContent.removeFromLeft (110).reduced (6, 0);
+    auto inputLabelArea = inputArea.removeFromTop (16);
+    auto inputMeterArea = inputArea.removeFromBottom (10);
+    inputArea.removeFromBottom (4);
+    inputGainKnob->label.setBounds (inputLabelArea);
+    inputMeter.setBounds (inputMeterArea);
+    inputGainKnob->slider.setBounds (inputArea);
+
+    auto outputArea = barContent.removeFromRight (110).reduced (6, 0);
+    auto outputLabelArea = outputArea.removeFromTop (16);
+    auto outputMeterArea = outputArea.removeFromBottom (10);
+    outputArea.removeFromBottom (4);
+    outputGainKnob->label.setBounds (outputLabelArea);
+    outputMeter.setBounds (outputMeterArea);
+    outputGainKnob->slider.setBounds (outputArea);
+
+    // Gate: pinned right after Input in the chain, shown centred in
+    // whatever's left between the Input and Output widgets.
+    auto gateArea = barContent.withSizeKeepingCentre (110, barContent.getHeight()).reduced (6, 0);
+    auto gateHeader = gateArea.removeFromTop (18);
+    gateBarLabel.setBounds (gateHeader.removeFromLeft (44));
+    gateToggle->button.setBounds (gateHeader.removeFromRight (40));
+    gateArea.removeFromTop (2);
+    gateKnob->label.setBounds (gateArea.removeFromTop (14));
+    gateKnob->slider.setBounds (gateArea);
+
+    pedalboard.setBounds (getLocalBounds().withTrimmedTop (headerHeight).withTrimmedBottom (bottomBarHeight));
 }
