@@ -513,6 +513,14 @@ public:
 
     int getPreferredWidth() const override { return 260; }
 
+    // Two whole nested pedal tiles stacked, each needing roughly the same
+    // body room a normal top-level tile gets (~370px), plus this box's own
+    // header/slot-picker/blend chrome on top -- a plain single-effect
+    // tile's usual 400px is nowhere near enough (that's what silently
+    // collapsed every nested knob's slider down to zero-height and made
+    // them invisible while their labels still fit).
+    int getPreferredHeight() const override { return 1000; }
+
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {

@@ -142,13 +142,20 @@ void PedalboardComponent::layoutTiles()
     // constant height regardless of the window's height (unlike a tile
     // stretched to fill the whole window), with some breathing room above
     // and below so the strip reads as pedals sitting on a board rather
-    // than a full-bleed panel.
-    const auto height = tileHeight;
+    // than a full-bleed panel. A tile can opt into a taller-than-standard
+    // height via getPreferredHeight() (only ParallelTile does, since it
+    // embeds two whole nested pedal tiles) -- every tile still top-aligns
+    // at the same `y`, like differently-sized units sitting on a real
+    // pedalboard; only a taller tile's own bottom edge extends further
+    // down, and the strip's scroll content grows to fit whichever tile is
+    // tallest.
     const auto y = tileTopMargin;
     int x = tileMargin;
+    int maxBottom = y + tileHeight;
     for (size_t i = 0; i < tiles.size(); ++i)
     {
         auto& tile = tiles[i];
+        const auto height = tile->getPreferredHeight() > 0 ? tile->getPreferredHeight() : tileHeight;
         if (draggedTile == tile.get())
         {
             // The dragged tile positions itself (see PedalTileComponent::
@@ -161,22 +168,25 @@ void PedalboardComponent::layoutTiles()
             tile->setBounds (x, y, tile->getPreferredWidth(), height);
             x += tile->getPreferredWidth() + tileGap;
         }
+        maxBottom = juce::jmax (maxBottom, y + height);
 
-        // The insert button after this tile (if any) sits centred in the
-        // gap, sized and positioned exactly like the trailing "+" button --
-        // small and only as tall as itself, not the full tile height, so
-        // it can never sit on top of (and steal clicks from) a neighboring
-        // tile's remove button or controls near its edge.
+        // The insert button after this tile (if any) sits centred on the
+        // strip's standard row height, not this tile's own (possibly
+        // taller) height, so it stays in a consistent visual row
+        // regardless of a tall neighbor -- small and only as tall as
+        // itself, not the full tile height, so it can never sit on top of
+        // (and steal clicks from) a neighboring tile's remove button or
+        // controls near its edge.
         if (i < insertButtons.size())
         {
             const auto gapCentre = x - tileGap / 2;
-            insertButtons[i]->setBounds (gapCentre - insertButtonSize / 2, y + height / 2 - insertButtonSize / 2,
+            insertButtons[i]->setBounds (gapCentre - insertButtonSize / 2, y + tileHeight / 2 - insertButtonSize / 2,
                                          insertButtonSize, insertButtonSize);
         }
     }
-    addButton.setBounds (x, y + height / 2 - insertButtonSize / 2, insertButtonSize, insertButtonSize);
+    addButton.setBounds (x, y + tileHeight / 2 - insertButtonSize / 2, insertButtonSize, insertButtonSize);
     x += insertButtonSize + tileMargin;
-    boardContent.setSize (juce::jmax (x, viewport.getWidth()), juce::jmax (y + height + tileTopMargin, viewport.getHeight()));
+    boardContent.setSize (juce::jmax (x, viewport.getWidth()), juce::jmax (maxBottom + tileTopMargin, viewport.getHeight()));
 
     // Always keep insert buttons above every tile, not just the one being
     // dragged (PedalTileComponent::mouseDown raises the dragged tile to

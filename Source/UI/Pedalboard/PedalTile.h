@@ -137,6 +137,12 @@ public:
 
     const juce::String& getPedalId() const noexcept { return pedalId; }
     virtual int getPreferredWidth() const { return 190; }
+    // -1 (the default) means "use the strip's own standard row height"
+    // (PedalboardComponent::tileHeight). Only ParallelTile overrides this --
+    // it embeds two whole nested pedal tiles and needs proportionally more
+    // room than a single-effect tile to render their own knobs/combos
+    // without clipping.
+    virtual int getPreferredHeight() const { return -1; }
 
     std::function<void (const juce::String&)> onRemoveClicked;
     std::function<void (PedalTileComponent&)> onDragStart;
