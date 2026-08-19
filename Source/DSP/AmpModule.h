@@ -710,6 +710,16 @@ private:
             *inputCoupling[ch].coefficients = *inputHP;
             *interstageCoupling[ch].coefficients = *couplingHP;
             *transformerLowPass[ch].coefficients = *transformerLP;
+            // Audit-caught: these were prepared but never given
+            // coefficients, silently sitting at JUCE's default identity/
+            // passthrough response despite their names and class comment
+            // implying real DC-blocking/coupling work. Not currently
+            // audible (TriodeStage's own output is already zero-mean AC-
+            // only by construction), but real dead code masquerading as
+            // live filtering -- same corner as the 5E3 path's own
+            // interstageCoupling, since both play the identical role.
+            *voxInterstageCoupling[ch].coefficients = *couplingHP;
+            *fenderInterstageCoupling[ch].coefficients = *couplingHP;
         }
     }
 
