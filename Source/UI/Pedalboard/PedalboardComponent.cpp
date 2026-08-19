@@ -25,6 +25,9 @@ PedalboardComponent::PedalboardComponent (ThreadlineAudioProcessor& processorIn)
     addButton.onClick = [this] { showAddMenu (addButton, middleOrder.size()); };
     boardContent.addAndMakeVisible (addButton);
 
+    leadingInsertButton.onClick = [this] { showAddMenu (leadingInsertButton, 0); };
+    boardContent.addAndMakeVisible (leadingInsertButton);
+
     middleOrder = processor.getActivePedalOrder();
     middleOrder.removeString ("inputGain");
     middleOrder.removeString ("outputGain");
@@ -150,7 +153,11 @@ void PedalboardComponent::layoutTiles()
     // down, and the strip's scroll content grows to fit whichever tile is
     // tallest.
     const auto y = tileTopMargin;
-    int x = tileMargin;
+    // Leaves room for leadingInsertButton before the first tile, mirroring
+    // the gap every insertButtons[i] gets between tiles.
+    int x = tileMargin + tileGap;
+    leadingInsertButton.setBounds (tileMargin + tileGap / 2 - insertButtonSize / 2,
+                                    y + tileHeight / 2 - insertButtonSize / 2, insertButtonSize, insertButtonSize);
     int maxBottom = y + tileHeight;
     for (size_t i = 0; i < tiles.size(); ++i)
     {
@@ -198,6 +205,7 @@ void PedalboardComponent::layoutTiles()
     // reliably at rest, not only after some earlier lucky hover order.
     for (auto& button : insertButtons)
         button->toFront (false);
+    leadingInsertButton.toFront (false);
 }
 
 void PedalboardComponent::showAddMenu (juce::Component& anchor, int insertIndex)

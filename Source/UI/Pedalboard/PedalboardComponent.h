@@ -88,12 +88,26 @@ private:
     // One fewer than `tiles` -- insertButtons[i] sits in the gap between
     // tiles[i] and tiles[i+1].
     std::vector<std::unique_ptr<InsertPedalButton>> insertButtons;
+    // Mirrors an insertButtons[i] but sits before the very first tile
+    // (insertIndex 0) -- built once in the constructor rather than in
+    // rebuildTiles() since, unlike the others, its position doesn't depend
+    // on how many tiles currently exist.
+    InsertPedalButton leadingInsertButton;
     juce::StringArray middleOrder; // excludes "inputGain"/"outputGain"
     juce::TextButton addButton { "+" };
 
     PedalTileComponent* draggedTile = nullptr;
 
-    static constexpr int tileGap = 14;
+    // Wide enough to fully contain an insertButtonSize (40px) button with
+    // room to spare either side, so it never overlaps a neighboring tile's
+    // own bounds -- the previous 14px gap forced the button to spill ~13px
+    // into each neighbor, which made whichever tile's own mouseDown/drag
+    // handling happened to be on top intercept the hover before the button
+    // itself ever saw it. Removing the overlap at its root, rather than
+    // only patching z-order after the fact (still done below too, as a
+    // second line of defence), is what makes the hover-to-reveal actually
+    // reliable.
+    static constexpr int tileGap = 48;
     static constexpr int tileMargin = 16;
     // Fixed portrait stompbox proportions -- see layoutTiles().
     static constexpr int tileHeight = 400;
