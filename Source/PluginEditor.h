@@ -20,24 +20,24 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto bounds = getLocalBounds().toFloat().reduced (4.0f);
+        auto bounds = getLocalBounds().toFloat().reduced (5.0f);
         if (isDown()) bounds.translate (0.0f, 1.0f);
         auto bypassed = getToggleState();
         auto colour = bypassed ? juce::Colour (0xff6a5a4e) : ThreadlineColours::accentBright;
 
         g.setColour (colour);
-        g.drawEllipse (bounds, 2.5f);
+        g.drawEllipse (bounds, 3.1f);
 
         auto glyphBounds = bounds.reduced (bounds.getWidth() * 0.22f);
         juce::Path glyph;
         glyph.addCentredArc (glyphBounds.getCentreX(), glyphBounds.getCentreY(),
                               glyphBounds.getWidth() * 0.5f, glyphBounds.getHeight() * 0.5f, 0.0f,
                               juce::degreesToRadians (35.0f), juce::degreesToRadians (325.0f), true);
-        g.strokePath (glyph, juce::PathStrokeType (2.5f));
-        g.drawLine (glyphBounds.getCentreX(), glyphBounds.getY() - 2.0f,
-                    glyphBounds.getCentreX(), glyphBounds.getCentreY(), 2.5f);
+        g.strokePath (glyph, juce::PathStrokeType (3.1f));
+        g.drawLine (glyphBounds.getCentreX(), glyphBounds.getY() - 2.5f,
+                    glyphBounds.getCentreX(), glyphBounds.getCentreY(), 3.1f);
         if (hasKeyboardFocus (true))
-            g.drawEllipse (bounds.expanded (2.0f), 1.4f);
+            g.drawEllipse (bounds.expanded (2.5f), 1.75f);
     }
 };
 
@@ -60,12 +60,12 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto bounds = getLocalBounds().toFloat().reduced (4.0f);
+        auto bounds = getLocalBounds().toFloat().reduced (5.0f);
         if (isDown()) bounds.translate (0.0f, 1.0f);
         const auto muted = getToggleState();
         const auto colour = muted ? juce::Colour (0xffd8503f) : juce::Colour (0xff6a5a4e);
         g.setColour (colour);
-        g.drawEllipse (bounds, 2.5f);
+        g.drawEllipse (bounds, 3.1f);
 
         auto glyph = bounds.reduced (bounds.getWidth() * 0.24f);
         juce::Path speaker;
@@ -77,13 +77,13 @@ public:
         speaker.lineTo (glyph.getRight(), glyph.getBottom());
         speaker.lineTo (glyph.getX() + boxW, glyph.getCentreY() + glyph.getHeight() * 0.18f);
         speaker.closeSubPath();
-        g.strokePath (speaker, juce::PathStrokeType (2.0f));
+        g.strokePath (speaker, juce::PathStrokeType (2.5f));
         if (muted)
-            g.drawLine (glyph.getX() - 2.0f, glyph.getBottom() + 2.0f,
-                        glyph.getRight() + 2.0f, glyph.getY() - 2.0f, 2.4f);
+            g.drawLine (glyph.getX() - 2.5f, glyph.getBottom() + 2.5f,
+                        glyph.getRight() + 2.5f, glyph.getY() - 2.5f, 3.0f);
 
         if (hasKeyboardFocus (true))
-            g.drawEllipse (bounds.expanded (2.0f), 1.4f);
+            g.drawEllipse (bounds.expanded (2.5f), 1.75f);
     }
 };
 
@@ -105,36 +105,36 @@ public:
         auto colour = isEnabled() ? ThreadlineColours::textCream : juce::Colour (0xff555b60);
         if (highlighted && isEnabled()) colour = ThreadlineColours::accentBright;
         if (down) colour = colour.darker (0.18f);
-        const auto b = getLocalBounds().toFloat().reduced (10.0f, 7.0f);
+        const auto b = getLocalBounds().toFloat().reduced (12.5f, 8.75f);
         g.setColour (colour);
         if (icon == Icon::add)
         {
-            g.drawLine (b.getCentreX(), b.getY(), b.getCentreX(), b.getBottom(), 2.4f);
-            g.drawLine (b.getX(), b.getCentreY(), b.getRight(), b.getCentreY(), 2.4f);
+            g.drawLine (b.getCentreX(), b.getY(), b.getCentreX(), b.getBottom(), 3.0f);
+            g.drawLine (b.getX(), b.getCentreY(), b.getRight(), b.getCentreY(), 3.0f);
         }
         else if (icon == Icon::save)
         {
-            g.drawRoundedRectangle (b, 2.0f, 2.0f);
+            g.drawRoundedRectangle (b, 2.5f, 2.5f);
             g.fillRect (b.getX() + b.getWidth() * 0.20f, b.getY(), b.getWidth() * 0.52f, b.getHeight() * 0.34f);
             g.setColour (ThreadlineColours::panelDark);
-            g.fillRect (b.getX() + b.getWidth() * 0.30f, b.getY() + 2.0f,
+            g.fillRect (b.getX() + b.getWidth() * 0.30f, b.getY() + 2.5f,
                         b.getWidth() * 0.28f, b.getHeight() * 0.19f);
             g.setColour (colour);
             g.drawRoundedRectangle (b.reduced (b.getWidth() * 0.20f, b.getHeight() * 0.16f)
-                                       .withTrimmedTop (b.getHeight() * 0.28f), 1.5f, 1.7f);
+                                       .withTrimmedTop (b.getHeight() * 0.28f), 1.9f, 2.1f);
         }
         else
         {
             auto can = b.reduced (b.getWidth() * 0.18f, b.getHeight() * 0.12f);
-            g.drawRoundedRectangle (can.withTrimmedTop (can.getHeight() * 0.22f), 1.5f, 2.0f);
-            g.drawLine (can.getX() - 2.0f, can.getY() + can.getHeight() * 0.18f,
-                        can.getRight() + 2.0f, can.getY() + can.getHeight() * 0.18f, 2.0f);
-            g.drawLine (can.getCentreX() - 4.0f, can.getY(), can.getCentreX() + 4.0f, can.getY(), 2.0f);
+            g.drawRoundedRectangle (can.withTrimmedTop (can.getHeight() * 0.22f), 1.9f, 2.5f);
+            g.drawLine (can.getX() - 2.5f, can.getY() + can.getHeight() * 0.18f,
+                        can.getRight() + 2.5f, can.getY() + can.getHeight() * 0.18f, 2.5f);
+            g.drawLine (can.getCentreX() - 5.0f, can.getY(), can.getCentreX() + 5.0f, can.getY(), 2.5f);
         }
         if (hasKeyboardFocus (true))
         {
             g.setColour (juce::Colours::white.withAlpha (0.75f));
-            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 6.0f, 1.3f);
+            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.5f), 7.5f, 1.6f);
         }
     }
 
@@ -152,7 +152,7 @@ public:
     }
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
-        const auto bounds = getLocalBounds().toFloat().reduced (9.0f);
+        const auto bounds = getLocalBounds().toFloat().reduced (11.0f);
         const auto centre = bounds.getCentre();
         const auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.27f;
         const auto colour = down ? ThreadlineColours::accentBright
@@ -162,12 +162,12 @@ public:
         {
             const auto angle = juce::MathConstants<float>::twoPi * static_cast<float> (tooth) / 8.0f;
             const auto direction = juce::Point<float> (std::cos (angle), std::sin (angle));
-            g.drawLine ({ centre + direction * radius, centre + direction * (radius + 6.0f) }, 3.0f);
+            g.drawLine ({ centre + direction * radius, centre + direction * (radius + 7.5f) }, 3.75f);
         }
-        g.drawEllipse (bounds.withSizeKeepingCentre (radius * 2.2f, radius * 2.2f), 3.0f);
+        g.drawEllipse (bounds.withSizeKeepingCentre (radius * 2.2f, radius * 2.2f), 3.75f);
         g.fillEllipse (bounds.withSizeKeepingCentre (radius * 0.75f, radius * 0.75f));
         if (hasKeyboardFocus (true))
-            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 7.0f, 1.3f);
+            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.5f), 8.75f, 1.6f);
     }
 };
 
