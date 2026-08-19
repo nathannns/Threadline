@@ -53,8 +53,8 @@ protected:
         {
             for (auto& combo : combos)
             {
-                auto cell = comboArea.removeFromTop (55).reduced (4);
-                combo->label.setBounds (cell.removeFromTop (15));
+                auto cell = comboArea.removeFromTop (55).reduced (cellPadX, cellPadY);
+                combo->label.setBounds (cell.removeFromTop (captionHeight));
                 combo->box.setBounds (cell);
             }
         }
@@ -91,9 +91,9 @@ protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
         auto comboArea = body.removeFromTop (43);
-        voiceCombo->label.setBounds (comboArea.removeFromTop (15));
+        voiceCombo->label.setBounds (comboArea.removeFromTop (captionHeight));
         voiceCombo->box.setBounds (comboArea.reduced (55, 0));
-        body.removeFromTop (10);
+        body.removeFromTop (rowGap);
 
         std::vector<TileKnob*> visible { driveKnob.get(), outputKnob.get() };
         if (voiceIndex == 1 || voiceIndex == 3)
@@ -112,8 +112,8 @@ protected:
         for (size_t i = 0; i < visible.size(); ++i)
         {
             auto cell = juce::Rectangle<int> (body.getX() + (int) (i % (size_t) columns) * cellW,
-                                              body.getY() + (int) (i / (size_t) columns) * cellH, cellW, cellH).reduced (5, 3);
-            visible[i]->label.setBounds (cell.removeFromTop (18));
+                                              body.getY() + (int) (i / (size_t) columns) * cellH, cellW, cellH).reduced (cellPadX, cellPadY);
+            visible[i]->label.setBounds (cell.removeFromTop (captionHeight));
             visible[i]->slider.setBounds (cell);
         }
     }
@@ -168,12 +168,17 @@ public:
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
+        // irSelect's own caption ("IR") -- previously never given bounds
+        // here, so it silently never rendered even though it was already
+        // being created (every other combo in this file does show its
+        // caption).
+        irSelect->label.setBounds (body.removeFromTop (captionHeight));
         auto row = body.removeFromTop (28);
         phase->button.setBounds (row.removeFromRight (33));
-        irSelect->box.setBounds (row.reduced (3, 0));
-        body.removeFromTop (10);
-        mix->label.setBounds (body.removeFromTop (18));
-        mix->slider.setBounds (body.removeFromTop (163).reduced (5, 0));
+        irSelect->box.setBounds (row.reduced (cellPadX, 0));
+        body.removeFromTop (rowGap);
+        mix->label.setBounds (body.removeFromTop (captionHeight));
+        mix->slider.setBounds (body.removeFromTop (163).reduced (cellPadX, 0));
     }
 
 private:
@@ -214,7 +219,7 @@ protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
         auto modelArea = body.removeFromTop (43);
-        modelCombo->label.setBounds (modelArea.removeFromTop (15));
+        modelCombo->label.setBounds (modelArea.removeFromTop (captionHeight));
         modelCombo->box.setBounds (modelArea.reduced (70, 0));
 
         // Tap-tempo Sync + note-division, own row -- Plexer/Copier only
@@ -228,7 +233,7 @@ protected:
         if (plexer)
         {
             auto modeArea = body.removeFromBottom (38);
-            echoMode->label.setBounds (modeArea.removeFromTop (15));
+            echoMode->label.setBounds (modeArea.removeFromTop (captionHeight));
             echoMode->box.setBounds (modeArea.reduced (43, 0));
             std::vector<TileKnob*> ks { echoTime.get(), echoSustain.get(), echoVolume.get() };
             layoutRow (ks, body);
@@ -249,8 +254,8 @@ private:
         const auto cw = row.getWidth() / juce::jmax (1, (int) ks.size());
         for (size_t i = 0; i < ks.size(); ++i)
         {
-            auto cell = juce::Rectangle<int> (row.getX() + (int) i * cw, row.getY(), cw, row.getHeight()).reduced (5, 3);
-            ks[i]->label.setBounds (cell.removeFromTop (18));
+            auto cell = juce::Rectangle<int> (row.getX() + (int) i * cw, row.getY(), cw, row.getHeight()).reduced (cellPadX, cellPadY);
+            ks[i]->label.setBounds (cell.removeFromTop (captionHeight));
             ks[i]->slider.setBounds (cell);
         }
     }
@@ -302,7 +307,7 @@ public:
             band->slider.setScrollWheelEnabled (false);
             band->label.setText (formatFreq (freqs[(size_t) i]), juce::dontSendNotification);
             band->label.setJustificationType (juce::Justification::centred);
-            band->label.setFont (juce::FontOptions (9.5f));
+            band->label.setFont (juce::FontOptions (12.0f)); // 9.5 * 1.25, matching every other font in this file
             band->label.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
             addAndMakeVisible (band->slider);
             addAndMakeVisible (band->label);
@@ -324,20 +329,20 @@ protected:
         auto hpfCol = body.removeFromLeft (88);
         auto lpfCol = body.removeFromRight (88);
         hpfToggle->button.setBounds (hpfCol.removeFromTop (25));
-        hpfKnob->label.setBounds (hpfCol.removeFromTop (15));
-        hpfKnob->slider.setBounds (hpfCol.removeFromTop (163).reduced (5, 0));
+        hpfKnob->label.setBounds (hpfCol.removeFromTop (captionHeight));
+        hpfKnob->slider.setBounds (hpfCol.removeFromTop (163).reduced (cellPadX, 0));
         lpfToggle->button.setBounds (lpfCol.removeFromTop (25));
-        lpfKnob->label.setBounds (lpfCol.removeFromTop (15));
-        lpfKnob->slider.setBounds (lpfCol.removeFromTop (163).reduced (5, 0));
+        lpfKnob->label.setBounds (lpfCol.removeFromTop (captionHeight));
+        lpfKnob->slider.setBounds (lpfCol.removeFromTop (163).reduced (cellPadX, 0));
 
-        body.removeFromLeft (5);
-        body.removeFromRight (5);
+        body.removeFromLeft (cellPadX);
+        body.removeFromRight (cellPadX);
         const auto cw = body.getWidth() / juce::jmax (1, (int) bands.size());
         for (size_t i = 0; i < bands.size(); ++i)
         {
             auto cell = juce::Rectangle<int> (body.getX() + (int) i * cw, body.getY(), cw, body.getHeight());
-            bands[i]->label.setBounds (cell.removeFromBottom (18));
-            bands[i]->slider.setBounds (cell.reduced (3, 0));
+            bands[i]->label.setBounds (cell.removeFromBottom (captionHeight));
+            bands[i]->slider.setBounds (cell.reduced (cellPadX, 0));
         }
     }
 
@@ -385,31 +390,31 @@ protected:
         // Gain sits first (top), matching the real module's own front
         // panel layout -- the preamp trim knob above the EQ bands.
         auto gainRow = body.removeFromTop (138);
-        gain->label.setBounds (gainRow.removeFromTop (18));
+        gain->label.setBounds (gainRow.removeFromTop (captionHeight));
         gain->slider.setBounds (gainRow.reduced (body.getWidth() / 3, 0));
-        body.removeFromTop (5);
+        body.removeFromTop (rowGap);
 
         auto hpfRow = body.removeFromBottom (55);
-        hpfToggle->button.setBounds (hpfRow.removeFromLeft (75).reduced (3));
-        hpfFreq->label.setBounds (hpfRow.removeFromTop (15));
-        hpfFreq->box.setBounds (hpfRow.reduced (5, 3));
-        body.removeFromBottom (8);
+        hpfToggle->button.setBounds (hpfRow.removeFromLeft (75).reduced (cellPadY));
+        hpfFreq->label.setBounds (hpfRow.removeFromTop (captionHeight));
+        hpfFreq->box.setBounds (hpfRow.reduced (cellPadX, cellPadY));
+        body.removeFromBottom (rowGap);
 
         auto comboRow = body.removeFromBottom (53);
         const auto comboWidth = comboRow.getWidth() / 2;
-        auto lowFreqArea = comboRow.removeFromLeft (comboWidth).reduced (4);
-        auto midFreqArea = comboRow.reduced (4);
-        lowFreq->label.setBounds (lowFreqArea.removeFromTop (15));
+        auto lowFreqArea = comboRow.removeFromLeft (comboWidth).reduced (cellPadX, cellPadY);
+        auto midFreqArea = comboRow.reduced (cellPadX, cellPadY);
+        lowFreq->label.setBounds (lowFreqArea.removeFromTop (captionHeight));
         lowFreq->box.setBounds (lowFreqArea);
-        midFreq->label.setBounds (midFreqArea.removeFromTop (15));
+        midFreq->label.setBounds (midFreqArea.removeFromTop (captionHeight));
         midFreq->box.setBounds (midFreqArea);
 
         std::vector<std::unique_ptr<TileKnob>*> knobs { &lowGain, &midGain, &highGain };
         const auto cw = body.getWidth() / (int) knobs.size();
         for (size_t i = 0; i < knobs.size(); ++i)
         {
-            auto cell = juce::Rectangle<int> (body.getX() + (int) i * cw, body.getY(), cw, body.getHeight()).reduced (5, 3);
-            (*knobs[i])->label.setBounds (cell.removeFromTop (18));
+            auto cell = juce::Rectangle<int> (body.getX() + (int) i * cw, body.getY(), cw, body.getHeight()).reduced (cellPadX, cellPadY);
+            (*knobs[i])->label.setBounds (cell.removeFromTop (captionHeight));
             (*knobs[i])->slider.setBounds (cell);
         }
     }
@@ -454,8 +459,8 @@ protected:
         for (size_t i = 0; i < knobs.size(); ++i)
         {
             auto cell = juce::Rectangle<int> (body.getX() + (int) (i % (size_t) columns) * cw,
-                                              body.getY() + (int) (i / (size_t) columns) * ch, cw, ch).reduced (5, 3);
-            (*knobs[i])->label.setBounds (cell.removeFromTop (18));
+                                              body.getY() + (int) (i / (size_t) columns) * ch, cw, ch).reduced (cellPadX, cellPadY);
+            (*knobs[i])->label.setBounds (cell.removeFromTop (captionHeight));
             (*knobs[i])->slider.setBounds (cell);
         }
     }
@@ -546,7 +551,7 @@ protected:
         // Blend lives in the slim center column between A and B, not in
         // its own row below both.
         auto blendArea = centerArea.withSizeKeepingCentre (centerWidth, 125);
-        blend->label.setBounds (blendArea.removeFromTop (18));
+        blend->label.setBounds (blendArea.removeFromTop (captionHeight));
         blend->slider.setBounds (blendArea);
     }
 

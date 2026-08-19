@@ -26,6 +26,17 @@ struct TileToggle
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
 };
 
+// Shared layout constants -- every tile (this file's own helpers below and
+// every concrete tile in PedalTiles.h) uses these same three numbers for
+// "the caption above a knob/combo", "the inset around an individual
+// control cell", and "vertical space between two stacked rows within a
+// body", rather than each resizedBody() picking its own nearby value.
+// Keeps every tile visually consistent with every other one instead of
+// drifting a few px apart for no functional reason.
+static constexpr int captionHeight = 18;
+static constexpr int cellPadX = 5, cellPadY = 3;
+static constexpr int rowGap = 10;
+
 inline std::unique_ptr<TileKnob> makeTileKnob (juce::Component& parent, juce::AudioProcessorValueTreeState& apvts,
                                                 const juce::String& paramId, const juce::String& labelText)
 {
@@ -92,8 +103,8 @@ inline void layoutTileKnobRow (std::vector<std::unique_ptr<TileKnob>>& knobs, ju
     for (int i = 0; i < count; ++i)
     {
         juce::Rectangle<int> cell (area.getX() + (i % cols) * cellW, area.getY() + (i / cols) * cellH, cellW, cellH);
-        auto inner = cell.reduced (5, 3);
-        knobs[(size_t) i]->label.setBounds (inner.removeFromTop (18));
+        auto inner = cell.reduced (cellPadX, cellPadY);
+        knobs[(size_t) i]->label.setBounds (inner.removeFromTop (captionHeight));
         knobs[(size_t) i]->slider.setBounds (inner);
     }
 }
