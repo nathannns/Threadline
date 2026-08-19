@@ -3,7 +3,7 @@
 #include "UI/ThreadlineFonts.h"
 
 ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor& p)
-    : AudioProcessorEditor (&p), processor (p), pedalboard (p)
+    : AudioProcessorEditor (&p), processor (p), tapTempoButton (p.apvts), pedalboard (p)
 {
     setLookAndFeel (&buttonLookAndFeel);
     logoImage = juce::ImageCache::getFromMemory (BinaryData::threadline_logo_png, BinaryData::threadline_logo_pngSize);
@@ -128,6 +128,18 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     ampOversamplingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "ampOversampling", ampOversamplingBox);
 
+    tapTempoLabel.setText ("TAP TEMPO", juce::dontSendNotification);
+    tapTempoLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+    tapTempoLabel.setFont (juce::FontOptions (11.5f, juce::Font::bold));
+    tapTempoLabel.setJustificationType (juce::Justification::centredLeft);
+    optionsGroup.addAndMakeVisible (tapTempoLabel);
+    tapTempoButton.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+    tapTempoButton.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textCream);
+    optionsGroup.addAndMakeVisible (tapTempoButton);
+    tapTempoBpmLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    tapTempoBpmLabel.setJustificationType (juce::Justification::centred);
+    optionsGroup.addAndMakeVisible (tapTempoBpmLabel);
+
     // --- Pedalboard ---
     addAndMakeVisible (pedalboard);
 
@@ -220,6 +232,11 @@ void ThreadlineAudioProcessorEditor::timerCallback()
 {
     inputMeter.setLevel (processor.getInputLevel());
     outputMeter.setLevel (processor.getOutputLevel());
+
+    // Keeps the readout correct even when tapTempoBpm changes some way
+    // other than tapping the button (preset load, host automation).
+    const auto bpm = processor.apvts.getRawParameterValue ("tapTempoBpm")->load();
+    tapTempoBpmLabel.setText (juce::String (bpm, 0), juce::dontSendNotification);
 }
 
 void ThreadlineAudioProcessorEditor::resized()
@@ -253,12 +270,15 @@ void ThreadlineAudioProcessorEditor::resized()
     deletePresetButton.setBounds (presetArea.removeFromLeft (36));
 
     // Floating options panel, anchored under the gear button.
-    optionsGroup.setBounds (optionsMenuButton.getRight() - 282, headerHeight, 282, 132);
+    optionsGroup.setBounds (optionsMenuButton.getRight() - 282, headerHeight, 282, 174);
     input1Button.setBounds (12, 30, 72, 32);
     input2Button.setBounds (88, 30, 72, 32);
     inputSourceBox.setBounds (164, 30, 106, 32);
     ampQualityLabel.setBounds (14, 74, 142, 28);
     ampOversamplingBox.setBounds (164, 72, 106, 32);
+    tapTempoLabel.setBounds (14, 116, 142, 28);
+    tapTempoButton.setBounds (164, 114, 60, 32);
+    tapTempoBpmLabel.setBounds (228, 114, 42, 32);
 
     constexpr int bottomBarHeight = 140;
     // `bottomBarBounds` (the member) stays the FULL bar rect -- it's reused

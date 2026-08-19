@@ -3,6 +3,7 @@
 #include "../PedalNode.h"
 #include "../EchoModule.h"
 #include "../CarbonCopyModule.h"
+#include "../TapTempo.h"
 
 // Composite/atomic unit, not decomposed into two orderable slots: Plexer
 // (EchoModule) and Copier (CarbonCopyModule) share one Delay slot and one
@@ -35,15 +36,23 @@ public:
 
         const auto echoMode = ((int) p ("echoMode")) == 1
             ? EchoModule::Mode::soundOnSound : EchoModule::Mode::echo;
+        // Sync: time from the global tap tempo + each engine's own note-
+        // division choice instead of its own Time knob (see TapTempo.h).
+        const auto echoTimeMs = pBool ("echoSync")
+            ? TapTempo::timeMsForDivision (p ("tapTempoBpm"), (int) p ("echoDivision"))
+            : p ("echoTime");
+        const auto carbonTimeMs = pBool ("carbonSync")
+            ? TapTempo::timeMsForDivision (p ("tapTempoBpm"), (int) p ("carbonDivision"))
+            : p ("carbonTime");
         if (plexerActive)
         {
-            echo.setParameters (p ("echoTime"), p ("echoSustain"), p ("echoVolume"), true, echoMode);
+            echo.setParameters (echoTimeMs, p ("echoSustain"), p ("echoVolume"), true, echoMode);
             echo.process (buffer);
             echoWasActive = true;
         }
         else if (echoWasActive)
         {
-            echo.setParameters (p ("echoTime"), p ("echoSustain"), p ("echoVolume"), false, echoMode);
+            echo.setParameters (echoTimeMs, p ("echoSustain"), p ("echoVolume"), false, echoMode);
             echo.process (buffer);
             if (! echo.isWetTransitionActive())
             {
@@ -54,13 +63,13 @@ public:
 
         if (copierActive)
         {
-            copier.setParameters (p ("carbonTime"), p ("carbonRegen"), p ("carbonMix"), pBool ("carbonMod"), true);
+            copier.setParameters (carbonTimeMs, p ("carbonRegen"), p ("carbonMix"), pBool ("carbonMod"), true);
             copier.process (buffer);
             copierWasActive = true;
         }
         else if (copierWasActive)
         {
-            copier.setParameters (p ("carbonTime"), p ("carbonRegen"), p ("carbonMix"), pBool ("carbonMod"), false);
+            copier.setParameters (carbonTimeMs, p ("carbonRegen"), p ("carbonMix"), pBool ("carbonMod"), false);
             copier.process (buffer);
             if (! copier.isWetTransitionActive())
             {

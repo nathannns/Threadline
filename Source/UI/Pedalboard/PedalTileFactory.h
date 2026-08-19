@@ -124,6 +124,10 @@ namespace PedalTileFactory
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
                     { "dimChorusFlangerMode", "Mode", juce::StringArray { "Off", "Mode I", "Mode II", "Mode III" } } });
 
+        // Sync (tap-tempo) toggles + note-division reuse the global
+        // "tapTempoBpm" set by the header bar's Tap button -- see
+        // TapTempo.h. Scoped to Plexer/Copier only (Delay), not the other
+        // modulation/delay pedals.
         if (id == "delay")
             return std::make_unique<DelayTile> (apvts);
 

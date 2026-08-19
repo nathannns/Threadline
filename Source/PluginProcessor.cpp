@@ -3,6 +3,7 @@
 #include "DSP/CabModule.h"
 #include "DSP/GraphicEQModule.h"
 #include "DSP/PedalboardOrder.h"
+#include "DSP/TapTempo.h"
 
 ThreadlineAudioProcessor::ThreadlineAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -257,6 +258,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // pattern as preFxSectionOn above.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("wetFxSectionOn"), "Wet FX Section On", true));
 
+    // --- Tap Tempo: one global tempo, tapped via the header bar's Tap
+    // button (see TapTempoButton). Scoped to Plexer/Copier only (Delay) --
+    // each gets its own Sync toggle + note-division choice; when Sync is
+    // on, that engine computes its Time from this BPM + division instead
+    // of reading its own Time knob (see TapTempo.h for the shared
+    // division math). The knob itself stays live/visible either way, so
+    // turning Sync back off picks up wherever it was left.
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tapTempoBpm"), "Tap Tempo",
+        Range (40.0f, 300.0f, 0.1f), 120.0f));
+
     // --- Tremolo ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("tremOn"), "Tremolo On", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tremAmount"), "Tremolo Amount",
@@ -329,6 +340,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // characteristics are modeled as fixed, always-on behaviour instead).
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoTime"), "Plexer Time",
         Range (60.0f, 800.0f, 1.0f, 0.5f), 375.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("echoSync"), "Plexer Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("echoDivision"), "Plexer Division",
+        TapTempo::getDivisionNames(), 0));
     // Reaches genuine self-oscillation at maximum, same as the real unit —
     // see EchoModule::setParameters.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("echoSustain"), "Plexer Sustain",
@@ -344,6 +358,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // is a fixed characteristic, not user-adjustable (see CarbonCopyModule).
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("carbonTime"), "Copier Time",
         Range (20.0f, 600.0f, 1.0f, 0.5f), 375.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("carbonSync"), "Copier Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("carbonDivision"), "Copier Division",
+        TapTempo::getDivisionNames(), 0));
     // Reaches near-self-oscillation at maximum, same as the real unit —
     // see CarbonCopyModule::setParameters.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("carbonRegen"), "Copier Regen",

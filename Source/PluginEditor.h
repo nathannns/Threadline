@@ -171,6 +171,64 @@ public:
     }
 };
 
+// Options-panel tap-tempo control: click in rhythm to set the global
+// "tapTempoBpm" param Plexer/Copier's own Sync toggle follows (see
+// TapTempo.h). Averages the last few tap intervals; a gap over 2 seconds
+// starts a fresh tap sequence instead of dragging a stale average forward
+// (matching how real tap-tempo pedals reset after a pause).
+class TapTempoButton : public juce::TextButton, private juce::Timer
+{
+public:
+    explicit TapTempoButton (juce::AudioProcessorValueTreeState& apvtsIn)
+        : juce::TextButton ("TAP"), apvts (apvtsIn)
+    {
+        setTooltip ("Tap in time to set the tempo Plexer/Copier's Sync mode follows");
+        onClick = [this] { registerTap(); };
+    }
+
+private:
+    void registerTap()
+    {
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        if (lastTapMs > 0.0 && (now - lastTapMs) < 2000.0)
+        {
+            intervalsMs.add (now - lastTapMs);
+            if (intervalsMs.size() > 8)
+                intervalsMs.remove (0);
+        }
+        else
+        {
+            intervalsMs.clear();
+        }
+        lastTapMs = now;
+
+        if (! intervalsMs.isEmpty())
+        {
+            double sum = 0.0;
+            for (auto v : intervalsMs)
+                sum += v;
+            const auto bpm = juce::jlimit (40.0, 300.0, 60000.0 / (sum / intervalsMs.size()));
+            if (auto* parameter = apvts.getParameter ("tapTempoBpm"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) bpm));
+        }
+
+        // Brief flash so a tap reads as registered even before the
+        // computed tempo settles.
+        setColour (juce::TextButton::buttonColourId, ThreadlineColours::accentBright);
+        startTimer (110);
+    }
+
+    void timerCallback() override
+    {
+        stopTimer();
+        removeColour (juce::TextButton::buttonColourId);
+    }
+
+    juce::AudioProcessorValueTreeState& apvts;
+    juce::Array<double> intervalsMs;
+    double lastTapMs = 0.0;
+};
+
 class OptionsPanel final : public juce::GroupComponent
 {
 public:
@@ -229,6 +287,12 @@ private:
     juce::Label ampQualityLabel;
     juce::ComboBox ampOversamplingBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ampOversamplingAttachment;
+
+    // Global tap tempo -- feeds Plexer/Copier's own Sync toggle (see
+    // TapTempo.h). Lives in the Options panel alongside the other global
+    // engine settings above, not as a pedalboard tile.
+    juce::Label tapTempoLabel, tapTempoBpmLabel;
+    TapTempoButton tapTempoButton;
 
     // --- The pedalboard: one flat, horizontally-scrolling strip of every
     // other active pedal's tile, replacing the old 4-tab UI entirely. ---

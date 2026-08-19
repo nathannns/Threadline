@@ -3,6 +3,7 @@
 #include "PedalTile.h"
 #include "../../DSP/CabModule.h"
 #include "../../DSP/GraphicEQModule.h"
+#include "../../DSP/TapTempo.h"
 
 // One or more knobs (+ optional combos below them) -- covers every pedal
 // whose whole control surface is "N continuous knobs and maybe a couple of
@@ -185,10 +186,14 @@ public:
         echoSustain = makeTileKnob (*this, apvtsIn, "echoSustain", "Sustain");
         echoVolume = makeTileKnob (*this, apvtsIn, "echoVolume", "Volume");
         echoMode = makeTileCombo (*this, apvtsIn, "echoMode", "Mode", { "Echo", "Sound-on-Sound" });
+        echoSync = makeTileToggle (*this, apvtsIn, "echoSync", "Sync");
+        echoDivision = makeTileCombo (*this, apvtsIn, "echoDivision", "Div", TapTempo::getDivisionNames());
         carbonTime = makeTileKnob (*this, apvtsIn, "carbonTime", "Time");
         carbonRegen = makeTileKnob (*this, apvtsIn, "carbonRegen", "Regen");
         carbonMix = makeTileKnob (*this, apvtsIn, "carbonMix", "Mix");
         carbonMod = makeTileToggle (*this, apvtsIn, "carbonMod", "Mod");
+        carbonSync = makeTileToggle (*this, apvtsIn, "carbonSync", "Sync");
+        carbonDivision = makeTileCombo (*this, apvtsIn, "carbonDivision", "Div", TapTempo::getDivisionNames());
         updateModelVisibility (true);
         startTimerHz (15);
     }
@@ -201,6 +206,14 @@ protected:
         auto modelArea = body.removeFromTop (34);
         modelCombo->label.setBounds (modelArea.removeFromTop (12));
         modelCombo->box.setBounds (modelArea.reduced (56, 0));
+
+        // Tap-tempo Sync + note-division, own row -- Plexer/Copier only
+        // (not the other modulation/delay pedals).
+        auto syncArea = body.removeFromTop (26);
+        auto* sync = plexer ? echoSync.get() : carbonSync.get();
+        auto* division = plexer ? echoDivision.get() : carbonDivision.get();
+        sync->button.setBounds (syncArea.removeFromLeft (syncArea.getWidth() / 2).withSizeKeepingCentre (60, 22));
+        division->box.setBounds (syncArea.withSizeKeepingCentre (juce::jmin (syncArea.getWidth() - 4, 80), 22));
 
         if (plexer)
         {
@@ -244,16 +257,20 @@ private:
         echoSustain->slider.setVisible (plexer); echoSustain->label.setVisible (plexer);
         echoVolume->slider.setVisible (plexer); echoVolume->label.setVisible (plexer);
         echoMode->box.setVisible (plexer); echoMode->label.setVisible (plexer);
+        echoSync->button.setVisible (plexer);
+        echoDivision->box.setVisible (plexer);
         carbonTime->slider.setVisible (! plexer); carbonTime->label.setVisible (! plexer);
         carbonRegen->slider.setVisible (! plexer); carbonRegen->label.setVisible (! plexer);
         carbonMix->slider.setVisible (! plexer); carbonMix->label.setVisible (! plexer);
         carbonMod->button.setVisible (! plexer);
+        carbonSync->button.setVisible (! plexer);
+        carbonDivision->box.setVisible (! plexer);
         resized();
     }
 
-    std::unique_ptr<TileCombo> modelCombo, echoMode;
+    std::unique_ptr<TileCombo> modelCombo, echoMode, echoDivision, carbonDivision;
     std::unique_ptr<TileKnob> echoTime, echoSustain, echoVolume, carbonTime, carbonRegen, carbonMix;
-    std::unique_ptr<TileToggle> carbonMod;
+    std::unique_ptr<TileToggle> carbonMod, echoSync, carbonSync;
     bool plexer = true;
 };
 
