@@ -30,34 +30,34 @@ public:
     void drawButtonBackground (juce::Graphics& g, juce::Button& button,
                                const juce::Colour&, bool hovered, bool down) override
     {
-        auto bounds = button.getLocalBounds().toFloat().reduced (1.5f);
-        if (down) bounds.translate (0.0f, 1.2f);
+        auto bounds = button.getLocalBounds().toFloat().reduced (1.9f);
+        if (down) bounds.translate (0.0f, 1.5f);
         if (! down)
         {
             g.setColour (juce::Colours::black.withAlpha (0.32f));
-            g.fillRoundedRectangle (bounds.translated (0.0f, 2.0f), 6.0f);
+            g.fillRoundedRectangle (bounds.translated (0.0f, 2.5f), 7.5f);
         }
 
         auto face = button.getToggleState() ? ThreadlineColours::accent : juce::Colour (0xff28201b);
         if (hovered && button.isEnabled()) face = face.brighter (0.09f);
         if (! button.isEnabled()) face = face.withMultipliedSaturation (0.25f).withAlpha (0.45f);
         g.setColour (face);
-        g.fillRoundedRectangle (bounds, 6.0f);
+        g.fillRoundedRectangle (bounds, 7.5f);
         g.setColour ((button.getToggleState() || hovered) ? ThreadlineColours::accentBright
                                                            : juce::Colour (0xff74563b));
-        g.drawRoundedRectangle (bounds, 6.0f, hovered ? 1.5f : 1.0f);
+        g.drawRoundedRectangle (bounds, 7.5f, hovered ? 1.9f : 1.25f);
         g.setColour (juce::Colours::white.withAlpha (button.getToggleState() ? 0.13f : 0.055f));
-        g.drawLine (bounds.getX() + 6.0f, bounds.getY() + 2.0f,
-                    bounds.getRight() - 6.0f, bounds.getY() + 2.0f, 1.0f);
+        g.drawLine (bounds.getX() + 7.5f, bounds.getY() + 2.5f,
+                    bounds.getRight() - 7.5f, bounds.getY() + 2.5f, 1.25f);
         drawFocus (g, button, bounds);
     }
 
     void drawButtonText (juce::Graphics& g, juce::TextButton& button,
                          bool, bool down) override
     {
-        auto bounds = button.getLocalBounds().reduced (7, 2);
+        auto bounds = button.getLocalBounds().reduced (9, 3);
         if (down) bounds.translate (0, 1);
-        g.setFont (ThreadlineFonts::medium (juce::jlimit (9.5f, 12.5f, (float) button.getHeight() * 0.38f)));
+        g.setFont (ThreadlineFonts::medium (juce::jlimit (11.9f, 15.6f, (float) button.getHeight() * 0.38f)));
         auto colour = button.getToggleState() ? juce::Colour (0xff18120f) : ThreadlineColours::textCream;
         if (! button.isEnabled()) colour = juce::Colour (0xff81776b);
         g.setColour (colour);
@@ -68,10 +68,10 @@ public:
                            bool hovered, bool down) override
     {
         drawButtonBackground (g, button, {}, hovered, down);
-        auto bounds = button.getLocalBounds().reduced (6, 2);
+        auto bounds = button.getLocalBounds().reduced (8, 3);
         if (down) bounds.translate (0, 1);
         g.setColour (button.getToggleState() ? juce::Colour (0xff18120f) : ThreadlineColours::textCream);
-        g.setFont (ThreadlineFonts::medium (juce::jlimit (9.0f, 11.5f, (float) button.getHeight() * 0.36f)));
+        g.setFont (ThreadlineFonts::medium (juce::jlimit (11.25f, 14.4f, (float) button.getHeight() * 0.36f)));
         g.drawFittedText (button.getButtonText(), bounds, juce::Justification::centred, 1);
     }
 
@@ -80,7 +80,7 @@ private:
     {
         if (! button.hasKeyboardFocus (true)) return;
         g.setColour (juce::Colours::white.withAlpha (0.78f));
-        g.drawRoundedRectangle (bounds.expanded (1.0f), 7.0f, 1.4f);
+        g.drawRoundedRectangle (bounds.expanded (1.25f), 8.75f, 1.75f);
     }
 };
 
