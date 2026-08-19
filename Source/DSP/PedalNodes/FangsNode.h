@@ -18,7 +18,13 @@ public:
     }
     void reset() override { for (auto& f : fangs) f.reset(); }
 
-    int getLatencySamples() const override { return fangs.back().getLatencySamples(); }
+    // See KlonNode's own comment -- reports the live-selected instance's
+    // real latency now that PedalChainRunner watches for oversampling
+    // changes and re-publishes accordingly.
+    int getLatencySamples() const override
+    {
+        return fangs[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))].getLatencySamples();
+    }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
     {

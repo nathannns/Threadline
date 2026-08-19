@@ -21,7 +21,13 @@ public:
 
     // Pinned to the 4x instance regardless of the live oversampling setting,
     // so the reported total stays constant across a live quality switch.
-    int getLatencySamples() const override { return amps.back().getLatencySamples(); }
+    // See KlonNode's own comment -- reports the live-selected instance's
+    // real latency now that PedalChainRunner watches for oversampling
+    // changes and re-publishes accordingly.
+    int getLatencySamples() const override
+    {
+        return amps[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))].getLatencySamples();
+    }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
     {

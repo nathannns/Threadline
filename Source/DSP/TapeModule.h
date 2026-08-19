@@ -26,9 +26,16 @@ public:
     // changes (see PedalChainRunner::publishOrder()), not on every param
     // change, so a value that could silently vary with the Oversampling
     // dropdown would risk going stale between those events.
+    // Reports the actually-selected instance's real latency (not pinned to
+    // 4x) -- PedalChainRunner::processChain() now watches "ampOversampling"
+    // for changes and re-publishes latency accordingly.
     int getLatencySamples() const noexcept
     {
-        return oversampling4x != nullptr ? juce::roundToInt (oversampling4x->getLatencyInSamples()) : 0;
+        if (oversamplingChoice == 1 && oversampling2x != nullptr)
+            return juce::roundToInt (oversampling2x->getLatencyInSamples());
+        if (oversamplingChoice == 2 && oversampling4x != nullptr)
+            return juce::roundToInt (oversampling4x->getLatencyInSamples());
+        return 0;
     }
 
 private:

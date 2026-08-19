@@ -72,6 +72,7 @@ private:
     std::vector<PedalNode*> runtimeOrder;
     std::vector<PedalNode*> targetOrderNodes;
     int appliedGeneration = -1;
+    int lastOversamplingMode = -1; // audio-thread-only; see processChain()'s own comment
     juce::dsp::ProcessSpec lastSpec {};
 
     // Cross-thread handoff.

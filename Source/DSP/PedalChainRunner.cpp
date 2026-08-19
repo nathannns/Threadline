@@ -168,6 +168,33 @@ void PedalChainRunner::processChain (juce::AudioBuffer<float>& buffer)
         appliedGeneration = generation;
     }
 
+    // Several nodes' own getLatencySamples() now reports whichever
+    // oversampling instance is actually live (Klon/TS9/Amp/Fangs/Bison/
+    // Growl/Tape), rather than a value pinned to the 4x instance regardless
+    // of the real setting -- an audit-caught accuracy gap that only ever
+    // showed up when the Options panel's Amp Oversampling dropdown wasn't
+    // left at its 4x default. That only matters if this class actually
+    // re-publishes latency when the setting changes, which nothing did
+    // before: publishOrder() (the only path that calls
+    // owningProcessor->setLatencySamples()) only ever runs on a pedal-order
+    // change, not a plain parameter change. Reading the param here is
+    // audio-thread-safe (the same atomic load every PedalNode's p()/pBool()
+    // helper already does); only touching apvts.state's ValueTree itself
+    // would need to stay message-thread-only, which this doesn't do.
+    const auto currentOversamplingMode = (int) apvts.getRawParameterValue ("ampOversampling")->load();
+    if (currentOversamplingMode != lastOversamplingMode)
+    {
+        lastOversamplingMode = currentOversamplingMode;
+        int total = 0;
+        for (auto* node : targetOrderNodes)
+            total += node->getLatencySamples();
+        if (total != lastReportedLatency && owningProcessor != nullptr)
+        {
+            owningProcessor->setLatencySamples (total);
+            lastReportedLatency = total;
+        }
+    }
+
     // Each node is called exactly once per block. Its own return value
     // decides whether it's still needed next block -- true removal drops it
     // from runtimeOrder the block after it reports settled, so it costs

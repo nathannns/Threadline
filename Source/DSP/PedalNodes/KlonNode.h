@@ -22,7 +22,14 @@ public:
 
     // Pinned to the 4x instance regardless of the live oversampling setting,
     // matching the plugin's existing latency-reporting convention.
-    int getLatencySamples() const override { return klons.back().getLatencySamples(); }
+    // Reports the actually-selected instance's real latency (not pinned to
+    // 4x) -- PedalChainRunner::processChain() now watches "ampOversampling"
+    // for changes and re-publishes latency accordingly, so a stale/pinned
+    // value here would just be wrong instead of avoiding anything.
+    int getLatencySamples() const override
+    {
+        return klons[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))].getLatencySamples();
+    }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
     {

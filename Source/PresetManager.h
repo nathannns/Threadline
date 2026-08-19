@@ -223,8 +223,9 @@ private:
         makePreset ("01 Clean Tweed", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.20f }, { "ampTone", 0.63f },
             { "ampOutput", -1.0f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 0.0f }, { "cabBlend", 0.0f }
+            // Cab: "Tweed" (index 9 in the current 12-IR set), matching
+            // the amp voice the preset's own name promises.
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 9.0f }, { "cabAMix", 1.0f }
             // Bone dry: no comp, no chorus, no delay, no reverb -- just the
             // amp+cab tone the name promises.
         });
@@ -233,9 +234,7 @@ private:
             { "klonTreble", 0.52f }, { "klonLevel", 0.61f },
             { "ampVoice", 0.0f }, { "ampDrive", 0.48f }, { "ampTone", 0.54f },
             { "ampOutput", -3.0f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 1.0f }, { "cabBIRSelect", 1.0f }, { "cabBMix", 1.0f },
-            { "cabBlend", 30.0f }
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 9.0f }, { "cabAMix", 1.0f }
             // Dry -- Bull pushing the amp into breakup is the whole story.
         });
         // odOrder is deprecated (see createParameterLayout) but kept set
@@ -250,9 +249,8 @@ private:
             { "klonLevel", 0.58f },
             { "ampVoice", 1.0f }, { "ampDrive", 0.62f }, { "ampBass", 0.56f },
             { "ampMid", 0.66f }, { "ampTreble", 0.54f }, { "ampOutput", -4.0f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 1.0f }, { "cabBIRSelect", 4.0f }, { "cabBMix", 1.0f },
-            { "cabBlend", 42.0f },
+            // Cab: "Rock" -- a driven-lead flavor for the Boutique voice.
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 8.0f }, { "cabAMix", 1.0f },
             // Plexer in Echo mode: a handful of clean-ish slapback repeats
             // behind the lead, not self-oscillating -- the one wet effect
             // this preset uses, named in its title.
@@ -262,9 +260,7 @@ private:
         makePreset ("04 Ambient Hall", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.24f }, { "ampTone", 0.61f },
             { "ampOutput", -2.0f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
-            { "cabBlend", 35.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 9.0f }, { "cabAMix", 1.0f },
             // Just the Hall space, generous and wide -- no chorus, no
             // delay, so "Ambient Hall" means exactly one thing.
             { "reverbOn", 1.0f }, { "reverbModel", 1.0f }, { "reverbPreDelay", 0.18f },
@@ -277,13 +273,8 @@ private:
             { "ts9Drive", 0.10f }, { "ts9Tone", 0.57f }, { "ts9Level", 0.73f },
             { "ampVoice", 1.0f }, { "ampDrive", 0.55f }, { "ampBass", 0.43f },
             { "ampMid", 0.60f }, { "ampTreble", 0.58f }, { "ampOutput", -4.5f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 4.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 1.0f }, { "cabBIRSelect", 0.0f }, { "cabBMix", 1.0f },
-            // No polarity-invert here -- flipping cabB's phase against cabA
-            // can cause real, audible phasing/comb-filtering depending on
-            // the IR pairing and isn't something a factory preset should
-            // gamble on; leave it to the user's own ears per-rig.
-            { "cabBlend", 24.0f },
+            // Cab: "Classic" -- a controlled, tight-rhythm-appropriate flavor.
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
             { "eqOn", 1.0f }, { "eqBand1", -2.5f }, { "eqBand2", -1.5f },
             { "eqBand3", -0.8f }, { "eqBand5", 1.4f }, { "eqBand6", 1.0f },
             { "eqBand8", 0.8f }, { "eqBand9", -1.8f },
@@ -300,8 +291,7 @@ private:
             { "klonTreble", 0.46f }, { "klonLevel", 0.66f },
             { "ampVoice", 0.0f }, { "ampDrive", 0.15f }, { "ampTone", 0.58f },
             { "ampOutput", -0.5f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 0.0f }, { "cabBlend", 0.0f }
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 9.0f }, { "cabAMix", 1.0f }
         });
         // Both drives stacked hard into a cranked Boutique voice -- the
         // opposite end of the gain range from "06 Transparent Boost",
@@ -317,9 +307,8 @@ private:
             { "klonLevel", 0.55f },
             { "ampVoice", 1.0f }, { "ampDrive", 0.88f }, { "ampBass", 0.52f },
             { "ampMid", 0.44f }, { "ampTreble", 0.62f }, { "ampOutput", -6.5f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 3.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 1.0f }, { "cabBIRSelect", 5.0f }, { "cabBMix", 1.0f },
-            { "cabBlend", 45.0f },
+            // Cab: "British" -- fits a wall-of-fuzz thematically.
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
             { "chorusOn", 1.0f }, { "chorusWaveform", 1.0f },
             { "chorusRate", 0.55f }, { "chorusDepth", 45.0f }, { "chorusLag", 40.0f },
             { "chorusDCV", 1.0f } // Chorus
@@ -334,8 +323,7 @@ private:
             { "ts9Drive", 0.08f }, { "ts9Tone", 0.62f }, { "ts9Level", 0.68f },
             { "ampVoice", 0.0f }, { "ampDrive", 0.30f }, { "ampTone", 0.70f },
             { "ampOutput", -2.0f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 4.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 0.0f }, { "cabBlend", 0.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 9.0f }, { "cabAMix", 1.0f },
             { "echoOn", 1.0f }, { "delayModel", 0.0f }, { "echoMode", 0.0f },
             { "echoTime", 115.0f }, { "echoSustain", 12.0f }, { "echoVolume", 22.0f }
         });
@@ -346,9 +334,7 @@ private:
         makePreset ("09 Copier Dreams + Plate Verb", {
             { "ampVoice", 0.0f }, { "ampDrive", 0.32f }, { "ampTone", 0.58f },
             { "ampOutput", -2.5f },
-            { "cabAOn", 1.0f }, { "cabAIRSelect", 2.0f }, { "cabAMix", 1.0f },
-            { "cabBOn", 1.0f }, { "cabBIRSelect", 1.0f }, { "cabBMix", 1.0f },
-            { "cabBlend", 30.0f },
+            { "cabAOn", 1.0f }, { "cabAIRSelect", 9.0f }, { "cabAMix", 1.0f },
             { "echoOn", 1.0f }, { "delayModel", 1.0f },
             { "carbonTime", 340.0f }, { "carbonRegen", 42.0f }, { "carbonMix", 32.0f },
             { "carbonMod", 1.0f },
