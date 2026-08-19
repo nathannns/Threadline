@@ -115,7 +115,7 @@ private:
     static constexpr int tileGap = 12;
     static constexpr int tileMargin = 16;
     // Fixed portrait stompbox proportions -- see layoutTiles().
-    static constexpr int tileHeight = 300;
+    static constexpr int tileHeight = 375;
     static constexpr int tileTopMargin = 24;
     static constexpr int insertButtonSize = 40;
 

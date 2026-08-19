@@ -34,20 +34,20 @@ public:
     int getPreferredWidth() const override
     {
         const auto columns = juce::jmin (2, (int) knobs.size());
-        return juce::jmax (150, columns * 95 + 30);
+        return juce::jmax (188, columns * 119 + 38);
     }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto comboArea = combos.empty() ? juce::Rectangle<int>() : body.removeFromBottom (44 * (int) combos.size());
+        auto comboArea = combos.empty() ? juce::Rectangle<int>() : body.removeFromBottom (55 * (int) combos.size());
         layoutTileKnobRow (knobs, body, juce::jmin (2, (int) knobs.size()));
         if (! combos.empty())
         {
             for (auto& combo : combos)
             {
-                auto cell = comboArea.removeFromTop (44).reduced (3);
-                combo->label.setBounds (cell.removeFromTop (12));
+                auto cell = comboArea.removeFromTop (55).reduced (4);
+                combo->label.setBounds (cell.removeFromTop (15));
                 combo->box.setBounds (cell);
             }
         }
@@ -78,15 +78,15 @@ public:
         startTimerHz (15);
     }
 
-    int getPreferredWidth() const override { return 340; }
+    int getPreferredWidth() const override { return 425; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto comboArea = body.removeFromTop (34);
-        voiceCombo->label.setBounds (comboArea.removeFromTop (12));
-        voiceCombo->box.setBounds (comboArea.reduced (44, 0));
-        body.removeFromTop (8);
+        auto comboArea = body.removeFromTop (43);
+        voiceCombo->label.setBounds (comboArea.removeFromTop (15));
+        voiceCombo->box.setBounds (comboArea.reduced (55, 0));
+        body.removeFromTop (10);
 
         std::vector<TileKnob*> visible { driveKnob.get(), outputKnob.get() };
         if (voiceIndex == 1 || voiceIndex == 3)
@@ -101,12 +101,12 @@ protected:
         const auto columns = juce::jmin (3, (int) visible.size());
         const auto rows = (int) ((visible.size() + (size_t) columns - 1) / (size_t) columns);
         const auto cellW = body.getWidth() / juce::jmax (1, columns);
-        const auto cellH = juce::jmin (140, body.getHeight() / juce::jmax (1, rows));
+        const auto cellH = juce::jmin (175, body.getHeight() / juce::jmax (1, rows));
         for (size_t i = 0; i < visible.size(); ++i)
         {
             auto cell = juce::Rectangle<int> (body.getX() + (int) (i % (size_t) columns) * cellW,
-                                              body.getY() + (int) (i / (size_t) columns) * cellH, cellW, cellH).reduced (4, 2);
-            visible[i]->label.setBounds (cell.removeFromTop (14));
+                                              body.getY() + (int) (i / (size_t) columns) * cellH, cellW, cellH).reduced (5, 3);
+            visible[i]->label.setBounds (cell.removeFromTop (18));
             visible[i]->slider.setBounds (cell);
         }
     }
@@ -156,17 +156,17 @@ public:
         mix = makeTileKnob (*this, apvtsIn, "cabAMix", "Mix");
     }
 
-    int getPreferredWidth() const override { return 190; }
+    int getPreferredWidth() const override { return 238; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto row = body.removeFromTop (22);
-        phase->button.setBounds (row.removeFromRight (26));
-        irSelect->box.setBounds (row.reduced (2, 0));
-        body.removeFromTop (8);
-        mix->label.setBounds (body.removeFromTop (14));
-        mix->slider.setBounds (body.removeFromTop (130).reduced (4, 0));
+        auto row = body.removeFromTop (28);
+        phase->button.setBounds (row.removeFromRight (33));
+        irSelect->box.setBounds (row.reduced (3, 0));
+        body.removeFromTop (10);
+        mix->label.setBounds (body.removeFromTop (18));
+        mix->slider.setBounds (body.removeFromTop (163).reduced (5, 0));
     }
 
 private:
@@ -201,35 +201,35 @@ public:
         startTimerHz (15);
     }
 
-    int getPreferredWidth() const override { return 260; }
+    int getPreferredWidth() const override { return 325; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto modelArea = body.removeFromTop (34);
-        modelCombo->label.setBounds (modelArea.removeFromTop (12));
-        modelCombo->box.setBounds (modelArea.reduced (56, 0));
+        auto modelArea = body.removeFromTop (43);
+        modelCombo->label.setBounds (modelArea.removeFromTop (15));
+        modelCombo->box.setBounds (modelArea.reduced (70, 0));
 
         // Tap-tempo Sync + note-division, own row -- Plexer/Copier only
         // (not the other modulation/delay pedals).
-        auto syncArea = body.removeFromTop (26);
+        auto syncArea = body.removeFromTop (33);
         auto* sync = plexer ? echoSync.get() : carbonSync.get();
         auto* division = plexer ? echoDivision.get() : carbonDivision.get();
-        sync->button.setBounds (syncArea.removeFromLeft (syncArea.getWidth() / 2).withSizeKeepingCentre (60, 22));
-        division->box.setBounds (syncArea.withSizeKeepingCentre (juce::jmin (syncArea.getWidth() - 4, 80), 22));
+        sync->button.setBounds (syncArea.removeFromLeft (syncArea.getWidth() / 2).withSizeKeepingCentre (75, 28));
+        division->box.setBounds (syncArea.withSizeKeepingCentre (juce::jmin (syncArea.getWidth() - 5, 100), 28));
 
         if (plexer)
         {
-            auto modeArea = body.removeFromBottom (30);
-            echoMode->label.setBounds (modeArea.removeFromTop (12));
-            echoMode->box.setBounds (modeArea.reduced (34, 0));
+            auto modeArea = body.removeFromBottom (38);
+            echoMode->label.setBounds (modeArea.removeFromTop (15));
+            echoMode->box.setBounds (modeArea.reduced (43, 0));
             std::vector<TileKnob*> ks { echoTime.get(), echoSustain.get(), echoVolume.get() };
             layoutRow (ks, body);
         }
         else
         {
-            auto modArea = body.removeFromBottom (30);
-            carbonMod->button.setBounds (modArea.withSizeKeepingCentre (60, 22));
+            auto modArea = body.removeFromBottom (38);
+            carbonMod->button.setBounds (modArea.withSizeKeepingCentre (75, 28));
             std::vector<TileKnob*> ks { carbonTime.get(), carbonRegen.get(), carbonMix.get() };
             layoutRow (ks, body);
         }
@@ -238,12 +238,12 @@ protected:
 private:
     static void layoutRow (std::vector<TileKnob*>& ks, juce::Rectangle<int> area)
     {
-        auto row = area.removeFromTop (juce::jmin (150, area.getHeight()));
+        auto row = area.removeFromTop (juce::jmin (188, area.getHeight()));
         const auto cw = row.getWidth() / juce::jmax (1, (int) ks.size());
         for (size_t i = 0; i < ks.size(); ++i)
         {
-            auto cell = juce::Rectangle<int> (row.getX() + (int) i * cw, row.getY(), cw, row.getHeight()).reduced (4, 2);
-            ks[i]->label.setBounds (cell.removeFromTop (14));
+            auto cell = juce::Rectangle<int> (row.getX() + (int) i * cw, row.getY(), cw, row.getHeight()).reduced (5, 3);
+            ks[i]->label.setBounds (cell.removeFromTop (18));
             ks[i]->slider.setBounds (cell);
         }
     }
@@ -309,28 +309,28 @@ public:
         lpfKnob = makeTileKnob (*this, apvtsIn, "eqLpfFreq", "Hz");
     }
 
-    int getPreferredWidth() const override { return 430; }
+    int getPreferredWidth() const override { return 538; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto hpfCol = body.removeFromLeft (70);
-        auto lpfCol = body.removeFromRight (70);
-        hpfToggle->button.setBounds (hpfCol.removeFromTop (20));
-        hpfKnob->label.setBounds (hpfCol.removeFromTop (12));
-        hpfKnob->slider.setBounds (hpfCol.removeFromTop (130).reduced (4, 0));
-        lpfToggle->button.setBounds (lpfCol.removeFromTop (20));
-        lpfKnob->label.setBounds (lpfCol.removeFromTop (12));
-        lpfKnob->slider.setBounds (lpfCol.removeFromTop (130).reduced (4, 0));
+        auto hpfCol = body.removeFromLeft (88);
+        auto lpfCol = body.removeFromRight (88);
+        hpfToggle->button.setBounds (hpfCol.removeFromTop (25));
+        hpfKnob->label.setBounds (hpfCol.removeFromTop (15));
+        hpfKnob->slider.setBounds (hpfCol.removeFromTop (163).reduced (5, 0));
+        lpfToggle->button.setBounds (lpfCol.removeFromTop (25));
+        lpfKnob->label.setBounds (lpfCol.removeFromTop (15));
+        lpfKnob->slider.setBounds (lpfCol.removeFromTop (163).reduced (5, 0));
 
-        body.removeFromLeft (4);
-        body.removeFromRight (4);
+        body.removeFromLeft (5);
+        body.removeFromRight (5);
         const auto cw = body.getWidth() / juce::jmax (1, (int) bands.size());
         for (size_t i = 0; i < bands.size(); ++i)
         {
             auto cell = juce::Rectangle<int> (body.getX() + (int) i * cw, body.getY(), cw, body.getHeight());
-            bands[i]->label.setBounds (cell.removeFromBottom (14));
-            bands[i]->slider.setBounds (cell.reduced (2, 0));
+            bands[i]->label.setBounds (cell.removeFromBottom (18));
+            bands[i]->slider.setBounds (cell.reduced (3, 0));
         }
     }
 
@@ -370,39 +370,39 @@ public:
             juce::StringArray { "50 Hz", "80 Hz", "160 Hz", "300 Hz" });
     }
 
-    int getPreferredWidth() const override { return 300; }
+    int getPreferredWidth() const override { return 375; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
         // Gain sits first (top), matching the real module's own front
         // panel layout -- the preamp trim knob above the EQ bands.
-        auto gainRow = body.removeFromTop (110);
-        gain->label.setBounds (gainRow.removeFromTop (14));
+        auto gainRow = body.removeFromTop (138);
+        gain->label.setBounds (gainRow.removeFromTop (18));
         gain->slider.setBounds (gainRow.reduced (body.getWidth() / 3, 0));
-        body.removeFromTop (4);
+        body.removeFromTop (5);
 
-        auto hpfRow = body.removeFromBottom (44);
-        hpfToggle->button.setBounds (hpfRow.removeFromLeft (60).reduced (2));
-        hpfFreq->label.setBounds (hpfRow.removeFromTop (12));
-        hpfFreq->box.setBounds (hpfRow.reduced (4, 2));
-        body.removeFromBottom (6);
+        auto hpfRow = body.removeFromBottom (55);
+        hpfToggle->button.setBounds (hpfRow.removeFromLeft (75).reduced (3));
+        hpfFreq->label.setBounds (hpfRow.removeFromTop (15));
+        hpfFreq->box.setBounds (hpfRow.reduced (5, 3));
+        body.removeFromBottom (8);
 
-        auto comboRow = body.removeFromBottom (42);
+        auto comboRow = body.removeFromBottom (53);
         const auto comboWidth = comboRow.getWidth() / 2;
-        auto lowFreqArea = comboRow.removeFromLeft (comboWidth).reduced (3);
-        auto midFreqArea = comboRow.reduced (3);
-        lowFreq->label.setBounds (lowFreqArea.removeFromTop (12));
+        auto lowFreqArea = comboRow.removeFromLeft (comboWidth).reduced (4);
+        auto midFreqArea = comboRow.reduced (4);
+        lowFreq->label.setBounds (lowFreqArea.removeFromTop (15));
         lowFreq->box.setBounds (lowFreqArea);
-        midFreq->label.setBounds (midFreqArea.removeFromTop (12));
+        midFreq->label.setBounds (midFreqArea.removeFromTop (15));
         midFreq->box.setBounds (midFreqArea);
 
         std::vector<std::unique_ptr<TileKnob>*> knobs { &lowGain, &midGain, &highGain };
         const auto cw = body.getWidth() / (int) knobs.size();
         for (size_t i = 0; i < knobs.size(); ++i)
         {
-            auto cell = juce::Rectangle<int> (body.getX() + (int) i * cw, body.getY(), cw, body.getHeight()).reduced (4, 2);
-            (*knobs[i])->label.setBounds (cell.removeFromTop (14));
+            auto cell = juce::Rectangle<int> (body.getX() + (int) i * cw, body.getY(), cw, body.getHeight()).reduced (5, 3);
+            (*knobs[i])->label.setBounds (cell.removeFromTop (18));
             (*knobs[i])->slider.setBounds (cell);
         }
     }
@@ -423,7 +423,7 @@ class LowDynamicTile : public PedalTileComponent
 {
 public:
     explicit LowDynamicTile (juce::AudioProcessorValueTreeState& apvtsIn)
-        : PedalTileComponent (apvtsIn, "lowDynamic", "Low Dynamic", "lowDynamicOn")
+        : PedalTileComponent (apvtsIn, "lowDynamic", "Dynamix", "lowDynamicOn")
     {
         up = makeTileKnob (*this, apvtsIn, "lowDynamicUp", "Up");
         down = makeTileKnob (*this, apvtsIn, "lowDynamicDown", "Down");
@@ -431,13 +431,13 @@ public:
         fastToggle = makeTileToggle (*this, apvtsIn, "lowDynamicFast", "Fast");
     }
 
-    int getPreferredWidth() const override { return 220; }
+    int getPreferredWidth() const override { return 275; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto fastRow = body.removeFromBottom (28);
-        fastToggle->button.setBounds (fastRow.withSizeKeepingCentre (80, 24));
+        auto fastRow = body.removeFromBottom (35);
+        fastToggle->button.setBounds (fastRow.withSizeKeepingCentre (100, 30));
 
         std::vector<std::unique_ptr<TileKnob>*> knobs { &up, &down, &mix };
         const auto columns = 2;
@@ -447,8 +447,8 @@ protected:
         for (size_t i = 0; i < knobs.size(); ++i)
         {
             auto cell = juce::Rectangle<int> (body.getX() + (int) (i % (size_t) columns) * cw,
-                                              body.getY() + (int) (i / (size_t) columns) * ch, cw, ch).reduced (4, 2);
-            (*knobs[i])->label.setBounds (cell.removeFromTop (14));
+                                              body.getY() + (int) (i / (size_t) columns) * ch, cw, ch).reduced (5, 3);
+            (*knobs[i])->label.setBounds (cell.removeFromTop (18));
             (*knobs[i])->slider.setBounds (cell);
         }
     }
@@ -509,25 +509,25 @@ public:
     // two slots side by side (each getting roughly a normal tile's own
     // body room) reads far better than stacking them, which previously
     // either clipped the lower slot or pushed it off-screen.
-    int getPreferredWidth() const override { return 540; }
-    // Scaled down along with the strip's own standard tileHeight (400 ->
-    // 300) -- kept modestly taller than that standard since it still needs
-    // room for its own header plus two nested pedals' worth of content,
-    // but shrunk proportionally rather than left at its old absolute size.
-    int getPreferredHeight() const override { return 340; }
+    int getPreferredWidth() const override { return 675; }
+    // Scaled along with the strip's own standard tileHeight -- kept
+    // modestly taller than that standard since it still needs room for its
+    // own header plus two nested pedals' worth of content, but shrunk/grown
+    // proportionally rather than left at an old absolute size.
+    int getPreferredHeight() const override { return 425; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        // Cancels out the base class's own 6px horizontal / 4px vertical
+        // Cancels out the base class's own 8px horizontal / 5px vertical
         // margin around `body` -- Effect A/B are meant to sit flush against
         // this box's own left/right/bottom edges, with no visible gap and
         // no dead space below them, so this tile alone gets the full
         // post-header area back rather than the usual inset every other
         // tile's body gets.
-        auto full = body.expanded (6, 4);
+        auto full = body.expanded (8, 5);
 
-        constexpr int centerWidth = 64;
+        constexpr int centerWidth = 80;
         auto leftArea = full.removeFromLeft ((full.getWidth() - centerWidth) / 2);
         auto centerArea = full.removeFromLeft (centerWidth);
         auto rightArea = full;
@@ -537,14 +537,14 @@ protected:
 
         // Blend lives in the slim center column between A and B, not in
         // its own row below both.
-        auto blendArea = centerArea.withSizeKeepingCentre (centerWidth, 100);
-        blend->label.setBounds (blendArea.removeFromTop (14));
+        auto blendArea = centerArea.withSizeKeepingCentre (centerWidth, 125);
+        blend->label.setBounds (blendArea.removeFromTop (18));
         blend->slider.setBounds (blendArea);
     }
 
 private:
     // Lays `child` out at its own natural, undistorted proportions (the
-    // same ~300px-tall reference every top-level tile is designed to
+    // same ~375px-tall reference every top-level tile is designed to
     // render correctly at -- see PedalboardComponent::tileHeight), then
     // uniformly scales it via an AffineTransform to FILL `slotArea` as much
     // as possible on whichever axis is the tighter fit -- deliberately not
@@ -556,7 +556,7 @@ private:
     // clickable regardless.
     static void positionScaledChild (PedalTileComponent& child, juce::Rectangle<int> slotArea)
     {
-        constexpr int naturalHeight = 300;
+        constexpr int naturalHeight = 375;
         const auto naturalWidth = juce::jmax (150, child.getPreferredWidth());
         child.setBounds (0, 0, naturalWidth, naturalHeight);
         const auto scale = juce::jmin ((float) slotArea.getWidth() / (float) naturalWidth,
@@ -586,8 +586,8 @@ private:
         else
         {
             addButton.setVisible (true);
-            addButton.setBounds (area.withSizeKeepingCentre (juce::jmin (70, area.getWidth()),
-                                                              juce::jmin (70, area.getHeight())));
+            addButton.setBounds (area.withSizeKeepingCentre (juce::jmin (88, area.getWidth()),
+                                                              juce::jmin (88, area.getHeight())));
         }
     }
 

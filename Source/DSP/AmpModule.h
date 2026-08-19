@@ -356,14 +356,35 @@ public:
         bass01 = juce::jlimit (0.0f, 1.0f, bass01);
         mid01 = juce::jlimit (0.0f, 1.0f, mid01);
         treble01 = juce::jlimit (0.0f, 1.0f, treble01);
-        if (! juce::approximatelyEqual (bass01, lastBass01)
-            || ! juce::approximatelyEqual (mid01, lastMid01)
-            || ! juce::approximatelyEqual (treble01, lastTreble01))
+        // Each voice reads its own, entirely separate tone-stack coefficients
+        // (Vintage 5E3: toneFilter, gated on tone01 above; Boutique:
+        // bassmanStack; Vox: voxBassShelf/voxTrebleShelf via
+        // updateVoxToneFilters(); Deluxe 63: fenderToneStack) -- ampBass/
+        // ampMid/ampTreble are shared params across the 3 voices that use
+        // them, so recomputing all three stacks on every change regardless
+        // of which voice is actually selected was pure waste (a real,
+        // measurable per-change cost: BassmanToneStack::updateCoefficients
+        // alone is a full bilinear-transform of a 3rd-order analog
+        // transfer function, not a trivial one-liner -- see its own
+        // comment). Only the live voice's own stack is recomputed now;
+        // `lastToneStackVoice` also forces one recompute right after a
+        // voice switch even when the knobs themselves didn't move, so a
+        // freshly-selected voice never plays through stale coefficients
+        // left over from whichever voice last actually changed them.
+        const auto paramsChanged = ! juce::approximatelyEqual (bass01, lastBass01)
+                                 || ! juce::approximatelyEqual (mid01, lastMid01)
+                                 || ! juce::approximatelyEqual (treble01, lastTreble01);
+        const auto voiceChanged = voice != lastToneStackVoice;
+        if (paramsChanged || voiceChanged)
         {
             lastBass01 = bass01; lastMid01 = mid01; lastTreble01 = treble01;
-            bassmanStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
-            fenderToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
-            updateVoxToneFilters();
+            lastToneStackVoice = voice;
+            if (voice == Voice::modern3Band)
+                bassmanStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+            else if (voice == Voice::fenderAB763)
+                fenderToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+            else if (voice == Voice::voxAC30)
+                updateVoxToneFilters();
         }
     }
 
@@ -1530,6 +1551,9 @@ private:
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;
     Voice voice = Voice::vintage5E3;
+    // Which voice the Bass/Mid/Treble coefficients below were last computed
+    // for -- see setParameters()'s own comment.
+    Voice lastToneStackVoice = Voice::vintage5E3;
     float driveAmount = 0.4f, lastTone01 = 0.6f;
     float lastBass01 = 0.5f, lastMid01 = 0.5f, lastTreble01 = 0.5f;
     float targetOutputGain = 1.0f, sagEnvelope = 0.0f;

@@ -11,7 +11,7 @@ namespace PedalDisplayNames
     {
         static const std::map<juce::String, juce::String> names {
             { "noiseGate", "Gate" }, { "inputGain", "Input" }, { "compressor", "Comp" },
-            { "lowDynamic", "Low Dynamic" },
+            { "lowDynamic", "Dynamix" },
             { "klon", "Bull" }, { "ts9", "Breaker" },
             { "fangs", "Fangs" }, { "bison", "Bison" }, { "growl", "Growl" },
             { "tape", "Tape" }, { "amp", "Amp" }, { "cab", "Cab" },

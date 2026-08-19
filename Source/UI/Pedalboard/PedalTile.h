@@ -34,13 +34,13 @@ inline std::unique_ptr<TileKnob> makeTileKnob (juce::Component& parent, juce::Au
     // without this, that same gesture would get eaten by whichever knob
     // happens to be under the cursor and nudge its value instead.
     knob->slider.setScrollWheelEnabled (false);
-    knob->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 52, 15);
+    knob->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 65, 19);
     knob->slider.setColour (juce::Slider::textBoxTextColourId, ThreadlineColours::textCream);
     knob->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     knob->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
     knob->label.setText (labelText, juce::dontSendNotification);
     knob->label.setJustificationType (juce::Justification::centred);
-    knob->label.setFont (juce::FontOptions (11.0f));
+    knob->label.setFont (juce::FontOptions (14.0f));
     knob->label.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
     parent.addAndMakeVisible (knob->slider);
     parent.addAndMakeVisible (knob->label);
@@ -60,7 +60,7 @@ inline std::unique_ptr<TileCombo> makeTileCombo (juce::Component& parent, juce::
     combo->box.setColour (juce::ComboBox::outlineColourId, ThreadlineColours::cardBorder);
     combo->label.setText (labelText, juce::dontSendNotification);
     combo->label.setJustificationType (juce::Justification::centred);
-    combo->label.setFont (juce::FontOptions (11.0f));
+    combo->label.setFont (juce::FontOptions (14.0f));
     combo->label.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
     parent.addAndMakeVisible (combo->box);
     parent.addAndMakeVisible (combo->label);
@@ -92,8 +92,8 @@ inline void layoutTileKnobRow (std::vector<std::unique_ptr<TileKnob>>& knobs, ju
     for (int i = 0; i < count; ++i)
     {
         juce::Rectangle<int> cell (area.getX() + (i % cols) * cellW, area.getY() + (i / cols) * cellH, cellW, cellH);
-        auto inner = cell.reduced (4, 2);
-        knobs[(size_t) i]->label.setBounds (inner.removeFromTop (14));
+        auto inner = cell.reduced (5, 3);
+        knobs[(size_t) i]->label.setBounds (inner.removeFromTop (18));
         knobs[(size_t) i]->slider.setBounds (inner);
     }
 }
@@ -112,7 +112,7 @@ public:
     {
         nameLabel.setText (displayName, juce::dontSendNotification);
         nameLabel.setJustificationType (juce::Justification::centred);
-        nameLabel.setFont (juce::FontOptions (13.5f, juce::Font::bold));
+        nameLabel.setFont (juce::FontOptions (17.0f, juce::Font::bold));
         nameLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
         nameLabel.setInterceptsMouseClicks (false, false);
         addAndMakeVisible (nameLabel);
@@ -136,7 +136,7 @@ public:
     ~PedalTileComponent() override = default;
 
     const juce::String& getPedalId() const noexcept { return pedalId; }
-    virtual int getPreferredWidth() const { return 190; }
+    virtual int getPreferredWidth() const { return 238; }
     // -1 (the default) means "use the strip's own standard row height"
     // (PedalboardComponent::tileHeight). Only ParallelTile overrides this --
     // it embeds two whole nested pedal tiles and needs proportionally more
@@ -160,11 +160,11 @@ public:
     {
         auto area = getLocalBounds();
         auto header = area.removeFromTop (headerHeight);
-        removeButton.setBounds (header.removeFromRight (22).reduced (3));
+        removeButton.setBounds (header.removeFromRight (28).reduced (4));
         if (hasToggle)
-            bypassToggle.setBounds (header.removeFromRight (46).reduced (3, 4));
+            bypassToggle.setBounds (header.removeFromRight (58).reduced (4, 5));
         nameLabel.setBounds (header);
-        resizedBody (area.reduced (6, 4));
+        resizedBody (area.reduced (8, 5));
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -201,7 +201,7 @@ protected:
     virtual void resizedBody (juce::Rectangle<int> body) = 0;
 
     juce::AudioProcessorValueTreeState& apvts;
-    static constexpr int headerHeight = 24;
+    static constexpr int headerHeight = 30;
 
 private:
     juce::String pedalId;
