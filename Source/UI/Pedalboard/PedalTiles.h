@@ -159,7 +159,7 @@ public:
             irNames.add (CabModule::getBuiltInIRName (i));
 
         phase = makeTileToggle (*this, apvtsIn, "cabAPhase", juce::CharPointer_UTF8 ("\xc3\x98"));
-        irSelect = makeTileCombo (*this, apvtsIn, "cabAIRSelect", "IR", irNames);
+        irSelect = makeTileCombo (*this, apvtsIn, "cabAIRSelect", "", irNames);
         mix = makeTileKnob (*this, apvtsIn, "cabAMix", "Mix");
     }
 
@@ -168,11 +168,6 @@ public:
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        // irSelect's own caption ("IR") -- previously never given bounds
-        // here, so it silently never rendered even though it was already
-        // being created (every other combo in this file does show its
-        // caption).
-        irSelect->label.setBounds (body.removeFromTop (captionHeight));
         auto row = body.removeFromTop (28);
         phase->button.setBounds (row.removeFromRight (33));
         irSelect->box.setBounds (row.reduced (cellPadX, 0));
@@ -200,7 +195,7 @@ public:
         echoTime = makeTileKnob (*this, apvtsIn, "echoTime", "Time");
         echoSustain = makeTileKnob (*this, apvtsIn, "echoSustain", "Sustain");
         echoVolume = makeTileKnob (*this, apvtsIn, "echoVolume", "Volume");
-        echoMode = makeTileCombo (*this, apvtsIn, "echoMode", "Mode", { "Echo", "Sound-on-Sound" });
+        echoMode = makeTileCombo (*this, apvtsIn, "echoMode", "", { "Echo", "Sound-on-Sound" });
         echoSync = makeTileToggle (*this, apvtsIn, "echoSync", "Sync");
         echoDivision = makeTileCombo (*this, apvtsIn, "echoDivision", "Div", TapTempo::getDivisionNames());
         carbonTime = makeTileKnob (*this, apvtsIn, "carbonTime", "Time");
@@ -233,7 +228,6 @@ protected:
         if (plexer)
         {
             auto modeArea = body.removeFromBottom (38);
-            echoMode->label.setBounds (modeArea.removeFromTop (captionHeight));
             echoMode->box.setBounds (modeArea.reduced (43, 0));
             std::vector<TileKnob*> ks { echoTime.get(), echoSustain.get(), echoVolume.get() };
             layoutRow (ks, body);
