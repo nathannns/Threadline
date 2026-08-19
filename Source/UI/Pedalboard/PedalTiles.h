@@ -589,19 +589,18 @@ private:
         resized();
     }
 
+    // Any pedal is freely pickable into either slot -- picking one that's
+    // currently a tile in the main strip silently pulls it out from there
+    // (see PedalboardComponent::timerCallback()), so the only real
+    // constraint left here is A and B can't both name the same pedal
+    // (see ParallelNode::dedupedSlotB()).
     void refreshComboAvailability()
     {
-        auto inUse = processor.getActivePedalOrder();
-        inUse.removeString ("parallel");
-
-        auto forA = inUse; if (lastSlotB.isNotEmpty()) forA.add (lastSlotB);
-        auto forB = inUse; if (lastSlotA.isNotEmpty()) forB.add (lastSlotA);
-
         const auto& ids = PedalboardOrder::parallelSlotChoiceIds();
         for (int i = 0; i < ids.size(); ++i)
         {
-            slotACombo.setItemEnabled (i + 2, ! forA.contains (ids[i]));
-            slotBCombo.setItemEnabled (i + 2, ! forB.contains (ids[i]));
+            slotACombo.setItemEnabled (i + 2, ids[i] != lastSlotB);
+            slotBCombo.setItemEnabled (i + 2, ids[i] != lastSlotA);
         }
     }
 

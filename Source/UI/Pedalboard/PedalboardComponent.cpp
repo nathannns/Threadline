@@ -1,4 +1,5 @@
 #include "PedalboardComponent.h"
+#include "../../DSP/PedalboardOrder.h"
 
 namespace
 {
@@ -55,6 +56,29 @@ void PedalboardComponent::timerCallback()
 {
     if (draggedTile != nullptr)
         return; // never yank the strip out from under an in-progress drag
+
+    // The moment a pedal is picked into the Parallel box's Slot A/Slot B
+    // (see ParallelTile), pull it out of the main strip automatically if
+    // it's still sitting there as its own tile -- the user shouldn't have
+    // to manually remove it first for it to become pickable.
+    bool removedForParallel = false;
+    for (auto* paramId : { "parallelSlotA", "parallelSlotB" })
+    {
+        const auto choiceIndex = (int) processor.apvts.getRawParameterValue (paramId)->load();
+        const auto& ids = PedalboardOrder::parallelSlotChoiceIds();
+        const auto idx = choiceIndex - 1;
+        if (choiceIndex > 0 && idx >= 0 && idx < ids.size() && middleOrder.contains (ids[idx]))
+        {
+            middleOrder.removeString (ids[idx]);
+            removedForParallel = true;
+        }
+    }
+    if (removedForParallel)
+    {
+        publishOrder();
+        rebuildTiles();
+        return;
+    }
 
     auto liveMiddle = processor.getActivePedalOrder();
     liveMiddle.removeString ("inputGain");
