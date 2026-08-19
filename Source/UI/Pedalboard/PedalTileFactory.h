@@ -43,7 +43,7 @@ namespace PedalTileFactory
                 std::vector<std::pair<juce::String, juce::String>> {
                     { "ts9Drive", "Drive" }, { "ts9Tone", "Tone" }, { "ts9Level", "Level" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "ts9Variant", "Variant", juce::StringArray { "TS9", "TS808", "TS10" } } });
+                    { "ts9Variant", "", juce::StringArray { "TS9", "TS808", "TS10" } } });
 
         // Original op-amp diode-feedback fuzz/distortion (RAT/Distortion+
         // archetype) -- see FangsModule.h. Oversampling follows the global
@@ -79,7 +79,7 @@ namespace PedalTileFactory
                     { "tapeDrive", "Drive" }, { "tapeCompression", "Comp" }, { "tapeTone", "Tone" },
                     { "tapeAge", "Age" }, { "tapeMix", "Mix" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "tapeType", "Type", juce::StringArray { "Studio", "Cassette" } } });
+                    { "tapeType", "", juce::StringArray { "Studio", "Cassette" } } });
 
         if (id == "amp")
             return std::make_unique<AmpTile> (apvts);
@@ -91,14 +91,14 @@ namespace PedalTileFactory
             return std::make_unique<GenericKnobsTile> (apvts, id, "Tremolo", "tremOn",
                 std::vector<std::pair<juce::String, juce::String>> { { "tremAmount", "Amount" }, { "tremRate", "Rate" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "tremVoice", "Voice", juce::StringArray { "Bias", "Harmonic" } } });
+                    { "tremVoice", "", juce::StringArray { "Bias", "Harmonic" } } });
 
         if (id == "chorus")
             return std::make_unique<GenericKnobsTile> (apvts, id, "July", "chorusOn",
                 std::vector<std::pair<juce::String, juce::String>> {
                     { "chorusRate", "Rate" }, { "chorusDepth", "Depth" }, { "chorusLag", "Lag" }, { "chorusMix", "Mix" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "chorusWaveform", "Wave", juce::StringArray { "Sine", "Triangle" } },
+                    { "chorusWaveform", "", juce::StringArray { "Sine", "Triangle" } },
                     { "chorusDCV", "D-C-V", juce::StringArray { "Dry", "Chorus", "Vibrato" } } });
 
         // Ported from Rockalizer -- Dimension D/SDD-320-style ensemble
@@ -131,7 +131,7 @@ namespace PedalTileFactory
                     { "spaceEchoWobble", "Wobble" },
                     { "spaceEchoDrive", "Drive" }, { "spaceEchoMix", "Mix" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "spaceEchoPattern", "Pattern",
+                    { "spaceEchoPattern", "",
                       juce::StringArray { "Straight", "Bounce", "Gallop", "Cluster", "Wash", "Ping-Pong" } } });
 
         if (id == "reverb")
@@ -140,7 +140,7 @@ namespace PedalTileFactory
                     { "reverbPreDelay", "PreDelay" }, { "reverbDecay", "Decay" }, { "reverbTone", "Tone" },
                     { "reverbMix", "Mix" }, { "reverbWidth", "Width" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "reverbModel", "Model", juce::StringArray { "Room", "Hall", "Plate" } } });
+                    { "reverbModel", "", juce::StringArray { "Room", "Hall", "Plate" } } });
 
         // Ported from Rockalizer -- spring-tank reverb, a separate pedal
         // from the algorithmic Hall/Room/Plate reverb above.
@@ -150,7 +150,7 @@ namespace PedalTileFactory
                     { "springDecay", "Decay" }, { "springDwell", "Dwell" }, { "springTone", "Tone" },
                     { "springDrip", "Drip" }, { "springMix", "Mix" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "springModel", "Model", juce::StringArray { "Space", "9100", "Echomixer" } } });
+                    { "springModel", "", juce::StringArray { "Space", "9100", "Echomixer" } } });
 
         // Original 1073-style channel EQ (shelving low/high, swept-mid
         // peak, multi-stop HPF) built from AMS Neve's own public spec --
@@ -163,7 +163,7 @@ namespace PedalTileFactory
             return std::make_unique<GenericKnobsTile> (apvts, id, "Desk", "deskOn",
                 std::vector<std::pair<juce::String, juce::String>> { { "deskAmount", "Amount" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "deskStyle", "Style", juce::StringArray { "Subtle", "Classic", "Hot" } } });
+                    { "deskStyle", "", juce::StringArray { "Subtle", "Classic", "Hot" } } });
 
         if (id == "eq")
             return std::make_unique<EQTile> (apvts);

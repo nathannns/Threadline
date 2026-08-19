@@ -73,7 +73,7 @@ public:
         bassKnob = makeTileKnob (*this, apvtsIn, "ampBass", "Bass");
         midKnob = makeTileKnob (*this, apvtsIn, "ampMid", "Mid");
         trebleKnob = makeTileKnob (*this, apvtsIn, "ampTreble", "Treble");
-        voiceCombo = makeTileCombo (*this, apvtsIn, "ampVoice", "Voice", { "Vintage 5E3", "Boutique", "Vox Top Boost", "Deluxe 63" });
+        voiceCombo = makeTileCombo (*this, apvtsIn, "ampVoice", "", { "Vintage 5E3", "Boutique", "Vox Top Boost", "Deluxe 63" });
         updateVoiceVisibility (true);
         startTimerHz (15);
     }
@@ -184,7 +184,7 @@ public:
     explicit DelayTile (juce::AudioProcessorValueTreeState& apvtsIn)
         : PedalTileComponent (apvtsIn, "delay", "Delay", "echoOn")
     {
-        modelCombo = makeTileCombo (*this, apvtsIn, "delayModel", "Model", { "Plexer", "Copier" });
+        modelCombo = makeTileCombo (*this, apvtsIn, "delayModel", "", { "Plexer", "Copier" });
         echoTime = makeTileKnob (*this, apvtsIn, "echoTime", "Time");
         echoSustain = makeTileKnob (*this, apvtsIn, "echoSustain", "Sustain");
         echoVolume = makeTileKnob (*this, apvtsIn, "echoVolume", "Volume");
@@ -510,7 +510,11 @@ public:
     // body room) reads far better than stacking them, which previously
     // either clipped the lower slot or pushed it off-screen.
     int getPreferredWidth() const override { return 540; }
-    int getPreferredHeight() const override { return 460; }
+    // Scaled down along with the strip's own standard tileHeight (400 ->
+    // 300) -- kept modestly taller than that standard since it still needs
+    // room for its own header plus two nested pedals' worth of content,
+    // but shrunk proportionally rather than left at its old absolute size.
+    int getPreferredHeight() const override { return 340; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
@@ -540,18 +544,19 @@ protected:
 
 private:
     // Lays `child` out at its own natural, undistorted proportions (the
-    // same ~400px-tall reference every top-level tile is designed to
-    // render correctly at), then uniformly scales it via an AffineTransform
-    // to FILL `slotArea` as much as possible on whichever axis is the
-    // tighter fit -- deliberately not capped at 1x, since each slot now has
-    // roughly the same aspect ratio as a normal tile's own body, so this
-    // fills (rather than just fits inside) the slot with only the
-    // unavoidable sub-pixel-scale leftover on the other axis. JUCE
-    // transforms painting and mouse hit-testing together, so every knob/
-    // combo/toggle inside stays fully draggable/clickable regardless.
+    // same ~300px-tall reference every top-level tile is designed to
+    // render correctly at -- see PedalboardComponent::tileHeight), then
+    // uniformly scales it via an AffineTransform to FILL `slotArea` as much
+    // as possible on whichever axis is the tighter fit -- deliberately not
+    // capped at 1x, since each slot now has roughly the same aspect ratio
+    // as a normal tile's own body, so this fills (rather than just fits
+    // inside) the slot with only the unavoidable sub-pixel-scale leftover
+    // on the other axis. JUCE transforms painting and mouse hit-testing
+    // together, so every knob/combo/toggle inside stays fully draggable/
+    // clickable regardless.
     static void positionScaledChild (PedalTileComponent& child, juce::Rectangle<int> slotArea)
     {
-        constexpr int naturalHeight = 400;
+        constexpr int naturalHeight = 300;
         const auto naturalWidth = juce::jmax (150, child.getPreferredWidth());
         child.setBounds (0, 0, naturalWidth, naturalHeight);
         const auto scale = juce::jmin ((float) slotArea.getWidth() / (float) naturalWidth,

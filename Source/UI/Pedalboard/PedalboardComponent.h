@@ -108,14 +108,14 @@ private:
 
     PedalTileComponent* draggedTile = nullptr;
 
-    // Half of the previous 48px -- InsertPedalButton (40px) now always
-    // overlaps its neighboring tiles' own bounds a little regardless, so
-    // it relies on setAlwaysOnTop(true) rather than a wide non-overlapping
-    // gap to stay reliably hoverable/clickable (see InsertPedalButton).
-    static constexpr int tileGap = 24;
+    // Halved again from 24px -- InsertPedalButton (40px) already overlaps
+    // its neighboring tiles' own bounds regardless of gap size, so it
+    // relies entirely on setAlwaysOnTop(true) rather than gap width to
+    // stay reliably hoverable/clickable (see InsertPedalButton).
+    static constexpr int tileGap = 12;
     static constexpr int tileMargin = 16;
     // Fixed portrait stompbox proportions -- see layoutTiles().
-    static constexpr int tileHeight = 400;
+    static constexpr int tileHeight = 300;
     static constexpr int tileTopMargin = 24;
     static constexpr int insertButtonSize = 40;
 
