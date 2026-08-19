@@ -806,6 +806,12 @@ private:
         float vaAcPrev = 0.0f, gridCharge = 0.0f, iAcPrev = 0.0f;
         float Va0 = 150.0f, Ia0 = 0.0f, restingGridCharge = 0.0f;
         double sampleRate = 44100.0;
+        // Grid-charge one-pole decay coefficient -- depends only on
+        // sampleRate/Rg/Cin, none of which change between prepare() calls,
+        // so this is cached there once rather than calling std::exp() on
+        // every single processSample() (audio-rate, this ran millions of
+        // times a second computing the exact same value every time).
+        float gridChargeLeaky = 0.0f;
 
         // Numerically stable softplus: log(1+e^(kx))/k without ever
         // exponentiating a large positive argument.
@@ -919,6 +925,7 @@ private:
         void prepare (double newSampleRate) noexcept
         {
             sampleRate = newSampleRate;
+            gridChargeLeaky = std::exp (-1.0f / (float) (sampleRate * Rg * Cin));
             solveBiasPoint();
             reset();
         }
@@ -976,8 +983,7 @@ private:
             // cap through Rg, chasing a target of Ig(Vg)*Rg (Ohm's law
             // across the grid-leak resistor) with time constant Rg*Cin.
             const auto targetCharge = gridCurrent (vg) * Rg;
-            const auto leaky = std::exp (-1.0f / (float) (sampleRate * Rg * Cin));
-            gridCharge = leaky * gridCharge + (1.0f - leaky) * targetCharge;
+            gridCharge = gridChargeLeaky * gridCharge + (1.0f - gridChargeLeaky) * targetCharge;
 
             const auto iaAc = anodeCurrent (vg, Va0 + vaAcPrev) - Ia0;
 
@@ -1293,6 +1299,12 @@ private:
         {
             const auto vgActual = vin + gridBiasOffset - gridCharge;
             const auto va = Va0 + vaAcPrev;
+            // Loop-invariant: va (and therefore atanVa) never changes across
+            // the Newton-Raphson iterations below -- only vkGuess does. Was
+            // being recomputed on every one of the 6 iterations even though
+            // std::atan() only ever needed evaluating once per
+            // processSample() call.
+            const auto atanVa = std::atan (va / kvb);
             auto vkGuess = vk;
             for (int iter = 0; iter < 6; ++iter)
             {
@@ -1302,7 +1314,6 @@ private:
                 const auto e1v = screenVoltage * h;
                 const auto sig = 1.0f / (1.0f + std::exp (-kp * x));
                 const auto dE1DVgk = sig;
-                const auto atanVa = std::atan (va / kvb);
                 const auto dIaDVgk = ex * std::pow (e1v, ex - 1.0f) * dE1DVgk / kg1 * atanVa;
 
                 const auto y = screenVoltage / mu + vgk;
