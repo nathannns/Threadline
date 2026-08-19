@@ -153,6 +153,17 @@ void PedalboardComponent::layoutTiles()
     addButton.setBounds (x, y + height / 2 - insertButtonSize / 2, insertButtonSize, insertButtonSize);
     x += insertButtonSize + tileMargin;
     boardContent.setSize (juce::jmax (x, viewport.getWidth()), juce::jmax (y + height + tileTopMargin, viewport.getHeight()));
+
+    // Always keep insert buttons above every tile, not just the one being
+    // dragged (PedalTileComponent::mouseDown raises the dragged tile to
+    // front, which -- without this -- could permanently sit above an
+    // insert button in the same gap; that button would then never even
+    // receive its own mouseEnter to raise itself in response, since the
+    // tile on top would intercept the hover first). Re-asserted on every
+    // layout rather than relying purely on hover, so a "+" button shows up
+    // reliably at rest, not only after some earlier lucky hover order.
+    for (auto& button : insertButtons)
+        button->toFront (false);
 }
 
 void PedalboardComponent::showAddMenu (juce::Component& anchor, int insertIndex)
