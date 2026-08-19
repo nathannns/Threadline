@@ -539,23 +539,23 @@ protected:
     }
 
 private:
-    // Lays `child` out at its own natural, undistorted size (the same
-    // ~400px-tall reference every top-level tile is designed to render
-    // correctly at -- knobs sized reasonably, text legible), then shrinks
-    // it down uniformly (never stretched non-uniformly, and never scaled
-    // up past 1x) via an AffineTransform so it fits inside `slotArea` --
-    // a no-op in the common case now that each slot has roughly a normal
-    // tile's own body room, and only a real fallback for an unusually wide
-    // child (e.g. EQTile). JUCE transforms painting and mouse hit-testing
-    // together, so every knob/combo/toggle inside stays fully draggable/
-    // clickable regardless.
+    // Lays `child` out at its own natural, undistorted proportions (the
+    // same ~400px-tall reference every top-level tile is designed to
+    // render correctly at), then uniformly scales it via an AffineTransform
+    // to FILL `slotArea` as much as possible on whichever axis is the
+    // tighter fit -- deliberately not capped at 1x, since each slot now has
+    // roughly the same aspect ratio as a normal tile's own body, so this
+    // fills (rather than just fits inside) the slot with only the
+    // unavoidable sub-pixel-scale leftover on the other axis. JUCE
+    // transforms painting and mouse hit-testing together, so every knob/
+    // combo/toggle inside stays fully draggable/clickable regardless.
     static void positionScaledChild (PedalTileComponent& child, juce::Rectangle<int> slotArea)
     {
         constexpr int naturalHeight = 400;
         const auto naturalWidth = juce::jmax (150, child.getPreferredWidth());
         child.setBounds (0, 0, naturalWidth, naturalHeight);
-        const auto scale = juce::jmin (1.0f, juce::jmin ((float) slotArea.getWidth() / (float) naturalWidth,
-                                                           (float) slotArea.getHeight() / (float) naturalHeight));
+        const auto scale = juce::jmin ((float) slotArea.getWidth() / (float) naturalWidth,
+                                        (float) slotArea.getHeight() / (float) naturalHeight);
         // Whichever axis isn't the binding constraint on `scale` (almost
         // always width here, since naturalHeight is what caps it) leaves
         // leftover room in `slotArea` -- centered on both axes, rather

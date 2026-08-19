@@ -33,27 +33,34 @@ public:
 
 private:
     // A "+" that's invisible until the mouse hovers over it -- sits in the
-    // gap between two neighboring tiles (or after the last one) so a pedal
-    // can be inserted at a specific position, not just appended at the
-    // end. `Button::paintButton`'s own `highlighted`/`down` flags already
-    // track hover/press state, so no separate mouseEnter/mouseExit
-    // bookkeeping is needed here.
+    // gap between two neighboring tiles (or before the first / after the
+    // last one) so a pedal can be inserted at a specific position, not
+    // just appended at the end.
+    //
+    // Hover is tracked explicitly (mouseEnter/mouseExit -> a plain bool),
+    // not via Button's own shouldDrawButtonAsHighlighted() -- and the
+    // button is marked setAlwaysOnTop(true), which makes JUCE hit-test and
+    // paint it above every sibling unconditionally, regardless of z-order.
+    // The gap is narrower than this button (see tileGap) since a neighbor
+    // can be much wider now (ParallelTile), so this button always overlaps
+    // a tile's own bounds a little either way; alwaysOnTop is what makes
+    // that overlap harmless instead of a race over which sibling's own
+    // mouseDown/toFront() happened to win most recently.
     class InsertPedalButton : public juce::Button
     {
     public:
-        InsertPedalButton() : juce::Button ("Insert pedal here") { setTooltip ("Insert a pedal here"); }
-
-        // Guarantees this sits above whichever neighbouring tile it
-        // overlaps while hovered -- without this, a tile raised to front
-        // during its own drag (see PedalTileComponent::mouseDown) could sit
-        // above an insert button occupying the same gap, silently eating
-        // hover/click even though the button is still fully visible-ish
-        // underneath.
-        void mouseEnter (const juce::MouseEvent&) override { toFront (false); }
-
-        void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+        InsertPedalButton() : juce::Button ("Insert pedal here")
         {
-            if (! highlighted && ! down)
+            setTooltip ("Insert a pedal here");
+            setAlwaysOnTop (true);
+        }
+
+        void mouseEnter (const juce::MouseEvent&) override { hovering = true; repaint(); }
+        void mouseExit (const juce::MouseEvent&) override { hovering = false; repaint(); }
+
+        void paintButton (juce::Graphics& g, bool /*highlighted*/, bool down) override
+        {
+            if (! hovering && ! down)
                 return;
             auto bounds = getLocalBounds().withSizeKeepingCentre (
                 juce::jmin (getWidth(), 34), juce::jmin (getWidth(), 34)).toFloat();
@@ -67,6 +74,9 @@ private:
             g.drawLine (c.x - r, c.y, c.x + r, c.y, 2.6f);
             g.drawLine (c.x, c.y - r, c.x, c.y + r, 2.6f);
         }
+
+    private:
+        bool hovering = false;
     };
 
     void timerCallback() override;
@@ -98,16 +108,11 @@ private:
 
     PedalTileComponent* draggedTile = nullptr;
 
-    // Wide enough to fully contain an insertButtonSize (40px) button with
-    // room to spare either side, so it never overlaps a neighboring tile's
-    // own bounds -- the previous 14px gap forced the button to spill ~13px
-    // into each neighbor, which made whichever tile's own mouseDown/drag
-    // handling happened to be on top intercept the hover before the button
-    // itself ever saw it. Removing the overlap at its root, rather than
-    // only patching z-order after the fact (still done below too, as a
-    // second line of defence), is what makes the hover-to-reveal actually
-    // reliable.
-    static constexpr int tileGap = 48;
+    // Half of the previous 48px -- InsertPedalButton (40px) now always
+    // overlaps its neighboring tiles' own bounds a little regardless, so
+    // it relies on setAlwaysOnTop(true) rather than a wide non-overlapping
+    // gap to stay reliably hoverable/clickable (see InsertPedalButton).
+    static constexpr int tileGap = 24;
     static constexpr int tileMargin = 16;
     // Fixed portrait stompbox proportions -- see layoutTiles().
     static constexpr int tileHeight = 400;
