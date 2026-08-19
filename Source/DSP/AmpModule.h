@@ -828,8 +828,20 @@ private:
 
         float anodeCurrent (float vg, float va) const noexcept
         {
+            return anodeCurrentGivenGridCurrent (vg, va, gridCurrent (vg));
+        }
+
+        // Same equation as anodeCurrent(), but takes an already-computed
+        // gridCurrent(vg) instead of recomputing it -- processSample() below
+        // needs gridCurrent(vg) for its own blocking-distortion charge
+        // target AND for the anode current, with the same vg both times;
+        // routing both through this shared helper means that (genuinely
+        // costly: a softplus() -- exp + log1p -- plus a pow()) call happens
+        // once per sample instead of twice.
+        float anodeCurrentGivenGridCurrent (float vg, float va, float gc) const noexcept
+        {
             const auto veff = vg + va / mu;
-            return G * std::pow (softplus (veff, C), gamma) - gridCurrent (vg);
+            return G * std::pow (softplus (veff, C), gamma) - gc;
         }
 
         // Self-consistent DC operating point: the quiescent plate
@@ -982,10 +994,13 @@ private:
             // Blocking distortion: grid current charges the input coupling
             // cap through Rg, chasing a target of Ig(Vg)*Rg (Ohm's law
             // across the grid-leak resistor) with time constant Rg*Cin.
-            const auto targetCharge = gridCurrent (vg) * Rg;
+            // Computed once and reused below -- see
+            // anodeCurrentGivenGridCurrent()'s own comment.
+            const auto gc = gridCurrent (vg);
+            const auto targetCharge = gc * Rg;
             gridCharge = gridChargeLeaky * gridCharge + (1.0f - gridChargeLeaky) * targetCharge;
 
-            const auto iaAc = anodeCurrent (vg, Va0 + vaAcPrev) - Ia0;
+            const auto iaAc = anodeCurrentGivenGridCurrent (vg, Va0 + vaAcPrev, gc) - Ia0;
 
             // The plate load is really just Ra (Ohm's law: va_ac = -Ra*iaAc)
             // -- there is no real capacitor in parallel with it in the actual
