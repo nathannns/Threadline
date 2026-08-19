@@ -513,13 +513,13 @@ public:
 
     int getPreferredWidth() const override { return 260; }
 
-    // Two whole nested pedal tiles stacked, each needing roughly the same
-    // body room a normal top-level tile gets (~370px), plus this box's own
-    // header/slot-picker/blend chrome on top -- a plain single-effect
-    // tile's usual 400px is nowhere near enough (that's what silently
-    // collapsed every nested knob's slider down to zero-height and made
-    // them invisible while their labels still fit).
-    int getPreferredHeight() const override { return 1000; }
+    // Modestly taller than a standard tile (enough to keep both slots
+    // comfortably readable) without ballooning into something that no
+    // longer fits on screen -- each nested child is scale-transformed down
+    // to fit whatever room its slot actually has rather than this box
+    // growing to match the child's own natural size (see
+    // positionScaledChild()).
+    int getPreferredHeight() const override { return 620; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
@@ -538,6 +538,25 @@ protected:
     }
 
 private:
+    // Lays `child` out at its own natural, undistorted size (the same
+    // ~400px-tall reference every top-level tile is designed to render
+    // correctly at -- knobs sized reasonably, text legible), then shrinks
+    // it down uniformly (never stretched non-uniformly, and never scaled
+    // up past 1x) via an AffineTransform so it fits inside `slotArea`.
+    // JUCE transforms both painting and mouse hit-testing together, so
+    // every knob/combo/toggle inside stays fully draggable/clickable at
+    // its scaled-down on-screen position, just visually smaller.
+    static void positionScaledChild (PedalTileComponent& child, juce::Rectangle<int> slotArea)
+    {
+        constexpr int naturalHeight = 400;
+        const auto naturalWidth = juce::jmax (150, child.getPreferredWidth());
+        child.setBounds (0, 0, naturalWidth, naturalHeight);
+        const auto scale = juce::jmin (1.0f, juce::jmin ((float) slotArea.getWidth() / (float) naturalWidth,
+                                                           (float) slotArea.getHeight() / (float) naturalHeight));
+        child.setTransform (juce::AffineTransform::scale (scale)
+                                 .translated ((float) slotArea.getX(), (float) slotArea.getY()));
+    }
+
     void populateSlotCombo (juce::ComboBox& combo)
     {
         combo.addItem ("None", 1);
@@ -557,7 +576,7 @@ private:
         if (child != nullptr)
         {
             area.removeFromTop (4);
-            child->setBounds (area);
+            positionScaledChild (*child, area);
         }
     }
 
