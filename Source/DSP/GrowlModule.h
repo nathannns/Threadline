@@ -109,6 +109,20 @@ public:
         // touch).
         sourceResistance = juce::jmap (bias01, 1000.0f, 220000.0f);
         biasCurrent = 3.0e-6f + fuzzAmount * 40.0e-6f;
+        // Checked a real Fuzz Face schematic directly (el34world archive,
+        // Hendrix/Dunlop JH-2): Q1 and Q2 aren't two independently
+        // cascaded stages RC-coupled together the way Bison's two clip
+        // stages are -- the "Fuzz" pot sits in a feedback network shared
+        // by BOTH transistors (Q1's emitter bridged to Q2's emitter
+        // region through it), so turning Fuzz down reduces the whole
+        // loop's gain, not just Q1's own bias point. stage2DriveScale
+        // used to be a fixed constant that fuzzAmount never touched at
+        // all -- stage 2 (this module's stand-in for Q2, see its own
+        // struct comment on why it's a diode-pair rather than a second
+        // real transistor solve) now scales with Fuzz too, so the knob's
+        // effect is felt through the whole chain the way the real shared
+        // loop behaves, not confined to Q1's DC bias alone.
+        stage2DriveScale = 15.0f + fuzzAmount * 40.0f;
 
         // Quiescent (silent-input) collector current -- subtracted from the
         // running ic1 in process() so stage1Out carries only the AC
@@ -272,7 +286,7 @@ private:
     static constexpr float beta = 110.0f, ibKnee = 150.0e-6f;
     float ic1Quiescent = 0.0f; // see setParameters()'s own comment
     static constexpr float collectorLoadOhms = 8200.0f;
-    static constexpr float stage2DriveScale = 40.0f;
+    float stage2DriveScale = 40.0f; // see setParameters()'s own comment on why this now tracks fuzzAmount
     // Empirically-tuned via a standalone harness (same discipline as
     // Klon/TS9's own calibration constants) -- stage2's raw output peak
     // plateaus around 0.23-0.26 across the full Bias x Fuzz grid (the
