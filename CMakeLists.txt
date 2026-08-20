@@ -404,3 +404,21 @@ target_link_libraries(CompressorValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Low Dynamic (floating-centre expander) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real LowDynamicModule and sweeps up x down x fast-mode x
+# mix x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. See
+# Source/LowDynamicValidation.cpp.
+juce_add_console_app(LowDynamicValidation PRODUCT_NAME "LowDynamicValidation")
+juce_generate_juce_header(LowDynamicValidation)
+target_sources(LowDynamicValidation PRIVATE Source/LowDynamicValidation.cpp)
+target_compile_features(LowDynamicValidation PRIVATE cxx_std_17)
+target_link_libraries(LowDynamicValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
