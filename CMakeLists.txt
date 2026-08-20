@@ -584,3 +584,48 @@ target_link_libraries(CarbonCopyValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Space Echo (Satellite-201, RE-201-style 3-head tape echo) numeric
+# verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real SpaceEchoModule and sweeps time x repeats x bass x
+# treble x wobble x drive x pattern x amplitude x frequency at 48/96/192k for
+# NaN/Inf/blow-up, holding the feedback + hysteresis-drive + wobble-modulated
+# read loop at steady state. See Source/SpaceEchoValidation.cpp.
+juce_add_console_app(SpaceEchoValidation PRODUCT_NAME "SpaceEchoValidation")
+juce_generate_juce_header(SpaceEchoValidation)
+target_sources(SpaceEchoValidation PRIVATE
+    Source/SpaceEchoValidation.cpp
+    Source/DSP/SpaceEchoModule.cpp
+)
+target_compile_features(SpaceEchoValidation PRIVATE cxx_std_17)
+target_link_libraries(SpaceEchoValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Hall/Room/Plate reverb (8-line FDN) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real HallRoomReverbModule and sweeps pre-delay x decay x
+# tone x mix x width x model x amplitude x frequency at 48/96/192k for
+# NaN/Inf/blow-up, holding the orthogonal-mixed FDN at steady state. See
+# Source/HallRoomReverbValidation.cpp.
+juce_add_console_app(HallRoomReverbValidation PRODUCT_NAME "HallRoomReverbValidation")
+juce_generate_juce_header(HallRoomReverbValidation)
+target_sources(HallRoomReverbValidation PRIVATE
+    Source/HallRoomReverbValidation.cpp
+    Source/DSP/HallRoomReverbModule.cpp
+)
+target_compile_features(HallRoomReverbValidation PRIVATE cxx_std_17)
+target_link_libraries(HallRoomReverbValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
