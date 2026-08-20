@@ -211,3 +211,21 @@ target_link_libraries(AmpBenchmark
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- TS9 clipper numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real TS9Module::TS9Clipper and sweeps it for NaN/Inf/
+# blow-up, then measures its small-signal frequency response to confirm the
+# ported BYOD R-type scattering matrix. See Source/TS9Validation.cpp.
+juce_add_console_app(TS9Validation PRODUCT_NAME "TS9Validation")
+juce_generate_juce_header(TS9Validation)
+target_sources(TS9Validation PRIVATE Source/TS9Validation.cpp)
+target_compile_features(TS9Validation PRIVATE cxx_std_17)
+target_link_libraries(TS9Validation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)

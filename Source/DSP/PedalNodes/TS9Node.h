@@ -36,7 +36,7 @@ public:
         return crossfadeToggle (buffer, active, [this, &selected] (juce::AudioBuffer<float>& b)
         {
             selected.setEnabled (true);
-            selected.setVariant (static_cast<TS9Module::Variant> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
+            selected.setVoicing (static_cast<TS9Module::Voicing> (juce::jlimit (0, 2, (int) p ("ts9Variant"))));
             selected.setParameters (p ("ts9Drive"), p ("ts9Tone"), p ("ts9Level"));
             selected.process (b);
         });

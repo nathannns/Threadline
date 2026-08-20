@@ -107,7 +107,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 1.0f, 0.001f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ts9Level"), "TS9 Level",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ts9Variant"), "TS9 Variant",
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ts9Variant"), "TS9 Voicing",
         juce::StringArray { "TS9", "TS808", "TS10" }, 0));
     // Deprecated: kept registered (never remove a shipped
     // AudioParameterChoice) but no longer read anywhere in the live

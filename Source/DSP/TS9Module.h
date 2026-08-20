@@ -3,96 +3,129 @@
 #include <JuceHeader.h>
 #include "WDFCore.h"
 
-// TS9-style overdrive, modeled after the real TS808/9 signal path rather
-// than a single clip-and-voice block:
-//  1. A FIXED pre-clip highpass (~720Hz, always on, not user-controlled) —
-//     this is where the TS9's famous "mid-hump, honky" character actually
-//     comes from: rolling off bass *before* the clipper means the clipped
-//     signal's harmonic content is inherently mid-forward. Real TS808/9
-//     circuits have this baked into the input coupling network; it isn't
-//     something the Tone knob touches.
-//  2. A genuine Wave Digital Filter simulation of the real op-amp clipping
-//     stage (TS9Clipper below), in place of a curve-fit asinh approximation
-//     — ported from and verified against Chowdhury-DSP/BYOD's own Tube
-//     Screamer model (src/processors/drive/tube_screamer/TubeScreamerWDF.h):
-//     the classic inverting-op-amp-with-diode-feedback clipper (input
-//     resistor Rin=4.7k, feedback Rf=51k plus up to 500k from the Drive
-//     pot, real 1N4148 diode-pair parameters Is=4.352nA/Vt=25.85mV*1.906
-//     ideality), solved via the same closed-form Wright Omega function
-//     KlonModule's clipper uses. BYOD's reference circuit models the
-//     op-amp's own finite gain/impedance via a full R-type multi-port
-//     adaptor derived by their R-Solver tool; this uses the ideal-op-amp
-//     limit of that same circuit (infinite gain, zero output impedance —
-//     the standard simplifying assumption for this kind of clipper) rather
-//     than hand-porting that adaptor's large symbolically-derived
-//     scattering matrix, since a transcription error there would be far
-//     more likely and far harder to catch than in the simpler adapted
-//     series/parallel tree Klon's clipper uses.
-//  3. A post-clip Tone control that's a genuine treble-cut lowpass sweep
-//     (what the real TS9's Tone pot actually is), not a swept mid-bump —
-//     turning Tone down darkens it, up brightens it, same as the pedal.
+// "Breaker" overdrive — one faithful Tube Screamer circuit, offered with
+// three selectable "voicings" named after the TS9 / TS808 / TS10 family.
 //
-// setVariant() switches between the three well-known Tube Screamer-family
-// pedals by retuning the same topology above, per their widely-documented
-// differences: TS808 (the 1979 original, JRC4558D op-amp) is generally
-// described as warmer/smoother with a touch more bass reaching the clipper
-// than the TS9 reissue; TS9 is the mid-forward "honky" baseline; TS10 (the
-// later Classic Series pedal) is consistently noted for a wider Tone range
-// and noticeably more low end than either — its input network passes more
-// bass before clipping. The clipper circuit itself (Rin/Rf/diode values)
-// stays the same across all three — there's no similarly well-documented
-// per-variant difference there to model with the same confidence, so that
-// differentiation still lives entirely in the pre-clip highpass corner and
-// post-clip Tone range below, same as before this rewrite.
+// The clipping stage is a genuine Wave Digital Filter simulation of the real
+// op-amp clipping stage, ported from and verified against Chowdhury-DSP/
+// BYOD's own Tube Screamer model (src/processors/drive/tube_screamer/
+// TubeScreamerWDF.h): the classic non-inverting op-amp with diode feedback
+// (input R5=10k, feedback R6=51k plus up to 500k from the Drive pot, real
+// 1N4148 diode-pair parameters Is=4.352nA / Vt=25.85mV * 1.906 ideality),
+// solved via the closed-form Wright Omega function KlonModule's clipper
+// uses. The op-amp's finite gain (Ag=100), input impedance (Ri=1e9) and
+// output impedance (Ro=0.1) are modeled with a full R-type multi-port
+// adaptor (WDF::RTypeAdaptor) whose 4x4 scattering matrix is BYOD's R-Solver
+// output, ported character-for-character. This carries the two feedback-
+// network elements a simpler ideal-op-amp model cannot represent: C4 (51pF,
+// across the feedback resistor) and the R4+C3 (4.7k + 47nF) leg to ground —
+// the latter being the real Tube Screamer's mid-hump (~720Hz). No separate
+// pre-clip highpass is needed any more: the mid-hump lives inside the
+// circuit itself, exactly where the real one does.
+//
+// A post-clip Tone control is a genuine treble-cut lowpass sweep (what the
+// real pedal's Tone pot is) — turning Tone down darkens it, up brightens it.
+//
+// setVoicing() selects one of three voicings. IMPORTANT: the underlying
+// CLIPPING CIRCUIT IS SCHEMATICALLY IDENTICAL across all three (same op-amp,
+// feedback network, R4+C3 mid-hump, diode pair and tone network — see the
+// real Ibanez schematics, ElectroSmash's Tube Screamer analysis, or Geofex's
+// "Technology of the Tube Screamer"). The voicing layer below therefore
+// models only the *subjective* character each name is known for, not a
+// circuit difference — and it is deliberately small, kept far from the
+// mid-hump band, and documented as folklore:
+//   - TS9:  the mid-forward "honky" baseline — no extra voicing.
+//   - TS808: a touch warmer/rounder — a gentle +2dB low-shelf lift below
+//     250Hz, applied *before* the clipper (more bass reaches the diodes).
+//   - TS10: more low end plus the family's widely-noted wider Tone range —
+//     a +4dB pre-clip low shelf and a broader tone sweep (900Hz..13.5kHz
+//     vs the 1.2k..11k baseline).
 // Like KlonModule, oversamples just the nonlinear clip stage (mode
-// selectable, default 2x) — the pre-clip highpass and post-clip tone filter
-// are linear (no new harmonic content), only the clip itself needs the
-// higher rate to avoid aliasing the harmonics it generates. Unlike Klon,
-// TS9 has no dry/wet blend (it's fully wet), so there's no parallel dry
-// path to keep aligned with the oversampler's added latency — one less
-// thing to compensate for.
+// selectable, default 2x) — the voicing and tone filters are linear and only
+// the clip itself generates the harmonics that need the higher rate. Unlike
+// Klon there is no dry/wet blend (it's fully wet), so no parallel dry path
+// to keep aligned with the oversampler's added latency.
 class TS9Module
 {
 public:
-    enum class Variant { TS9, TS808, TS10 };
+    enum class Voicing { TS9, TS808, TS10 };
 
-    // The classic inverting op-amp clipper, ideal-op-amp limit: the input
-    // resistor's current (Vin/Rin) is a Norton current injected into a node
-    // formed by the feedback resistor Rf in parallel with the diode pair —
-    // exactly what an ideal virtual-ground op-amp reduces this topology to.
-    // Rf is itself the Drive pot's value (51k fixed + up to 500k of pot),
-    // so Drive directly modulates the real circuit element rather than
-    // pre-scaling the signal into a fixed clipper.
+    // The real TS9 clipping stage, ported verbatim from Chowdhury-DSP/BYOD's
+    // TubeScreamerWDF.h -- the non-inverting op-amp with diode feedback, with
+    // the op-amp's FINITE gain/impedance modeled via a full R-type multi-port
+    // adaptor (WDF::RTypeAdaptor) instead of the ideal-op-amp limit. Topology
+    // and element values match BYOD exactly:
+    //   - Port B (input): 1uF coupling cap (voltage source) || 10k (R5)
+    //   - Port C (feedback to ground): 4.7k + 47nF (R4 + C3, the mid-hump)
+    //   - Port D (output): 1M load
+    //   - Port A (feedback): (51k + Drive pot 500k) || 51pF, plus the diode
+    //     pair as the root -- Drive moves the feedback resistance directly.
     struct TS9Clipper
     {
-        WDF::ResistiveCurrentSource feedback { 51000.0f };
-        WDF::DiodePair<WDF::ResistiveCurrentSource> dp { feedback, 4.352e-9f, 0.02585f * 1.906f };
+        // Port C
+        WDF::ResistorCapacitorSeries R4_ser_C3 { 4.7e3f, 0.047e-6f, 44100.0 };
+        // Port D
+        WDF::Resistor RL { 1.0e6f };
+        // Port B
+        WDF::CapacitiveVoltageSource Vin_C2 { 1.0e-6f, 44100.0 };
+        WDF::Resistor R5 { 10.0e3f };
+        WDF::Parallel<WDF::CapacitiveVoltageSource, WDF::Resistor> P1 { Vin_C2, R5 };
+        // The op-amp itself: finite-gain R-type adaptor over ports B/C/D.
+        WDF::RTypeAdaptor<decltype (P1), decltype (R4_ser_C3), decltype (RL)> R { P1, R4_ser_C3, RL };
+        // Port A
+        WDF::ResistorCapacitorParallel R6_P1_par_C4 { 51.0e3f, 51.0e-12f, 44100.0 };
+        WDF::Parallel<WDF::ResistorCapacitorParallel, decltype (R)> P3 { R6_P1_par_C4, R };
+        // Root: the antiparallel 1N4148 diode pair (Is=4.352nA, Vt=25.85mV
+        // folded with nDiodes=1.906 ideality, exactly as BYOD passes it).
+        WDF::DiodePair<decltype (P3)> dp { P3, 4.352e-9f, 0.02585f * 1.906f };
 
-        void setFeedbackResistance (float ohms) noexcept
+        void prepare (double clipSampleRate)
         {
-            feedback.wdf.R = ohms;
-            feedback.wdf.G = 1.0f / ohms;
+            R4_ser_C3.prepare (clipSampleRate);
+            Vin_C2.prepare (clipSampleRate);
+            R6_P1_par_C4.prepare (clipSampleRate);
+            // Recompute the impedance chain top-down now the one-ports' R
+            // values are finalised at this rate.
+            R.calcImpedance();
+            P3.calcImpedance();
             dp.calcImpedance();
         }
 
-        void reset() noexcept { feedback.wdf.a = feedback.wdf.b = 0.0f; }
-
-        float processSample (float vin, float inputOneOverR) noexcept
+        void setFeedbackResistance (float ohms) noexcept
         {
-            feedback.setCurrent (-vin * inputOneOverR);
-            dp.incident (feedback.reflected());
-            feedback.incident (dp.reflected());
-            return WDF::voltage (feedback.wdf);
+            R6_P1_par_C4.setResistanceValue (ohms);
+            P3.calcImpedance();
+            dp.calcImpedance();
+        }
+
+        void reset() noexcept
+        {
+            R4_ser_C3.reset();
+            Vin_C2.reset();
+            R6_P1_par_C4.reset();
+            P1.wdf.a = P1.wdf.b = 0.0f;
+            R.wdf.a = R.wdf.b = 0.0f;
+            for (auto& x : R.avec)
+                x = 0.0f;
+            P3.wdf.a = P3.wdf.b = 0.0f;
+            dp.a = dp.b = 0.0f;
+        }
+
+        float processSample (float vin) noexcept
+        {
+            Vin_C2.setVoltage (vin);
+            dp.incident (P3.reflected());
+            P3.incident (dp.reflected());
+            return WDF::voltage (RL.wdf);
         }
     };
 
-    void setVariant (Variant newVariant)
+    void setVoicing (Voicing newVoicing)
     {
-        if (newVariant == variant)
+        if (newVoicing == voicing)
             return;
-        variant = newVariant;
-        updatePreClipFilter();
-        updateToneFilter();
+        voicing = newVoicing;
+        updateVoicing();
     }
     // oversamplingMode: 0 = off (1x), 1 = 2x, 2 = 4x -- same convention as
     // AmpModule's own oversamplingMode.
@@ -100,7 +133,7 @@ public:
     {
         sampleRate = spec.sampleRate;
         channelCount = juce::jlimit (1, 2, (int) spec.numChannels);
-        for (auto& f : preClipHighpass)
+        for (auto& f : voicingBass)
             f.prepare (spec);
         for (auto& f : toneFilter)
             f.prepare (spec);
@@ -109,14 +142,19 @@ public:
             (size_t) channelCount, stages,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
-        updatePreClipFilter();
-        updateToneFilter();
+        // The clipper's reactive elements (caps) and the R-type adaptor's
+        // scattering matrix depend on the sample rate, so prepare them at
+        // the OVERsampled rate the clip stage actually runs at.
+        const auto clipRate = sampleRate * (double) (1 << stages);
+        for (auto& c : clipper)
+            c.prepare (clipRate);
+        updateVoicing();
         reset();
     }
 
     void reset()
     {
-        for (auto& f : preClipHighpass)
+        for (auto& f : voicingBass)
             f.reset();
         for (auto& f : toneFilter)
             f.reset();
@@ -160,19 +198,21 @@ public:
         for (auto& c : clipper)
             c.setFeedbackResistance (feedbackOhms);
 
-        // Bass rolled off before the clipper (linear, stays at base rate) —
-        // see class comment.
-        preClipBuffer.setSize (numChannels, numSamples, false, false, true);
-        for (int ch = 0; ch < numChannels; ++ch)
-        {
-            auto* dst = preClipBuffer.getWritePointer (ch);
-            auto* src = buffer.getReadPointer (ch);
-            for (int i = 0; i < numSamples; ++i)
-                dst[i] = preClipHighpass[ch].processSample (src[i]);
-        }
+        // Voicing bass shelf, pre-clip, in place -- skipped entirely for the
+        // TS9 baseline (0dB) so it costs nothing when the voicing is off.
+        if (bassActive)
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                auto* d = buffer.getWritePointer (ch);
+                for (int i = 0; i < numSamples; ++i)
+                    d[i] = voicingBass[ch].processSample (d[i]);
+            }
 
-        // Only the nonlinear clip runs at 2x.
-        juce::dsp::AudioBlock<float> block (preClipBuffer);
+        // Only the nonlinear clip runs at the oversampled rate. The buffer is
+        // fed straight into the oversampler (no scratch copy): processSamplesUp
+        // reads it, processSamplesDown writes the clipped result back.
+        juce::dsp::AudioBlock<float> block (buffer);
+        block = block.getSubsetChannelBlock (0, (size_t) numChannels);
         auto osBlock = oversampling->processSamplesUp (block);
         const auto osSamples = (int) osBlock.getNumSamples();
         for (size_t ch = 0; ch < osBlock.getNumChannels(); ++ch)
@@ -181,12 +221,10 @@ public:
             {
                 const auto x = osBlock.getSample ((int) ch, i);
                 // Real op-amp clipper output (volts) -- outputCalibration
-                // is an empirical scalar bringing that to a sensible audio
-                // range, same role the old asinh version's driveGain-based
-                // divisor played. A wide tanh safety rail backstops that
-                // guess (the diode pair itself already self-limits, same
-                // as real hardware -- this is only a numeric safety net).
-                auto clipped = clipper[ch].processSample (x, oneOverRin) * outputCalibration;
+                // brings that to a sensible audio range. A wide tanh safety
+                // rail backstops the diode pair (which already self-limits,
+                // same as real hardware -- this is only a numeric safety net).
+                auto clipped = clipper[ch].processSample (x) * outputCalibration;
                 clipped = safetyCeiling * std::tanh (clipped / safetyCeiling);
                 osBlock.setSample ((int) ch, i, clipped);
             }
@@ -196,66 +234,57 @@ public:
         for (int ch = 0; ch < numChannels; ++ch)
         {
             auto* out = buffer.getWritePointer (ch);
-            auto* clippedPtr = preClipBuffer.getReadPointer (ch);
             for (int i = 0; i < numSamples; ++i)
-                out[i] = toneFilter[ch].processSample (clippedPtr[i]) * outputLevel;
+                out[i] = toneFilter[ch].processSample (out[i]) * outputLevel;
         }
     }
 
 private:
-    void updatePreClipFilter()
+    void updateVoicing()
     {
-        // Fixed corner — not swept by any control, matching the real
-        // input coupling network. TS9 = baseline (most mid-forward); TS808
-        // lets a touch more bass through (warmer); TS10 lets the most bass
-        // through of the three (its widely-noted extra low end).
-        const auto corner = variant == Variant::TS808 ? 640.0f
-                           : variant == Variant::TS10  ? 480.0f
-                                                        : 720.0f;
-        auto coeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, corner, 0.707f);
-        for (auto& f : preClipHighpass)
-            *f.coefficients = *coeffs;
+        // Subjective voicing, NOT a schematic difference (see class comment).
+        // +2dB (TS808) / +4dB (TS10) of gentle low-end lift ahead of the
+        // clipper; 0dB (TS9) bypasses the filter entirely.
+        const auto bassDb = voicing == Voicing::TS808 ? 2.0f
+                          : voicing == Voicing::TS10  ? 4.0f
+                                                      : 0.0f;
+        bassActive = bassDb > 0.1f;
+        if (bassActive)
+        {
+            auto coeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (
+                sampleRate, 250.0f, 0.707f, juce::Decibels::decibelsToGain (bassDb));
+            for (auto& f : voicingBass)
+                *f.coefficients = *coeffs;
+        }
+        updateToneFilter();
     }
 
     void updateToneFilter()
     {
-        // Treble-cut sweep. TS10's Tone control is documented as having a
-        // noticeably wider range than TS9/808 — darker at minimum, brighter
-        // at maximum.
-        const auto darkHz = variant == Variant::TS10 ? 900.0f : 1200.0f;
-        const auto brightHz = variant == Variant::TS10 ? 13500.0f : 11000.0f;
+        // Treble-cut sweep. TS10's Tone is consistently described (again in
+        // folklore, not the schematic) as noticeably wider than TS9/808's.
+        const auto darkHz = voicing == Voicing::TS10 ? 900.0f : 1200.0f;
+        const auto brightHz = voicing == Voicing::TS10 ? 13500.0f : 11000.0f;
         const auto cutoff = juce::jmap (lastTone01, 0.0f, 1.0f, darkHz, brightHz);
         auto coeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, cutoff, 0.707f);
         for (auto& f : toneFilter)
             *f.coefficients = *coeffs;
     }
 
-    juce::dsp::IIR::Filter<float> preClipHighpass[2], toneFilter[2];
+    juce::dsp::IIR::Filter<float> voicingBass[2], toneFilter[2];
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
-    juce::AudioBuffer<float> preClipBuffer;
     TS9Clipper clipper[2];
-    // Real Tube Screamer input resistor -- R5 in BYOD's TubeScreamerWDF.h
-    // (verified against their live source directly, not just the traced
-    // schematic image: `wdft::ResistorT<float> R5 { 10.0e3f };`, the
-    // resistor paired with the input coupling cap feeding the op-amp's "-"
-    // input). Previously coded as 4.7k, mislabeled after R4 -- R4 is a
-    // real component in this circuit too, but it's part of the FEEDBACK
-    // network (R4 in series with C3=47nF), not the input resistor. Getting
-    // this wrong mattered: Rf/Rin sets the clipper's effective gain before
-    // the diodes conduct, so a 4.7k-vs-10k Rin was scaling how hard a given
-    // input drove into clipping by more than 2x off the real circuit.
-    static constexpr float oneOverRin = 1.0f / 10000.0f;
+    bool bassActive = false;
     // Empirically-tuned, not physically derived -- see KlonModule's own
-    // outputCalibration for why. A harness sweep showed the ideal-op-amp
-    // diode clamp caps this stage's raw output around ~0.5-0.6V regardless
-    // of amplitude or Drive setting (physically correct -- a real TS9's
-    // diode pair clamps the swing once conducting, same as the real
-    // pedal), which at the original 1.2 multiplier never got past ~0.6-0.7
-    // out of the 3.0 safety ceiling -- reads as "not enough gain" even at
-    // max Drive. Raised to 4.5, which the same harness confirmed reaches
-    // ~2.0 (a solidly hot, but not fully pinned/fuzz-hard) output at max
-    // Drive + loud input, a real ~4x loudness increase.
-    static constexpr float outputCalibration = 4.5f;
+    // outputCalibration for why. Retuned for the finite-gain (non-inverting)
+    // port: the TS9Validation harness shows this topology's diode clamp caps
+    // the raw mid-band output around ~1.0V (vs ~0.5V for the old ideal-op-
+    // amp/inverting model), so the old 4.5 multiplier pushed the tanh safety
+    // rail into hard limiting. 2.25 maps ~1V raw -> 2.25 pre-tanh -> ~1.9
+    // audio units, the same mid level the old 4.5 produced, while the real
+    // mid-hump inside the clipper leaves the bass a touch lower (correct for
+    // a real Tube Screamer). The tanh rail stays a backstop, not the limiter.
+    static constexpr float outputCalibration = 2.25f;
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;
     int channelCount = 2;
@@ -263,5 +292,5 @@ private:
     float outputLevel = 1.0f;
     float lastTone01 = -1.0f;
     bool enabled = false;
-    Variant variant = Variant::TS9;
+    Voicing voicing = Voicing::TS9;
 };
