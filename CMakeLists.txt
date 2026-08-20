@@ -197,6 +197,24 @@ target_link_libraries(Threadline
         juce::juce_recommended_warning_flags
 )
 
+# --- AmpModule per-voice output-level calibration probe ---
+# A diagnostic console app, not part of the shipping plugin -- feeds sines
+# through each of the 7 voices and reports settled RMS + the scale to hit a
+# target level. Produced AmpModule::perVoiceNormalise's constants; see
+# Source/AmpLevelProbe.cpp.
+juce_add_console_app(AmpLevelProbe PRODUCT_NAME "AmpLevelProbe")
+juce_generate_juce_header(AmpLevelProbe)
+target_sources(AmpLevelProbe PRIVATE Source/AmpLevelProbe.cpp)
+target_compile_features(AmpLevelProbe PRIVATE cxx_std_17)
+target_link_libraries(AmpLevelProbe
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- AmpModule CPU benchmark ---
 # A throwaway diagnostic console app, not part of the shipping plugin --
 # runs the real AmpModule::process() code directly (no plugin/host

@@ -756,11 +756,23 @@ public:
         }
 
         oversampling->processSamplesDown (inputBlock);
+        const auto voiceScale = perVoiceNormalise[static_cast<size_t> (voice)];
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
             const auto gain = outputGain.getNextValue();
             for (int ch = 0; ch < channelCount; ++ch)
-                buffer.setSample (ch, i, buffer.getSample (ch, i) * gain);
+            {
+                auto v = buffer.getSample (ch, i) * gain * voiceScale;
+                const auto mag = std::abs (v);
+                if (mag > outputLimiterKnee)
+                {
+                    const auto excess = mag - outputLimiterKnee;
+                    const auto headroom = 1.0f - outputLimiterKnee;
+                    const auto compressed = outputLimiterKnee + headroom * std::tanh (excess / headroom);
+                    v = std::copysign (compressed, v);
+                }
+                buffer.setSample (ch, i, v);
+            }
         }
     }
 
@@ -1989,6 +2001,38 @@ private:
     static constexpr float cathodyneInputScale = 4.0f;
     static constexpr float powerStageInputScale = 0.02f;
     static constexpr float powerStageOutputScale = 0.20f;
+    // Per-voice output normalisation (final loudness trim). Each voice's
+    // circuit has genuinely different gain (long-tail-pair vs cathodyne phase
+    // inverter, EL84 vs 6V6 power tubes, different B+/plate loads), but the
+    // calibration constants above are SHARED across all six tube voices
+    // (tuned for the original 5E3/Boutique, then reused for Vox/Fender/JTM45/
+    // MarkI as a first-pass), so the same knob settings land each voice at a
+    // very different loudness -- measured ~12dB spread (voxAC30 quietest,
+    // jtm45 loudest, the latter already hard-clipping past full scale). These
+    // constants normalise each voice's settled RMS to a common -6dBFS target
+    // so the Output knob means the same thing on every voice. Values are the
+    // reciprocal of each voice's settled RMS, averaged over 110/440/1760Hz
+    // sines at Drive=0.5, input 0.3, flat EQ, Output 0dB -- measured in
+    // Source/AmpLevelProbe.cpp, same "measure, don't guess" provenance as
+    // outputCalibration/v1GainCompensation above. Applied at the final output
+    // trim (with outputGain), AFTER each voice's own OT knee, so it's a pure
+    // level change that does not alter how hard each voice saturates its
+    // power stage at a given Drive. (5E3 + modern3Band values therefore
+    // already include the pre-knee vintageOutputBoost below.)
+    static constexpr float perVoiceNormalise[7] {
+        1.6792f, // vintage5E3
+        1.3534f, // modern3Band
+        2.5899f, // voxAC30
+        1.3237f, // fenderAB763
+        0.5691f, // jtm45
+        0.6931f, // mesaMarkI
+        0.8179f  // rolandJC120
+    };
+    // Soft-knee threshold for the final output trim -- linear below it, soft-
+    // clips toward 1.0 above, so the +8dB normalisation boost on the quiet
+    // voices can't hard-clip past full scale at maximum Drive (the same tanh
+    // soft-knee math as the per-voice otKnee upstream, moved to the trim).
+    static constexpr float outputLimiterKnee = 0.90f;
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;
     int channelCount = 2;
     Voice voice = Voice::vintage5E3;
