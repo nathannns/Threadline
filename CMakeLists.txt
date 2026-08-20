@@ -386,3 +386,21 @@ target_link_libraries(TapeValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Compressor (optical/vactrol) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real CompressorModule and sweeps compression x attack x
+# tilt x mid x output-level x amplitude x frequency at 48/96/192k for
+# NaN/Inf/blow-up. See Source/CompressorValidation.cpp.
+juce_add_console_app(CompressorValidation PRODUCT_NAME "CompressorValidation")
+juce_generate_juce_header(CompressorValidation)
+target_sources(CompressorValidation PRIVATE Source/CompressorValidation.cpp)
+target_compile_features(CompressorValidation PRIVATE cxx_std_17)
+target_link_libraries(CompressorValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
