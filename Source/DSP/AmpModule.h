@@ -185,7 +185,7 @@ public:
     //    with the same struct. ~420V plate supply, ~415V screen, ~6k
     //    plate-to-plate output transformer (Mercury Magnetics' published
     //    spec) reflecting to 1.5k/tube.
-    enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3, jtm45 = 4, mesaMarkI = 5 };
+    enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3, jtm45 = 4, mesaMarkI = 5, rolandJC120 = 6 };
 
     void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 2)
     {
@@ -426,7 +426,21 @@ public:
                 tube->gridBiasOffset = -52.0f;
                 tube->prepare (processingSampleRate);
             }
+
+            // Roland JC-120 voice -- see Voice::rolandJC120's own comment.
+            // Genuinely active EQ (op-amp shelving/peaking, not the passive
+            // Fender-family network every tube voice above shares), so
+            // these get their own dedicated filters rather than a
+            // BassmanToneStack instance. Corner frequencies/Q picked to a
+            // plausible, tasteful active-EQ shape (the schematic's exact
+            // pot/cap values weren't legible closely enough to transcribe
+            // precisely) -- gains themselves are still driven live by
+            // ampBass/ampMid/ampTreble via updateJCToneFilters().
+            jcBassShelf[ch].prepare (osSpec);
+            jcMidPeak[ch].prepare (osSpec);
+            jcTrebleShelf[ch].prepare (osSpec);
         }
+        jcChorus.prepare (processingSampleRate);
 
         // Real blackface component values (see class comment) -- R1/R2/R4
         // reused from the Bassman defaults where no blackface-specific
@@ -483,7 +497,10 @@ public:
             markOneInterstageCoupling[ch].reset();
             markOnePI[ch].reset();
             powerTubeMarkOneA[ch].reset(); powerTubeMarkOneB[ch].reset();
+
+            jcBassShelf[ch].reset(); jcMidPeak[ch].reset(); jcTrebleShelf[ch].reset();
         }
+        jcChorus.reset();
         bassmanStack.reset();
         fenderToneStack.reset();
         jtm45ToneStack.reset();
@@ -542,6 +559,8 @@ public:
                 jtm45ToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
             else if (voice == Voice::mesaMarkI)
                 markOneToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+            else if (voice == Voice::rolandJC120)
+                updateJCToneFilters();
         }
     }
 
@@ -602,6 +621,11 @@ public:
             if (voice == Voice::mesaMarkI)
             {
                 processMarkOneSample (block, i, channels);
+                continue;
+            }
+            if (voice == Voice::rolandJC120)
+            {
+                processJCSample (block, i, channels);
                 continue;
             }
 
@@ -1018,6 +1042,58 @@ private:
         }
     }
 
+    // Roland JC-120 -- entirely solid-state, no tube modeling at all,
+    // unlike every other voice in this file. Sourced from the real Dec-
+    // 1984 factory service-manual schematic (el34world Roland archive): an
+    // op-amp input/gain stage (IC2a/IC2b), an active op-amp-driven Bass/
+    // Middle/Treble EQ (IC3a/IC3b -- see updateJCToneFilters()'s own
+    // comment for why that's modeled with dedicated filters rather than
+    // the passive Fender-family stack every tube voice above shares), a
+    // BBD (MN3007) chorus line clocked by its own driver chip (MN3101)
+    // feeding the amp's two physically separate power amps/speakers phase-
+    // offset from each other for its signature stereo swirl (see
+    // SolidStateChorusStage's own comment), and a solid-state push-pull
+    // output stage. Deliberately skips the shared sagEnvelope/
+    // sagDetectorLP machinery every tube voice above uses -- a transistor
+    // power supply genuinely doesn't sag under load the way a tube
+    // rectifier/transformer does. The real unit's own separate diode-
+    // clipping Distortion channel and spring reverb aren't modeled --
+    // Distortion is a rarely-used secondary footswitch channel (this voice
+    // models the far more common Normal/Chorus channel), and Reverb
+    // already exists as its own dedicated pedal elsewhere on this board.
+    void processJCSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
+    {
+        // Solid-state headroom is genuinely much higher than a triode's,
+        // and clips more abruptly once exceeded (a harder symmetric knee)
+        // rather than a tube's gradual, asymmetric compression -- both
+        // scales picked empirically to keep the low end of Drive clean and
+        // glassy (the JC-120's whole reputation) and only start clipping
+        // meaningfully in the upper range.
+        const auto inputGain = 0.6f + driveAmount * 4.4f;
+        const auto outputDrive = 0.5f + driveAmount * 1.2f;
+        const auto outputNormalise = 1.0f / std::tanh (outputDrive);
+
+        std::array<float, 2> eqOut {};
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
+            auto driven = std::tanh (x * inputGain);
+            driven = jcBassShelf[ch].processSample (driven);
+            driven = jcMidPeak[ch].processSample (driven);
+            driven = jcTrebleShelf[ch].processSample (driven);
+            eqOut[(size_t) ch] = driven;
+        }
+
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            const auto lfoOffset = ch == 0 ? 0.0f : juce::MathConstants<float>::pi;
+            const auto chorused = jcChorus.processChannel (ch, eqOut[(size_t) ch], lfoOffset);
+            const auto power = std::tanh (chorused * outputDrive) * outputNormalise;
+            block.setSample (ch, i, transformerLowPass[ch].processSample (power));
+        }
+        jcChorus.advance();
+    }
+
     void updateStaticFilters()
     {
         auto inputHP = juce::dsp::IIR::Coefficients<float>::makeHighPass (processingSampleRate, 48.0f, 0.707f);
@@ -1069,6 +1145,27 @@ private:
             processingSampleRate, 2200.0f, 0.65f, juce::Decibels::decibelsToGain (trebleGainDb));
         for (auto& f : voxBassShelf) *f.coefficients = *bassCoeffs;
         for (auto& f : voxTrebleShelf) *f.coefficients = *trebleCoeffs;
+    }
+
+    // Roland JC-120 voice's active Bass/Middle/Treble EQ -- see the
+    // Voice::rolandJC120 prepare() block's own comment for why this is a
+    // dedicated shelf/peak trio rather than a BassmanToneStack instance.
+    void updateJCToneFilters()
+    {
+        if (processingSampleRate <= 0.0)
+            return;
+        const auto bassGainDb = juce::jmap (lastBass01, -10.0f, 10.0f);
+        const auto midGainDb = juce::jmap (lastMid01, -8.0f, 8.0f);
+        const auto trebleGainDb = juce::jmap (lastTreble01, -10.0f, 10.0f);
+        auto bassCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (
+            processingSampleRate, 150.0f, 0.65f, juce::Decibels::decibelsToGain (bassGainDb));
+        auto midCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
+            processingSampleRate, 750.0f, 0.9f, juce::Decibels::decibelsToGain (midGainDb));
+        auto trebleCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
+            processingSampleRate, 3200.0f, 0.65f, juce::Decibels::decibelsToGain (trebleGainDb));
+        for (auto& f : jcBassShelf) *f.coefficients = *bassCoeffs;
+        for (auto& f : jcMidPeak) *f.coefficients = *midCoeffs;
+        for (auto& f : jcTrebleShelf) *f.coefficients = *trebleCoeffs;
     }
 
     // A single common-cathode triode gain stage: real grid/cathode current
@@ -1780,6 +1877,73 @@ private:
         double coeffA1 = 0, coeffA2 = 0, coeffA3 = 0;
     };
 
+    // Roland JC-120 voice only (see Voice::rolandJC120's own comment) -- a
+    // modulated short delay per channel standing in for the real amp's
+    // single BBD (MN3007) chorus line, which the real circuit feeds to its
+    // two physically separate power amps/speakers with their timing offset
+    // from each other for the amp's signature stereo swirl. This models
+    // that same "one modulation source, two channels offset from each
+    // other" method rather than a generic from-scratch chorus effect, but
+    // the exact real mix ratio/BBD clock rate weren't legible closely
+    // enough on the schematic's dense component list to transcribe
+    // directly -- centreDelayMs/depthMs/mix/rateHz below are a reasonable,
+    // clearly-approximate tasteful default rather than a verified figure,
+    // same honesty standard as the rest of this file's approximations.
+    struct SolidStateChorusStage
+    {
+        void prepare (double newSampleRate)
+        {
+            sampleRate = newSampleRate;
+            const auto size = (int) (sampleRate * 0.05) + 4; // 50ms headroom
+            buffer[0].assign ((size_t) size, 0.0f);
+            buffer[1].assign ((size_t) size, 0.0f);
+            phaseIncrement = juce::MathConstants<float>::twoPi * rateHz / (float) sampleRate;
+            reset();
+        }
+        void reset()
+        {
+            std::fill (buffer[0].begin(), buffer[0].end(), 0.0f);
+            std::fill (buffer[1].begin(), buffer[1].end(), 0.0f);
+            writeIndex = 0;
+            phase = 0.0f;
+        }
+        // Called once per sample (not per channel) -- advances the LFO
+        // phase and the shared write cursor after both channels have
+        // written/read this sample.
+        void advance() noexcept
+        {
+            phase += phaseIncrement;
+            if (phase >= juce::MathConstants<float>::twoPi)
+                phase -= juce::MathConstants<float>::twoPi;
+            writeIndex = (writeIndex + 1) % (int) buffer[0].size();
+        }
+        float processChannel (int ch, float input, float lfoPhaseOffset) noexcept
+        {
+            auto& buf = buffer[(size_t) ch];
+            const auto size = (int) buf.size();
+            buf[(size_t) writeIndex] = input;
+
+            const auto modulated = std::sin (phase + lfoPhaseOffset);
+            const auto delaySamples = (centreDelayMs + modulated * depthMs) * 0.001f * (float) sampleRate;
+            auto readPos = (float) writeIndex - delaySamples;
+            while (readPos < 0.0f)
+                readPos += (float) size;
+
+            const auto i0 = (int) readPos;
+            const auto frac = readPos - (float) i0;
+            const auto i1 = (i0 + 1) % size;
+            const auto delayed = buf[(size_t) i0] + frac * (buf[(size_t) i1] - buf[(size_t) i0]);
+
+            return input * (1.0f - mix) + delayed * mix;
+        }
+
+        std::vector<float> buffer[2];
+        double sampleRate = 44100.0;
+        int writeIndex = 0;
+        float phase = 0.0f, phaseIncrement = 0.0f;
+        float centreDelayMs = 12.0f, depthMs = 4.0f, mix = 0.45f, rateHz = 0.9f;
+    };
+
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::dsp::IIR::Filter<float> inputCoupling[2], interstageCoupling[2];
     juce::dsp::IIR::Filter<float> toneFilter[2], transformerLowPass[2];
@@ -1826,6 +1990,12 @@ private:
     PentodeStage powerTubeMarkOneA[2], powerTubeMarkOneB[2];
     juce::dsp::IIR::Filter<float> markOneInterstageCoupling[2];
     BassmanToneStack markOneToneStack;
+    // Roland JC-120 voice's own EQ/chorus instances -- see Voice::
+    // rolandJC120's own comment. Reuses inputCoupling/transformerLowPass
+    // above too (generic DC-block/output-filter roles), but deliberately
+    // does NOT reuse sagDetectorLP/sagEnvelope (solid-state, no sag).
+    juce::dsp::IIR::Filter<float> jcBassShelf[2], jcMidPeak[2], jcTrebleShelf[2];
+    SolidStateChorusStage jcChorus;
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> sagDetectorLP {};
     // V2A's raw plate-voltage output (real volts, tens to hundreds of volts

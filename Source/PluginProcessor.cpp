@@ -207,7 +207,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // a real long-tailed-pair PI, fixed-bias 6V6 power stage) — see
     // AmpModule::Voice::fenderAB763's own comment.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ampVoice"), "Amp Voice",
-        juce::StringArray { "Vintage 5E3", "Boutique", "Vox Top Boost", "Deluxe 63", "JTM45", "Mark I" }, 0));
+        juce::StringArray { "Vintage 5E3", "Boutique", "Vox Top Boost", "Deluxe 63", "JTM45", "Mark I", "Jazz Chorus" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampBass"), "Amp Bass",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampMid"), "Amp Mid",
