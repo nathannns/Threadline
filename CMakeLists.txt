@@ -328,3 +328,21 @@ target_link_libraries(FangsValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Bison (two-stage cascaded fuzz) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real BisonModule and sweeps sustain x tone x level x mix
+# x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. See
+# Source/BisonValidation.cpp.
+juce_add_console_app(BisonValidation PRODUCT_NAME "BisonValidation")
+juce_generate_juce_header(BisonValidation)
+target_sources(BisonValidation PRIVATE Source/BisonValidation.cpp)
+target_compile_features(BisonValidation PRIVATE cxx_std_17)
+target_link_libraries(BisonValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
