@@ -77,7 +77,7 @@ namespace PedalTileFactory
             return std::make_unique<GenericKnobsTile> (apvts, id, "Tape", "tapeOn",
                 std::vector<std::pair<juce::String, juce::String>> {
                     { "tapeDrive", "Drive" }, { "tapeCompression", "Comp" }, { "tapeTone", "Tone" },
-                    { "tapeAge", "Age" }, { "tapeMix", "Mix" } },
+                    { "tapeAge", "Age" }, { "tapeMix", "Mix" }, { "tapeVolume", "Volume" } },
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
                     { "tapeType", "", juce::StringArray { "Studio", "Cassette" } } });
 

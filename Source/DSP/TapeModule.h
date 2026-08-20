@@ -8,7 +8,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
     void setParameters (float drive, float compression, float tone, float age,
-                        float mix, bool enabled, int type, int oversamplingMode);
+                        float mix, float volume, bool enabled, int type, int oversamplingMode);
     void process (juce::AudioBuffer<float>& buffer);
     bool isWetTransitionActive() const noexcept
     {
@@ -61,5 +61,12 @@ private:
     int writeIndex = 0, tapeType = studio, oversamplingChoice = 0;
     int validSamples = 0;
     float driveValue = 0.0f, compValue = 0.0f, toneValue = 0.5f, ageValue = 0.0f;
+    // Master output level (Volume knob), applied after the whole tape path so
+    // it scales the pedal's output without touching its saturation character.
+    // Unity at the default 100%, so sessions that never touch the knob are
+    // unchanged. Not applied at the exact neutral point (drive/comp/age all
+    // zero, tone at 60%) because process() short-circuits that transparent
+    // passthrough before any tape path runs.
+    float volumeValue = 1.0f;
     float lfoPhase = 0.0f;
 };

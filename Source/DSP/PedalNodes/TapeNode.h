@@ -32,14 +32,14 @@ public:
         if (active)
         {
             tape.setParameters (p ("tapeDrive"), p ("tapeCompression"), p ("tapeTone"), p ("tapeAge"),
-                p ("tapeMix"), true, (int) p ("tapeType"), oversamplingMode);
+                p ("tapeMix"), p ("tapeVolume"), true, (int) p ("tapeType"), oversamplingMode);
             tape.process (buffer);
             wasActive = true;
         }
         else if (wasActive)
         {
             tape.setParameters (p ("tapeDrive"), p ("tapeCompression"), p ("tapeTone"), p ("tapeAge"),
-                p ("tapeMix"), false, (int) p ("tapeType"), oversamplingMode);
+                p ("tapeMix"), p ("tapeVolume"), false, (int) p ("tapeType"), oversamplingMode);
             tape.process (buffer);
             if (! tape.isWetTransitionActive())
             {

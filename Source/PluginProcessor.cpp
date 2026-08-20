@@ -174,6 +174,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 100.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tapeMix"), "Tape Mix",
         Range (0.0f, 100.0f, 0.1f), 100.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("tapeVolume"), "Tape Volume",
+        Range (0.0f, 100.0f, 0.1f), 100.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("tapeType"), "Tape Type",
         juce::StringArray { "Studio", "Cassette" }, 0));
 

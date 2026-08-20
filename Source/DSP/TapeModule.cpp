@@ -41,7 +41,7 @@ void TapeModule::reset()
 }
 
 void TapeModule::setParameters (float drive, float compression, float tone, float age,
-                                float mix, bool enabled, int type, int oversamplingMode)
+                                float mix, float volume, bool enabled, int type, int oversamplingMode)
 {
     const auto normalisedDrive = juce::jlimit (0.0f, 1.0f, drive * 0.01f);
     // A slower lower half gives useful clean headroom. The nonlinearity itself
@@ -50,6 +50,9 @@ void TapeModule::setParameters (float drive, float compression, float tone, floa
     compValue = std::pow (juce::jlimit (0.0f, 1.0f, compression * 0.01f), 0.82f);
     toneValue = juce::jlimit (0.0f, 1.0f, tone * 0.01f);
     ageValue = juce::jlimit (0.0f, 1.0f, age * 0.01f);
+    // Volume is a plain master trim (0-100% -> 0-1.0 gain), unity at 100% so
+    // the default is a no-op. Linear on purpose: "50" reads as half.
+    volumeValue = juce::jlimit (0.0f, 1.0f, volume * 0.01f);
     tapeType = juce::jlimit (0, 1, type);
     const auto requestedOversampling = juce::jlimit (0, 2, oversamplingMode);
     if (requestedOversampling != oversamplingChoice)
@@ -325,6 +328,7 @@ void TapeModule::processCore (juce::AudioBuffer<float>& buffer, double processin
             const auto driveLiftDb = std::pow (tapeAmount, 1.45f)
                                    * (cassetteMode ? 3.1f : 2.7f);
             compressed *= juce::Decibels::decibelsToGain (driveLiftDb);
+            compressed *= volumeValue;
             buffer.setSample (channel, sample, compressed);
         }
         if (ageProcessingEnabled)
