@@ -65,6 +65,86 @@ private:
     std::vector<std::unique_ptr<TileCombo>> combos;
 };
 
+// Dimension BBD ("Dimension"): the real SDD-320/DC-2 mode selector is four
+// latching push-buttons (one per mode), not a dropdown -- this tile renders
+// them as a 4-button radio row wired to the single dimBbdMode choice param.
+// The param stays a choice (so saved sessions/presets/automation keep
+// working); the buttons just write to it, and a timer polls it back so a
+// preset load / host automation re-syncs the highlighted button. Input/
+// Output knobs below in the usual 2-column stomp grid.
+class DimensionBBDTile : public PedalTileComponent, private juce::Timer
+{
+public:
+    explicit DimensionBBDTile (juce::AudioProcessorValueTreeState& apvtsIn)
+        : PedalTileComponent (apvtsIn, "dimBbd", "Dimension", "dimBbdOn")
+    {
+        inputKnob = makeTileKnob (*this, apvtsIn, "dimBbdInput", "Input");
+        outputKnob = makeTileKnob (*this, apvtsIn, "dimBbdOutput", "Output");
+
+        modeCaption.setText ("Mode", juce::dontSendNotification);
+        modeCaption.setJustificationType (juce::Justification::centred);
+        modeCaption.setFont (juce::FontOptions (14.0f));
+        modeCaption.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+        addAndMakeVisible (modeCaption);
+
+        static const char* roman[] = { "I", "II", "III", "IV" };
+        for (int i = 0; i < 4; ++i)
+        {
+            auto& b = modeButtons[i];
+            b.setClickingTogglesState (true);
+            b.setRadioGroupId (1);
+            b.setButtonText (roman[i]);
+            b.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
+            b.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
+            b.setColour (juce::TextButton::textColourOnId, ThreadlineColours::accentBright);
+            b.onClick = [this, i] { setModeFromButton (i); };
+            addAndMakeVisible (b);
+        }
+        startTimerHz (15);
+    }
+
+    int getPreferredWidth() const override { return stompTileWidth; }
+
+protected:
+    void resizedBody (juce::Rectangle<int> body) override
+    {
+        auto modeArea = body.removeFromTop (62);
+        modeCaption.setBounds (modeArea.removeFromTop (captionHeight));
+        auto btnArea = modeArea.reduced (cellPadX, 2);
+        const auto bw = btnArea.getWidth() / 4;
+        for (int i = 0; i < 4; ++i)
+            modeButtons[i].setBounds (btnArea.removeFromLeft (bw).reduced (3, 4));
+
+        std::vector<std::unique_ptr<TileKnob>*> knobs { &inputKnob, &outputKnob };
+        const auto columns = 2;
+        const auto cw = body.getWidth() / columns;
+        for (size_t i = 0; i < knobs.size(); ++i)
+        {
+            auto cell = juce::Rectangle<int> (body.getX() + (int) i * cw, body.getY(), cw, body.getHeight()).reduced (cellPadX, cellPadY);
+            (*knobs[i])->label.setBounds (cell.removeFromTop (captionHeight));
+            (*knobs[i])->slider.setBounds (cell);
+        }
+    }
+
+private:
+    void setModeFromButton (int idx)
+    {
+        if (auto* parameter = apvts.getParameter ("dimBbdMode"))
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) idx));
+    }
+
+    void timerCallback() override
+    {
+        const auto mode = juce::jlimit (0, 3, (int) apvts.getRawParameterValue ("dimBbdMode")->load());
+        for (int i = 0; i < 4; ++i)
+            modeButtons[i].setToggleState (i == mode, juce::dontSendNotification);
+    }
+
+    std::unique_ptr<TileKnob> inputKnob, outputKnob;
+    juce::Label modeCaption;
+    juce::TextButton modeButtons[4];
+};
+
 // Amp: Drive/Volume always shown, plus either Tone (Vintage 5E3) or
 // Bass/Mid/Treble (Boutique) depending on the live ampVoice choice --
 // visibility is polled on a timer and swapped without any image involved.
