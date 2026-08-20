@@ -2,29 +2,42 @@
 #include <JuceHeader.h>
 #include "WDFCore.h"
 
-// "Fangs" -- an original op-amp diode-feedback fuzz/distortion, the
-// general archetype behind pedals like the ProCo Rat and MXR Distortion+
-// (an inverting op-amp with a clipping diode pair inside its feedback
-// loop): not a copy of either's specific schematic or component values --
-// this project has no rights to reproduce a particular commercial pedal's
-// traced BOM -- but an original circuit built from the same well-
-// documented, decades-old textbook topology (an op-amp summing-junction
-// clipper), reusing this project's own from-scratch WDF (Wave Digital
-// Filter) core -- the same real circuit-simulation machinery already
-// verified against Klon/TS9's published, MIT-licensed reference models
-// (see WDFCore.h's own header for that provenance).
+// "Fangs" -- an original op-amp gain-stage-then-diode-clip fuzz/
+// distortion, the general archetype behind pedals like the ProCo Rat and
+// MXR Distortion+: not a copy of either's specific schematic or component
+// values -- this project has no rights to reproduce a particular
+// commercial pedal's traced BOM -- but an original circuit built from the
+// same well-documented, decades-old textbook topology, reusing this
+// project's own from-scratch WDF (Wave Digital Filter) core -- the same
+// real circuit-simulation machinery already verified against Klon/TS9's
+// published, MIT-licensed reference models (see WDFCore.h's own header
+// for that provenance).
 //
-// What distinguishes this from TS9Module's clipper (an almost identical
-// "current source + antiparallel diode pair in feedback" topology) is a
-// capacitor added in parallel with the feedback resistor: at low Gain the
-// resistor dominates the feedback path (a fairly clean, diode-limited
-// clip), but as Gain rises, the same fixed capacitor becomes a
-// proportionally bigger fraction of that feedback impedance at high
-// frequencies, rolling off the harmonics reaching the clipper -- the
-// real, well-known reason this whole pedal family gets progressively
-// darker/tighter as gain increases. That's modeled here as an actual
-// second reactive one-port (WDF::Capacitor, genuinely solved each
-// sample), not a gain-dependent filter coefficient bolted on afterward.
+// Real RAT/Distortion+-family schematics (checked directly against both,
+// not just remembered folklore) share one structural trait that TS9/Klon
+// don't: the clipping diodes sit AFTER a clean, high-gain op-amp stage,
+// clamped to ground through a series resistor -- not inside that stage's
+// own feedback loop. That's a genuinely different, much harder/more
+// abrupt clipping character than a diode-in-feedback design (the gain
+// stage itself never "sees" the diodes and so never softens its own
+// loop gain approaching the knee, unlike TS9Module's clipper), and it's
+// general textbook circuit topology, not either pedal's specific BOM, so
+// it's fair game to model structurally even while declining to copy
+// their exact component values. Two WDF stages now, not one:
+//  1. GainStage -- a linear (unclipped) inverting op-amp stage, Norton
+//     current injection into a feedback impedance of R_gain parallel
+//     with C_filter (unchanged from before), but terminated as an open
+//     boundary (self-reflected) instead of by a diode pair, since nothing
+//     here should clip yet. Same reasoning as before for *why* a
+//     capacitor sits in that feedback impedance: as Gain rises, the fixed
+//     cap becomes a proportionally bigger fraction of the impedance at
+//     high frequencies, rolling off the harmonics reaching the clip
+//     stage -- the well-known reason this whole pedal family gets
+//     progressively darker/tighter as gain increases.
+//  2. ClipStage -- that clean gain stage's output voltage, in series with
+//     a resistor, clamped by an antiparallel diode pair to ground
+//     (WDF::ResistiveVoltageSource + WDF::DiodePair, both already proven
+//     elsewhere in this codebase) -- the actual hard-clip event.
 //
 // Post-clip "Filter" is a genuine treble-cut lowpass sweep -- the real
 // RAT-family "Filter" control is exactly this (darker at one end,
@@ -39,24 +52,29 @@
 class FangsModule
 {
 public:
-    // Ideal-op-amp inverting clipper: input current Vin/Rin summed at the
-    // virtual-ground node against a feedback network of R_gain parallel
-    // with C_filter, clamped by an antiparallel silicon diode pair --
-    // structurally TS9Clipper's tree (WDF::ResistiveCurrentSource +
-    // WDF::DiodePair) with an added WDF::Capacitor leg, combined via the
-    // same WDF::Parallel adaptor KlonClipper already uses elsewhere in
-    // this codebase.
     struct FangsClipper
     {
+        // Stage 1: clean, gain-dependent, frequency-dependent inverting
+        // amplifier -- see class comment. Left as an open (self-reflected)
+        // root since nothing external loads it; that's the standard WDF
+        // way to terminate a one-port with no further connections (all
+        // incident energy reflects straight back, matching "current
+        // source charging a parallel R/C with nothing else attached").
         WDF::ResistiveCurrentSource feedbackR { 220000.0f };
         WDF::Capacitor feedbackC { 1.0e-9f, 44100.0 };
-        WDF::Parallel<WDF::ResistiveCurrentSource, WDF::Capacitor> node { feedbackR, feedbackC };
-        WDF::DiodePair<decltype (node)> dp { node, 4.352e-9f, 0.02585f * 1.906f };
+        WDF::Parallel<WDF::ResistiveCurrentSource, WDF::Capacitor> gainNode { feedbackR, feedbackC };
+
+        // Stage 2: that clean stage's output voltage, in series with a
+        // fixed resistor, clamped to ground by the diode pair -- the
+        // actual hard-clip event, structurally separate from the gain
+        // stage above.
+        WDF::ResistiveVoltageSource clipSource { 1000.0f };
+        WDF::DiodePair<decltype (clipSource)> dp { clipSource, 4.352e-9f, 0.02585f * 1.906f };
 
         void prepare (double wdfSampleRate)
         {
             feedbackC.prepare (1.0e-9f, wdfSampleRate);
-            node.calcImpedance();
+            gainNode.calcImpedance();
             dp.calcImpedance();
             reset();
         }
@@ -65,22 +83,27 @@ public:
         {
             feedbackC.reset();
             feedbackR.wdf.a = feedbackR.wdf.b = 0.0f;
+            clipSource.wdf.a = clipSource.wdf.b = 0.0f;
         }
 
         void setFeedbackResistance (float ohms) noexcept
         {
             feedbackR.wdf.R = ohms;
             feedbackR.wdf.G = 1.0f / ohms;
-            node.calcImpedance();
-            dp.calcImpedance();
+            gainNode.calcImpedance();
         }
 
         float processSample (float vin, float inputOneOverR) noexcept
         {
             feedbackR.setCurrent (-vin * inputOneOverR);
-            dp.incident (node.reflected());
-            node.incident (dp.reflected());
-            return WDF::voltage (node.wdf);
+            const auto gainB = gainNode.reflected();
+            gainNode.incident (gainB); // open boundary: full self-reflection
+            const auto cleanGainOutput = WDF::voltage (gainNode.wdf);
+
+            clipSource.setVoltage (cleanGainOutput);
+            dp.incident (clipSource.reflected());
+            clipSource.incident (dp.reflected());
+            return WDF::voltage (clipSource.wdf);
         }
     };
 
