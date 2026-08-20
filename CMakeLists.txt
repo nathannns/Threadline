@@ -519,3 +519,25 @@ target_link_libraries(ChorusValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Dimension Chorus (Ensemble, Dimension D-style) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real DimensionChorusModule and sweeps rate x depth x
+# width x tone x mix x flanger-mode x amplitude x frequency at 48/96/192k
+# for NaN/Inf/blow-up, including the feedback-loop ADAA nonlinearities. See
+# Source/DimensionChorusValidation.cpp.
+juce_add_console_app(DimensionChorusValidation PRODUCT_NAME "DimensionChorusValidation")
+juce_generate_juce_header(DimensionChorusValidation)
+target_sources(DimensionChorusValidation PRIVATE
+    Source/DimensionChorusValidation.cpp
+    Source/DSP/DimensionChorusModule.cpp
+)
+target_compile_features(DimensionChorusValidation PRIVATE cxx_std_17)
+target_link_libraries(DimensionChorusValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
