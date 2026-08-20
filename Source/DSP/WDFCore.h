@@ -106,6 +106,32 @@ namespace WDF
         float reflected() noexcept { wdf.b = z; return wdf.b; }
     };
 
+    // Inductor via the bilinear transform: port resistance R = 2*fs*L (the
+    // exact dual of the Capacitor's R = 1/(2*fs*C)), and the reflected wave
+    // is the NEGATION of last sample's incident wave (b = -z) -- an
+    // inductor's memory term flips sign relative to a capacitor's, which is
+    // the whole reason the two reactances cancel at series/parallel
+    // resonance. Added for the Neve 1073 EQ's inductor-based shelf/mid bands
+    // and high-pass filter (BA205/BA211 cards), which use real inductors
+    // rather than the RC approximations every other pedal here needs.
+    struct Inductor
+    {
+        Port wdf;
+        float z = 0.0f;
+        float henries = 1.0f;
+        Inductor() = default;
+        Inductor (float inductanceHenries, double sampleRate) { prepare (inductanceHenries, sampleRate); }
+        void prepare (float inductanceHenries, double sampleRate)
+        {
+            henries = inductanceHenries;
+            wdf.R = 2.0f * henries * (float) sampleRate;
+            wdf.G = 1.0f / wdf.R;
+        }
+        void reset() { z = 0.0f; wdf.a = wdf.b = 0.0f; }
+        void incident (float x) noexcept { wdf.a = x; z = x; }
+        float reflected() noexcept { wdf.b = -z; return wdf.b; }
+    };
+
     // Voltage source with series resistance Rs, adapted (port R = Rs) so
     // the reflected wave is simply the source voltage.
     struct ResistiveVoltageSource

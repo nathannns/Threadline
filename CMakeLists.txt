@@ -273,3 +273,22 @@ target_link_libraries(DimensionDBBDValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Channel EQ (Neve 1073) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real ChannelEQModule and sweeps it for NaN/Inf/blow-up,
+# then measures the mid band's realised peak frequency + Q (must come out of
+# the LC/R network ~2, not the old hardcoded 0.9), the shelf corners, the HPF
+# slope, and output-transformer DC rejection. See Source/ChannelEQValidation.cpp.
+juce_add_console_app(ChannelEQValidation PRODUCT_NAME "ChannelEQValidation")
+juce_generate_juce_header(ChannelEQValidation)
+target_sources(ChannelEQValidation PRIVATE Source/ChannelEQValidation.cpp)
+target_compile_features(ChannelEQValidation PRIVATE cxx_std_17)
+target_link_libraries(ChannelEQValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
