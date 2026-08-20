@@ -458,3 +458,22 @@ target_link_libraries(DeskValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Amp (7 tube/SS amp voices) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real AmpModule and sweeps voice x drive x tone x output-
+# level x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up, driving
+# every voice's per-sample tube solve to both extremes. See
+# Source/AmpValidation.cpp.
+juce_add_console_app(AmpValidation PRODUCT_NAME "AmpValidation")
+juce_generate_juce_header(AmpValidation)
+target_sources(AmpValidation PRIVATE Source/AmpValidation.cpp)
+target_compile_features(AmpValidation PRIVATE cxx_std_17)
+target_link_libraries(AmpValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
