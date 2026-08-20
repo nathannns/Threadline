@@ -118,6 +118,11 @@ private:
     static constexpr int tileHeight = 375;
     static constexpr int tileTopMargin = 24;
     static constexpr int insertButtonSize = 40;
+    // Trailing space after the last tile's "+" button, so the end of the
+    // chain doesn't sit flush against the plugin window's edge -- half a
+    // standard stompbox's width, same proportion as tileMargin already
+    // gives the leading edge, just deliberately roomier here.
+    static constexpr int trailingMargin = stompTileWidth / 2;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PedalboardComponent)
 };

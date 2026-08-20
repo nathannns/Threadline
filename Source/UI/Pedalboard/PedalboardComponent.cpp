@@ -192,7 +192,7 @@ void PedalboardComponent::layoutTiles()
         }
     }
     addButton.setBounds (x, y + tileHeight / 2 - insertButtonSize / 2, insertButtonSize, insertButtonSize);
-    x += insertButtonSize + tileMargin;
+    x += insertButtonSize + trailingMargin;
     boardContent.setSize (juce::jmax (x, viewport.getWidth()), juce::jmax (maxBottom + tileTopMargin, viewport.getHeight()));
 
     // Always keep insert buttons above every tile, not just the one being
