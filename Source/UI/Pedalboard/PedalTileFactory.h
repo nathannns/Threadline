@@ -127,7 +127,7 @@ namespace PedalTileFactory
         // the standalone Spring pedal, which already does the exact same
         // job with full user control; chain Spring in after this instead).
         if (id == "spaceEcho")
-            return std::make_unique<GenericKnobsTile> (apvts, id, "Satellite", "spaceEchoOn",
+            return std::make_unique<GenericKnobsTile> (apvts, id, "Satellite - 201", "spaceEchoOn",
                 std::vector<std::pair<juce::String, juce::String>> {
                     { "spaceEchoTime", "Time" }, { "spaceEchoRepeats", "Repeats" },
                     { "spaceEchoBass", "Bass" }, { "spaceEchoTreble", "Treble" },

@@ -18,6 +18,7 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     presetBox.setColour (juce::ComboBox::backgroundColourId, ThreadlineColours::panelDark);
     presetBox.setColour (juce::ComboBox::textColourId, ThreadlineColours::textCream);
     presetBox.setColour (juce::ComboBox::outlineColourId, ThreadlineColours::cardBorder);
+    presetBox.setLookAndFeel (&presetBoxLookAndFeel);
     addAndMakeVisible (presetBox);
 
     presetDropdownButton.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
@@ -128,17 +129,12 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     ampOversamplingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "ampOversampling", ampOversamplingBox);
 
-    tapTempoLabel.setText ("TAP TEMPO", juce::dontSendNotification);
-    tapTempoLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
-    tapTempoLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold)); // matches TileKnob/TileCombo's own caption font
-    tapTempoLabel.setJustificationType (juce::Justification::centredLeft);
-    optionsGroup.addAndMakeVisible (tapTempoLabel);
     tapTempoButton.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
     tapTempoButton.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textCream);
-    optionsGroup.addAndMakeVisible (tapTempoButton);
+    addAndMakeVisible (tapTempoButton);
     tapTempoBpmLabel.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
     tapTempoBpmLabel.setJustificationType (juce::Justification::centred);
-    optionsGroup.addAndMakeVisible (tapTempoBpmLabel);
+    addAndMakeVisible (tapTempoBpmLabel);
 
     // --- Pedalboard ---
     addAndMakeVisible (pedalboard);
@@ -171,6 +167,7 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
 
 ThreadlineAudioProcessorEditor::~ThreadlineAudioProcessorEditor()
 {
+    presetBox.setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }
 
@@ -260,17 +257,27 @@ void ThreadlineAudioProcessorEditor::resized()
     optionsMenuButton.setBounds (header.removeFromRight (68).reduced (8, 25));
     muteButton.setBounds (header.removeFromRight (68).reduced (8, 25));
 
+    // Sits between the preset bar and the mute button -- a physical-pedal-
+    // style control worth reaching for often, not tucked away in Options.
+    auto tapTempoArea = header.removeFromRight (110).reduced (8, 30);
+    tapTempoButton.setBounds (tapTempoArea.removeFromLeft (58));
+    tapTempoArea.removeFromLeft (6);
+    tapTempoBpmLabel.setBounds (tapTempoArea);
+
     presetCardBounds = header.withSizeKeepingCentre (juce::jmin (663, header.getWidth() - 25), 70)
                              .withY (header.getY() + (headerHeight - 70) / 2);
     auto presetArea = presetCardBounds.reduced (13, 13);
     prevPresetButton.setBounds (presetArea.removeFromLeft (45));
+    presetArea.removeFromLeft (4);
+    nextPresetButton.setBounds (presetArea.removeFromLeft (45));
     presetArea.removeFromLeft (8);
-    presetBox.setBounds (presetArea.removeFromLeft (juce::jmax (100, presetArea.getWidth() - 238)));
+    // Reserves exactly the trailing fixed-width controls' own footprint --
+    // gap8 + dropdown43 + gap8 + (addPreset45 + gap5 + save45 + gap5 +
+    // delete45) = 204 -- so presetBox always gets whatever's left over.
+    presetBox.setBounds (presetArea.removeFromLeft (juce::jmax (100, presetArea.getWidth() - 204)));
     presetArea.removeFromLeft (8);
     presetDropdownButton.setBounds (presetArea.removeFromLeft (43));
     presetDropdownButton.toFront (false);
-    presetArea.removeFromLeft (8);
-    nextPresetButton.setBounds (presetArea.removeFromLeft (45));
     presetArea.removeFromLeft (8);
     addPresetButton.setBounds (presetArea.removeFromLeft (45));
     presetArea.removeFromLeft (5);
@@ -279,15 +286,12 @@ void ThreadlineAudioProcessorEditor::resized()
     deletePresetButton.setBounds (presetArea.removeFromLeft (45));
 
     // Floating options panel, anchored under the gear button.
-    optionsGroup.setBounds (optionsMenuButton.getRight() - 353, headerHeight, 353, 218);
+    optionsGroup.setBounds (optionsMenuButton.getRight() - 353, headerHeight, 353, 165);
     input1Button.setBounds (15, 38, 90, 40);
     input2Button.setBounds (110, 38, 90, 40);
     inputSourceBox.setBounds (205, 38, 133, 40);
     ampQualityLabel.setBounds (18, 93, 178, 35);
     ampOversamplingBox.setBounds (205, 90, 133, 40);
-    tapTempoLabel.setBounds (18, 145, 178, 35);
-    tapTempoButton.setBounds (205, 143, 75, 40);
-    tapTempoBpmLabel.setBounds (285, 143, 53, 40);
 
     constexpr int bottomBarHeight = 175;
     // `bottomBarBounds` (the member) stays the FULL bar rect -- it's reused

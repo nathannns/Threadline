@@ -241,6 +241,33 @@ public:
     }
 };
 
+// The preset bar already has a dedicated "v" TextButton (presetDropdownButton)
+// opening a custom-styled popup (showPresetMenu()) -- presetBox is an
+// editable juce::ComboBox used for the visible/typeable preset name, and
+// LookAndFeel_V4 draws its own triangular dropdown arrow on every ComboBox
+// by default, which sat right next to that dedicated button and read as two
+// separate "open the list" affordances. This paints the box's background/
+// outline/text exactly as LookAndFeel_V4 would, just without that arrow, so
+// presetDropdownButton is the only dropdown indicator left.
+class NoArrowComboBoxLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    void drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box) override
+    {
+        auto cornerSize = 3.0f;
+        juce::Rectangle<int> boxBounds (0, 0, width, height);
+        g.setColour (box.findColour (juce::ComboBox::backgroundColourId));
+        g.fillRoundedRectangle (boxBounds.toFloat(), cornerSize);
+        g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+        g.drawRoundedRectangle (boxBounds.toFloat().reduced (0.5f, 0.5f), cornerSize, 1.0f);
+    }
+    void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
+    {
+        label.setBounds (1, 1, box.getWidth() - 2, box.getHeight() - 2);
+        label.setFont (getComboBoxFont (box));
+    }
+};
+
 class ThreadlineAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -258,6 +285,7 @@ private:
     ThreadlineAudioProcessor& processor;
     // Declared before all controls so it outlives every component using it.
     ThreadlineButtonLookAndFeel buttonLookAndFeel;
+    NoArrowComboBoxLookAndFeel presetBoxLookAndFeel;
 
     juce::Image logoImage;
     juce::ImageComponent logoComponent;
@@ -289,9 +317,10 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ampOversamplingAttachment;
 
     // Global tap tempo -- feeds Plexer/Copier's own Sync toggle (see
-    // TapTempo.h). Lives in the Options panel alongside the other global
-    // engine settings above, not as a pedalboard tile.
-    juce::Label tapTempoLabel, tapTempoBpmLabel;
+    // TapTempo.h). Lives in the header row between the preset bar and the
+    // mute button, not the Options panel -- it's a physical-pedal-style
+    // control a player reaches for often, not a set-once engine setting.
+    juce::Label tapTempoBpmLabel;
     TapTempoButton tapTempoButton;
 
     // --- The pedalboard: one flat, horizontally-scrolling strip of every

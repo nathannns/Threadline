@@ -16,7 +16,7 @@ namespace PedalDisplayNames
             { "fangs", "Fangs" }, { "bison", "Bison" }, { "growl", "Growl" },
             { "tape", "Tape" }, { "amp", "Amp" }, { "cab", "Cab" },
             { "tremolo", "Tremolo" }, { "chorus", "July" }, { "dimChorus", "Ensemble" },
-            { "delay", "Delay" }, { "spaceEcho", "Satellite" },
+            { "delay", "Delay" }, { "spaceEcho", "Satellite - 201" },
             { "reverb", "Reverb" }, { "spring", "Spring" }, { "channelEQ", "Redface" },
             { "desk", "Desk" }, { "parallel", "Parallel" },
             { "eq", "EQ" }, { "outputGain", "Output" }
