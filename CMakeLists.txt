@@ -422,3 +422,39 @@ target_link_libraries(LowDynamicValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Noise gate (three-band hysteresis) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real NoiseGateModule and sweeps amount x amplitude x
+# frequency at 48/96/192k for NaN/Inf/blow-up. See
+# Source/NoiseGateValidation.cpp.
+juce_add_console_app(NoiseGateValidation PRODUCT_NAME "NoiseGateValidation")
+juce_generate_juce_header(NoiseGateValidation)
+target_sources(NoiseGateValidation PRIVATE Source/NoiseGateValidation.cpp)
+target_compile_features(NoiseGateValidation PRIVATE cxx_std_17)
+target_link_libraries(NoiseGateValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Desk (console-summing coloration) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real DeskModule and sweeps amount x style-power x
+# amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. See
+# Source/DeskValidation.cpp.
+juce_add_console_app(DeskValidation PRODUCT_NAME "DeskValidation")
+juce_generate_juce_header(DeskValidation)
+target_sources(DeskValidation PRIVATE Source/DeskValidation.cpp)
+target_compile_features(DeskValidation PRIVATE cxx_std_17)
+target_link_libraries(DeskValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
