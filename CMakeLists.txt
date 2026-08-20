@@ -346,3 +346,22 @@ target_link_libraries(BisonValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Growl (germanium two-transistor fuzz) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real GrowlModule and sweeps bias x fuzz x level x mix x
+# amplitude x frequency at 48/96/192k for NaN/Inf/blow-up, specifically
+# re-exercising Q1's per-sample Newton-Raphson base-voltage solve. See
+# Source/GrowlValidation.cpp.
+juce_add_console_app(GrowlValidation PRODUCT_NAME "GrowlValidation")
+juce_generate_juce_header(GrowlValidation)
+target_sources(GrowlValidation PRIVATE Source/GrowlValidation.cpp)
+target_compile_features(GrowlValidation PRIVATE cxx_std_17)
+target_link_libraries(GrowlValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
