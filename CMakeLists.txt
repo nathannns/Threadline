@@ -292,3 +292,21 @@ target_link_libraries(ChannelEQValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- JC Chorus (Roland JC-120 BBD chorus) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real JCChorusModule and sweeps it for NaN/Inf/blow-up,
+# then confirms dry passthrough at mix=0 and stereo decorrelation at full
+# wet. See Source/JCChorusValidation.cpp.
+juce_add_console_app(JCChorusValidation PRODUCT_NAME "JCChorusValidation")
+juce_generate_juce_header(JCChorusValidation)
+target_sources(JCChorusValidation PRIVATE Source/JCChorusValidation.cpp)
+target_compile_features(JCChorusValidation PRIVATE cxx_std_17)
+target_link_libraries(JCChorusValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)

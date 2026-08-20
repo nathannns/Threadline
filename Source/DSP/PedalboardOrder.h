@@ -17,7 +17,7 @@ namespace PedalboardOrder
         static const juce::StringArray ids {
             "noiseGate", "inputGain", "compressor", "lowDynamic", "klon", "ts9",
             "fangs", "bison", "growl", "tape", "amp",
-            "cab", "tremolo", "chorus", "dimChorus", "dimBbd", "delay", "spaceEcho", "reverb",
+            "cab", "tremolo", "chorus", "dimChorus", "dimBbd", "jcChorus", "delay", "spaceEcho", "reverb",
             "spring", "channelEQ", "desk", "parallel", "eq", "outputGain"
         };
         return ids;
@@ -37,7 +37,7 @@ namespace PedalboardOrder
         static const juce::StringArray ids {
             "compressor", "lowDynamic", "klon", "ts9", "fangs", "bison", "growl",
             "tape", "amp", "cab", "tremolo", "chorus", "dimChorus", "delay",
-            "spaceEcho", "reverb", "spring", "channelEQ", "desk", "eq", "dimBbd"
+            "spaceEcho", "reverb", "spring", "channelEQ", "desk", "eq", "dimBbd", "jcChorus"
         };
         return ids;
     }
@@ -77,7 +77,7 @@ namespace PedalboardOrder
         // a final coloration stage before the output. Fangs/Bison/Growl
         // (all default off) sit right after Bull/Breaker as three more
         // gain-stage options in the same neighbourhood of the chain.
-        ids.addArray ({ "fangs", "bison", "growl", "tape", "amp", "cab", "tremolo", "chorus", "dimChorus", "dimBbd",
+        ids.addArray ({ "fangs", "bison", "growl", "tape", "amp", "cab", "tremolo", "chorus", "dimChorus", "dimBbd", "jcChorus",
                         "delay", "spaceEcho", "reverb", "spring", "channelEQ", "desk", "parallel",
                         "eq", "outputGain" });
         return buildOrderTree (ids);

@@ -121,6 +121,16 @@ namespace PedalTileFactory
         if (id == "dimBbd")
             return std::make_unique<DimensionBBDTile> (apvts);
 
+        // Roland JC-120's BBD chorus line as its own pedal (extracted from
+        // the Amp voice -- see JCChorusModule.h) -- a fourth chorus, distinct
+        // from July (Julia-style), Ensemble (Dimension D) and Dimension
+        // (DC-2 BBD). Three continuous knobs; the pi-offset stereo swirl is
+        // fixed behaviour, not a user control.
+        if (id == "jcChorus")
+            return std::make_unique<GenericKnobsTile> (apvts, id, "JC Chorus", "jcChorusOn",
+                std::vector<std::pair<juce::String, juce::String>> {
+                    { "jcChorusRate", "Rate" }, { "jcChorusDepth", "Depth" }, { "jcChorusMix", "Mix" } });
+
         // Sync (tap-tempo) toggles + note-division reuse the global
         // "tapTempoBpm" set by the header bar's Tap button -- see
         // TapTempo.h. Scoped to Plexer/Copier only (Delay), not the other

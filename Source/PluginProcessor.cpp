@@ -347,6 +347,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("dimBbdOutput"), "Dimension BBD Output",
         Range (0.0f, 100.0f, 0.1f), 70.0f));
 
+    // --- JC Chorus (Roland JC-120's BBD chorus line, extracted from the Amp
+    // voice into its own pedal) --- a fourth, separate chorus from July/
+    // Ensemble/Dimension: a single modulated BBD delay per channel with the
+    // two channels' LFO phase offset by pi (the amp's glassy stereo swirl),
+    // no feedback/compander. Defaults reproduce the amp's old chorus (0.9Hz,
+    // 4ms depth, 45% mix) -- see JCChorusModule.h.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("jcChorusOn"), "JC Chorus On", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("jcChorusRate"), "JC Chorus Rate",
+        Range (0.1f, 5.0f, 0.01f, 0.5f), 0.9f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("jcChorusDepth"), "JC Chorus Depth",
+        Range (0.0f, 100.0f, 0.1f), 50.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("jcChorusMix"), "JC Chorus Mix",
+        Range (0.0f, 100.0f, 0.1f), 45.0f));
+
     // --- Delay --- two selectable engines sharing one on/off toggle and one
     // Delay section: Plexer (our name for an Echoplex-style tape echo —
     // Echoplex is Maestro/Dunlop's trademark) and Copier (our name for a
