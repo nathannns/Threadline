@@ -591,10 +591,14 @@ audio rates) means they were far past convergence.
 Cutting them to 2/3/4 (triode/cathodyne/pentode) dropped the amp from
 **56.65% → 35.99%** of the real-time budget at 4× oversampling (Vintage 5E3,
 `AmpBenchmark`) — while *keeping* 4× oversampling; no oversampling-quality
-trade was made. Fidelity was verified across all 7 voices × drive
-{0, 0.5, 1.0}: worst RMS drift **0.048%** (Modern 3-band at drive 0.5), most
-voices ≤0.04%, JC-120 bit-exact — ~0.004 dB, inaudible — and `AmpValidation`
-still passes (no NaN/Inf/blow-up) at 48/96/192 kHz.
+trade was made. Fidelity was verified two ways: a steady-state sweep across all 7 voices ×
+drive {0, 0.5, 1.0} gave a worst-case RMS drift of 0.048% (~0.004 dB,
+inaudible), and a direct side-by-side A/B (both versions compiled into one
+binary, fed the same steady / blocking-distortion / impulse inputs) came out
+**bit-exact** on every voice — the warm-started Newton solve reaches float
+precision within 2–3 iterations, so the removed iterations were no-ops and
+the CPU cut is lossless. `AmpValidation` still passes (no NaN/Inf/blow-up)
+at 48/96/192 kHz.
 
 Two redundant-computation fixes shipped alongside for completeness; both are
 real but measured <1.8% combined (the iteration cut is the actual win):

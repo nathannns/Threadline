@@ -166,9 +166,11 @@ different starting point:
   performance win without actually benchmarking before/after.
   **Resolution:** the fix that actually moved it was cutting the warm-started
   Newton *iteration counts* (`TriodeStage` 4→2, `CathodyneStage` 5→3,
-  `PentodeStage` 6→4), landing ~36% at 4× (56.65%→35.99%) with identical
-  sound (worst 0.048% RMS drift across all voices, ~0.004 dB) — the loops,
-  not the calls, were the cost.
+  `PentodeStage` 6→4), landing ~36% at 4× (56.65%→35.99%) — the loops, not
+  the calls, were the cost. A direct side-by-side A/B (both versions in one
+  binary, steady + blocking-distortion + impulse inputs) came out bit-exact
+  on every voice: the warm-started solve hits float precision within 2–3
+  iterations, so the removed iterations were no-ops.
 
 ## Current task status
 
@@ -197,9 +199,9 @@ last edit.)
 - **Amp CPU optimization**: cut the warm-started Newton iteration counts in
   the three tube stages (`TriodeStage` 4→2, `CathodyneStage` 5→3,
   `PentodeStage` 6→4), dropping Vintage 5E3 from 56.65%→35.99% of the
-  real-time budget at 4× oversampling while *keeping* 4×. Verified identical
-  sound across all 7 voices × drive {0, 0.5, 1.0} (worst 0.048% RMS drift,
-  ~0.004 dB); `AmpValidation` still clean at 48/96/192k. See README "Amp CPU".
+  real-time budget at 4× oversampling while *keeping* 4×. Direct side-by-side
+  A/B (steady + blocking-distortion + impulse) came out bit-exact on all 7
+  voices; `AmpValidation` still clean at 48/96/192k. See README "Amp CPU".
 
 **Not done — queued, in this order (user chose "tractable first, defer
 the biggest"):**
