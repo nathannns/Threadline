@@ -93,8 +93,11 @@ always summarizes through a small model, which loses exact fidelity.
   standalone Spring pedal at lower quality — favor one clean way to do a
   thing over a redundant convenience copy.
 - **Be honest about uncertainty/negative results** — e.g. the amp CPU
-  optimization pass reported plainly that the measured gains were
-  noise-level rather than overselling small fixes.
+  optimization pass reported plainly that the first micro-opt fixes
+  (removing ~40% of the transcendental calls) were noise-level (~1.8%)
+  rather than overselling them, then profiled and found the real cost was
+  the Newton iteration loops — cutting those 4/5/6→2/3/4 landed ~36% while
+  keeping 4× oversampling and identical sound.
 - **Never remove a shipped APVTS parameter** — deprecate in place
   (unregister from UI/processing, leave it registered) so old saved
   sessions/presets never break. Established pattern (`odOrder`, the

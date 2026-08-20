@@ -577,6 +577,39 @@ dirt still comes from V1/V2A upstream, matching how a real lower/medium-
 gain tweed circuit actually behaves. Bounded and finite across the entire
 sweep, including a hard-impulse stress test (peak 0.9934, no blow-up).
 
+## Amp CPU (Newton iteration reduction)
+
+The three tube stages each re-solve their cathode/operating voltage every
+sample with a warm-started Newton-Raphson iteration. "Warm-started" is the
+math term for seeding the solve from the previous sample's answer — not tube
+warm-up; the tube's thermal state is not modeled. Profiling on Apple Silicon
+showed those iteration *loops*, not the transcendental calls, are ~2/3 of
+`AmpModule`'s CPU. The shipped counts were `TriodeStage` 4, `CathodyneStage`
+5, `PentodeStage` 6 iterations, and the warm start (the seed barely moves at
+audio rates) means they were far past convergence.
+
+Cutting them to 2/3/4 (triode/cathodyne/pentode) dropped the amp from
+**56.65% → 35.99%** of the real-time budget at 4× oversampling (Vintage 5E3,
+`AmpBenchmark`) — while *keeping* 4× oversampling; no oversampling-quality
+trade was made. Fidelity was verified across all 7 voices × drive
+{0, 0.5, 1.0}: worst RMS drift **0.048%** (Modern 3-band at drive 0.5), most
+voices ≤0.04%, JC-120 bit-exact — ~0.004 dB, inaudible — and `AmpValidation`
+still passes (no NaN/Inf/blow-up) at 48/96/192 kHz.
+
+Two redundant-computation fixes shipped alongside for completeness; both are
+real but measured <1.8% combined (the iteration cut is the actual win):
+
+- `softplusSigmoid()` folds the per-sample `softplus` and `sigmoid` into one
+  shared `exp()` with branchy tails (`kx > 6` / `kx < -6` return directly),
+  since `sigmoid` is `softplus`'s derivative and both share the same `e`.
+- `pow(h, γ−1) == pow(h, γ)/h` for `h > 0` — replaces a second `powf` with a
+  divide.
+
+The lesson (recorded in `PREFERENCES.md`) holds: an earlier pass over-sold
+removing ~40% of the transcendental calls as a win when it moved <1.8% — on
+this hardware the per-sample loops are the cost, so the real optimization is
+fewer, still-converged iterations, not fewer expensive calls.
+
 ## UI
 
 `layoutHorizontalRackSection()` colours a section's title/toggle text

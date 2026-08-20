@@ -164,6 +164,11 @@ different starting point:
   real cost is the per-sample Newton-Raphson solve itself, not incidental
   redundant calls. Don't oversell a "found and fixed a real bug" as a
   performance win without actually benchmarking before/after.
+  **Resolution:** the fix that actually moved it was cutting the warm-started
+  Newton *iteration counts* (`TriodeStage` 4→2, `CathodyneStage` 5→3,
+  `PentodeStage` 6→4), landing ~36% at 4× (56.65%→35.99%) with identical
+  sound (worst 0.048% RMS drift across all voices, ~0.004 dB) — the loops,
+  not the calls, were the cost.
 
 ## Current task status
 
@@ -189,6 +194,12 @@ last edit.)
   - **Growl** (Fuzz Face archetype): Fuzz knob now also drives stage 2,
     matching the real shared Q1/Q2 feedback loop.
 - `context.md` and this file created.
+- **Amp CPU optimization**: cut the warm-started Newton iteration counts in
+  the three tube stages (`TriodeStage` 4→2, `CathodyneStage` 5→3,
+  `PentodeStage` 6→4), dropping Vintage 5E3 from 56.65%→35.99% of the
+  real-time budget at 4× oversampling while *keeping* 4×. Verified identical
+  sound across all 7 voices × drive {0, 0.5, 1.0} (worst 0.048% RMS drift,
+  ~0.004 dB); `AmpValidation` still clean at 48/96/192k. See README "Amp CPU".
 
 **Not done — queued, in this order (user chose "tractable first, defer
 the biggest"):**
