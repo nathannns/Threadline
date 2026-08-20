@@ -185,7 +185,7 @@ public:
     //    with the same struct. ~420V plate supply, ~415V screen, ~6k
     //    plate-to-plate output transformer (Mercury Magnetics' published
     //    spec) reflecting to 1.5k/tube.
-    enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3, jtm45 = 4 };
+    enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3, jtm45 = 4, mesaMarkI = 5 };
 
     void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 2)
     {
@@ -351,6 +351,81 @@ public:
                 tube->Rk = 130.0f;
                 tube->prepare (processingSampleRate);
             }
+
+            // Mesa/Boogie Mark I -- see class comment for full sourcing
+            // (the Gil Ayan-drawn 1998 "Mark I Reissue" el34world scan plus
+            // Trevor Betts' 2011 UIUC build report, which reproduces a
+            // cleaner typed copy of the same widely-circulated schematic).
+            // V1 is the amp's signature "boogie" gain stage: the real
+            // circuit biases it with a 1N5303 constant-current diode
+            // instead of a plain cathode resistor (both schematics agree on
+            // this, and the report's own build notes confirm it directly --
+            // "1N5303 current regulating diodes in the preamp"). A CRD
+            // pins the cathode at a fixed current/voltage regardless of
+            // exact tolerances, which a directly-asserted fixed biasPoint
+            // models more faithfully than solving an equivalent Rk would --
+            // the schematic prints that stage's cathode sitting at 2.5V, so
+            // that's the bias point used directly, no two-pass solve
+            // needed since there's no real resistor to have solved through
+            // in the first place.
+            triodeMarkOneV1[ch].Vb = 380.0f;
+            triodeMarkOneV1[ch].cathodeUnbypassed = false;
+            triodeMarkOneV1[ch].biasPoint = -2.5f;
+            triodeMarkOneV1[ch].prepare (processingSampleRate);
+
+            // V2, the cascaded "boost" stage feeding the tone stack -- a
+            // conventional bypassed cathode-resistor stage this time (no
+            // CRD here on either schematic). 1.5k is the exact printed
+            // value of this stage's own boost-switch resistor pair, reused
+            // as the stage's resting cathode resistor since the schematic's
+            // print quality didn't hold up well enough to read this
+            // specific pin's own baseline resistor separately with
+            // confidence -- same "read what's legible, use the well-
+            // established figure otherwise" approach as JTM45's PI tail.
+            triodeMarkOneV2[ch].Vb = 400.0f;
+            triodeMarkOneV2[ch].Rk = 1500.0f;
+            triodeMarkOneV2[ch].cathodeUnbypassed = true;
+            triodeMarkOneV2[ch].prepare (processingSampleRate);
+            triodeMarkOneV2[ch].biasPoint = -triodeMarkOneV2[ch].vk0;
+            triodeMarkOneV2[ch].cathodeUnbypassed = false;
+            triodeMarkOneV2[ch].prepare (processingSampleRate);
+            markOneInterstageCoupling[ch].prepare (osSpec);
+
+            // Driver/PI -- both schematics show 220k plate resistors on
+            // this stage (legible on both scans independently, a rare case
+            // of full agreement); tail resistor wasn't legible on either,
+            // so this uses the same community-published long-tail-pair
+            // figure as JTM45's PI above rather than a guess.
+            markOnePI[ch].Ra1 = 220000.0f; markOnePI[ch].Ra2 = 220000.0f;
+            markOnePI[ch].Rtail = 10000.0f;
+            markOnePI[ch].Vb = 400.0f;
+            markOnePI[ch].prepare (processingSampleRate);
+
+            for (auto* tube : { &powerTubeMarkOneA[ch], &powerTubeMarkOneB[ch] })
+            {
+                // Real 6L6GC (Koren-fit parameters, Cohen & Hélie DAFx-10
+                // "Real-Time Simulation of a Guitar Power Amplifier" -- an
+                // academic paper citing Koren/Duncan Amps methodology, same
+                // kg2=4500 convention already shared by every other power
+                // tube in this file). The real amp runs a matched quad (2
+                // paralleled pairs), not the 2-tube push-pull this class
+                // models per side -- same collapse-the-parallel-pair
+                // simplification already used for JTM45/Fender above (this
+                // struct represents "one side of the push-pull," already
+                // implicitly standing in for whatever real tube count that
+                // side has).
+                tube->mu = 8.7f; tube->ex = 1.35f; tube->kg1 = 1460.0f;
+                tube->kg2 = 4500.0f; tube->kp = 48.0f; tube->kvb = 12.0f;
+                tube->screenVoltage = 440.0f; // standard fraction of the plate rail below, same convention as elsewhere
+                tube->Vb = 500.0f;  // Boogie's well-documented "hot" house B+ -- every Mark-series 60-100W quad-6L6 amp runs close to this
+                tube->Ra = 1000.0f; // ~4k plate-to-plate OT (commonly published Boogie quad-6L6 figure) / 4, same halving rule as elsewhere
+                // Fixed bias (external trim pot, not cathode-biased) --
+                // -52V is the exact bias-supply figure printed on the Gil
+                // Ayan reissue scan's power section.
+                tube->Rk = 1.0f;
+                tube->gridBiasOffset = -52.0f;
+                tube->prepare (processingSampleRate);
+            }
         }
 
         // Real blackface component values (see class comment) -- R1/R2/R4
@@ -403,10 +478,16 @@ public:
             jtm45InterstageCoupling[ch].reset();
             jtm45PI[ch].reset();
             powerTubeJTM45A[ch].reset(); powerTubeJTM45B[ch].reset();
+
+            triodeMarkOneV1[ch].reset(); triodeMarkOneV2[ch].reset();
+            markOneInterstageCoupling[ch].reset();
+            markOnePI[ch].reset();
+            powerTubeMarkOneA[ch].reset(); powerTubeMarkOneB[ch].reset();
         }
         bassmanStack.reset();
         fenderToneStack.reset();
         jtm45ToneStack.reset();
+        markOneToneStack.reset();
         sagEnvelope = 0.0f;
         sagDetectorLP.fill (0.0f);
         outputGain.setCurrentAndTargetValue (targetOutputGain);
@@ -459,6 +540,8 @@ public:
                 updateVoxToneFilters();
             else if (voice == Voice::jtm45)
                 jtm45ToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
+            else if (voice == Voice::mesaMarkI)
+                markOneToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
         }
     }
 
@@ -514,6 +597,11 @@ public:
             if (voice == Voice::jtm45)
             {
                 processJTM45Sample (block, i, channels);
+                continue;
+            }
+            if (voice == Voice::mesaMarkI)
+            {
+                processMarkOneSample (block, i, channels);
                 continue;
             }
 
@@ -865,6 +953,71 @@ private:
         }
     }
 
+    // Mesa/Boogie Mark I -- same overall topology shape as JTM45's path
+    // above (V1 -> interstage coupling -> shared tone-stack family -> V2 ->
+    // long-tail-pair PI -> power pair -> OT saturation), see the
+    // Voice::mesaMarkI prepare() block for full sourcing. markOneToneStack
+    // reuses BassmanToneStack's own default component values -- Mesa's
+    // Mark-series tone stack is documented to derive directly from Fender's
+    // classic passive BMT network, and the pot values legible on both
+    // schematics (250k/250k/10k Bass/Treble/Mid) match that family's shape
+    // -- so it shares bassmanStackMakeupGain too, same reasoning as JTM45.
+    void processMarkOneSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
+    {
+        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
+        const auto powerDrive = 1.15f + driveAmount * 2.7f;
+
+        float detector = 0.0f;
+        std::array<float, 2> plate1 {}, plate2 {};
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
+            auto t1 = triodeMarkOneV1[ch].processSample (x * inputVoltsScale);
+            t1 = markOneInterstageCoupling[ch].processSample (t1);
+
+            const auto toned = markOneToneStack.processSample (ch, t1) * bassmanStackMakeupGain;
+
+            const auto t2Raw = triodeMarkOneV2[ch].processSample (toned);
+            const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+
+            float p1, p2;
+            markOnePI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            plate1[(size_t) ch] = p1;
+            plate2[(size_t) ch] = p2;
+
+            auto& bassTap = sagDetectorLP[(size_t) ch];
+            bassTap += sagDetectorLPCoefficient * (p1 - bassTap);
+            const auto weighted = std::abs (p1) * 0.5f + std::abs (bassTap) * 0.5f;
+            detector = juce::jmax (detector, weighted);
+        }
+
+        const auto coefficient = detector > sagEnvelope ? sagAttack : sagRelease;
+        sagEnvelope = coefficient * sagEnvelope + (1.0f - coefficient) * detector;
+        const auto sag = juce::jlimit (0.0f, 0.42f, sagEnvelope * (0.20f + 0.34f * driveAmount));
+
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto driveScale = effectiveDrive * powerStageInputScale;
+            const auto tubeA = powerTubeMarkOneA[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto tubeB = powerTubeMarkOneB[ch].processSample (plate2[(size_t) ch] * driveScale);
+            auto power = (tubeA - tubeB) * powerStageOutputScale;
+            power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+
+            constexpr float otKnee = 0.65f;
+            const auto otMagnitude = std::abs (power);
+            if (otMagnitude > otKnee)
+            {
+                const auto excess = otMagnitude - otKnee;
+                const auto headroom = 1.0f - otKnee;
+                const auto compressed = otKnee + headroom * std::tanh (excess / headroom);
+                power = std::copysign (compressed, power);
+            }
+
+            block.setSample (ch, i, transformerLowPass[ch].processSample (power));
+        }
+    }
+
     void updateStaticFilters()
     {
         auto inputHP = juce::dsp::IIR::Coefficients<float>::makeHighPass (processingSampleRate, 48.0f, 0.707f);
@@ -886,6 +1039,7 @@ private:
             *voxInterstageCoupling[ch].coefficients = *couplingHP;
             *fenderInterstageCoupling[ch].coefficients = *couplingHP;
             *jtm45InterstageCoupling[ch].coefficients = *couplingHP;
+            *markOneInterstageCoupling[ch].coefficients = *couplingHP;
         }
     }
 
@@ -1663,6 +1817,15 @@ private:
     PentodeStage powerTubeJTM45A[2], powerTubeJTM45B[2];
     juce::dsp::IIR::Filter<float> jtm45InterstageCoupling[2];
     BassmanToneStack jtm45ToneStack;
+    // Mesa/Boogie Mark I voice's own preamp/PI/power-stage instances -- see
+    // Voice::mesaMarkI's own comment. Reuses inputCoupling/transformerLowPass
+    // above too. markOneToneStack is deliberately left at BassmanToneStack's
+    // own default component values -- see processMarkOneSample()'s comment.
+    TriodeStage triodeMarkOneV1[2], triodeMarkOneV2[2];
+    LongTailPairStage markOnePI[2];
+    PentodeStage powerTubeMarkOneA[2], powerTubeMarkOneB[2];
+    juce::dsp::IIR::Filter<float> markOneInterstageCoupling[2];
+    BassmanToneStack markOneToneStack;
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> sagDetectorLP {};
     // V2A's raw plate-voltage output (real volts, tens to hundreds of volts
