@@ -22,7 +22,11 @@ namespace
 
     bool sweepForBlowup (double sampleRate, float ceiling)
     {
-        static const int modes[] = { 0, 1, 2, 3 };
+        // 4-bit masks covering every single mode plus the realistic
+        // combined-button combos (I+II, I+III, II+IV, III+IV) and the
+        // all-four extreme, so the activeCount normalization is exercised
+        // at its fullest stacking depth, not just one mode at a time.
+        static const int masks[] = { 0, 1, 2, 4, 8, 3, 5, 10, 12, 15 };
         static const float inputs[] = { 0.25f, 0.7f, 1.0f };
         static const float amps[] = { 0.1f, 0.5f, 2.0f };
         static const float freqs[] = { 100.0f, 440.0f, 3000.0f };
@@ -32,13 +36,13 @@ namespace
         mod.prepare (spec);
 
         float peak = 0.0f;
-        for (int mode : modes)
+        for (int mask : masks)
             for (float input : inputs)
                 for (float amp : amps)
                     for (float freq : freqs)
                     {
                         mod.reset();
-                        mod.setParameters (mode, input, 0.7f);
+                        mod.setParameters (mask, input, 0.7f);
                         // 16 blocks (~85ms at 48k) so the 50ms parameter
                         // smoothing ramp fully settles and the sweep actually
                         // exercises the target values, not the ramp toward
@@ -61,16 +65,16 @@ namespace
                                     const auto val = buf.getSample (ch, i);
                                     if (! std::isfinite (val))
                                     {
-                                        std::printf ("  !! NaN/Inf at mode=%d input=%.2f amp=%.1f freq=%.0f\n",
-                                                     mode, input, amp, freq);
+                                        std::printf ("  !! NaN/Inf at mask=%d input=%.2f amp=%.1f freq=%.0f\n",
+                                                     mask, input, amp, freq);
                                         return false;
                                     }
                                     const auto mag = std::fabs (val);
                                     if (mag > peak) peak = mag;
                                     if (mag > ceiling)
                                     {
-                                        std::printf ("  !! unbounded (%.2f > %.1f) at mode=%d input=%.2f amp=%.1f freq=%.0f\n",
-                                                     mag, ceiling, mode, input, amp, freq);
+                                        std::printf ("  !! unbounded (%.2f > %.1f) at mask=%d input=%.2f amp=%.1f freq=%.0f\n",
+                                                     mag, ceiling, mask, input, amp, freq);
                                         return false;
                                     }
                                 }
@@ -80,13 +84,13 @@ namespace
         return true;
     }
 
-    double measureRmsGain (double sampleRate, int mode, float input, float amp, float freq)
+    double measureRmsGain (double sampleRate, int mask, float input, float amp, float freq)
     {
         DimensionDBBDModule mod;
         juce::dsp::ProcessSpec spec { sampleRate, 256, 2 };
         mod.prepare (spec);
         mod.reset();
-        mod.setParameters (mode, input, 0.7f);
+        mod.setParameters (mask, input, 0.7f);
 
         const int total = (int) sampleRate;    // 1 second
         const int start = total / 2;           // skip transient + smoothing ramp
@@ -149,17 +153,28 @@ int main()
 
     std::printf ("  RMS gain (stereo, input=0.7, output=0.7):\n");
     std::printf ("    Mode I  @440Hz  small(0.1) %.3f  hot(0.5) %.3f\n",
-                 measureRmsGain (48000.0, 0, 0.7f, 0.1f, 440.0f),
-                 measureRmsGain (48000.0, 0, 0.7f, 0.5f, 440.0f));
-    std::printf ("    Mode II @440Hz  small(0.1) %.3f  hot(0.5) %.3f\n",
                  measureRmsGain (48000.0, 1, 0.7f, 0.1f, 440.0f),
                  measureRmsGain (48000.0, 1, 0.7f, 0.5f, 440.0f));
+    std::printf ("    Mode II @440Hz  small(0.1) %.3f  hot(0.5) %.3f\n",
+                 measureRmsGain (48000.0, 2, 0.7f, 0.1f, 440.0f),
+                 measureRmsGain (48000.0, 2, 0.7f, 0.5f, 440.0f));
     std::printf ("    Mode I  @1kHz   small(0.1) %.3f  hot(0.5) %.3f\n",
-                 measureRmsGain (48000.0, 0, 0.7f, 0.1f, 1000.0f),
-                 measureRmsGain (48000.0, 0, 0.7f, 0.5f, 1000.0f));
+                 measureRmsGain (48000.0, 1, 0.7f, 0.1f, 1000.0f),
+                 measureRmsGain (48000.0, 1, 0.7f, 0.5f, 1000.0f));
     std::printf ("    Mode I  @3kHz   small(0.1) %.3f  hot(0.5) %.3f\n",
-                 measureRmsGain (48000.0, 0, 0.7f, 0.1f, 3000.0f),
-                 measureRmsGain (48000.0, 0, 0.7f, 0.5f, 3000.0f));
+                 measureRmsGain (48000.0, 1, 0.7f, 0.1f, 3000.0f),
+                 measureRmsGain (48000.0, 1, 0.7f, 0.5f, 3000.0f));
+
+    // Combined-mode buttons: the activeCount normalization should keep the
+    // summed-tap RMS in the same ~unity band as single-mode (thicker, not
+    // louder). I+III and the all-four extreme are the interesting cases.
+    std::printf ("  Combined modes @440Hz (input=0.7, output=0.7):\n");
+    std::printf ("    I+III  (mask 5) small(0.1) %.3f  hot(0.5) %.3f\n",
+                 measureRmsGain (48000.0, 5, 0.7f, 0.1f, 440.0f),
+                 measureRmsGain (48000.0, 5, 0.7f, 0.5f, 440.0f));
+    std::printf ("    I+II+III+IV (mask 15) small(0.1) %.3f  hot(0.5) %.3f\n",
+                 measureRmsGain (48000.0, 15, 0.7f, 0.1f, 440.0f),
+                 measureRmsGain (48000.0, 15, 0.7f, 0.5f, 440.0f));
 
     std::printf ("\nDone.\n");
     return 0;

@@ -27,7 +27,14 @@ public:
         const auto active = inTargetOrder && pBool ("dimBbdOn");
         return crossfadeToggle (buffer, active, [this] (juce::AudioBuffer<float>& b)
         {
-            module.setParameters ((int) p ("dimBbdMode"),
+            // The real SDD-320 lets you press several mode buttons at once;
+            // the four bools fold into a 4-bit mask (bit 0 = Mode I ... bit
+            // 3 = Mode IV) that the module sums into the wet signal.
+            const auto mask = (pBool ("dimBbdMode1") ? 1 : 0)
+                            | (pBool ("dimBbdMode2") ? 2 : 0)
+                            | (pBool ("dimBbdMode3") ? 4 : 0)
+                            | (pBool ("dimBbdMode4") ? 8 : 0);
+            module.setParameters (mask,
                                   p ("dimBbdInput") * 0.01f,
                                   p ("dimBbdOutput") * 0.01f);
             module.process (b);

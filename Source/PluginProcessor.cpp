@@ -326,12 +326,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // --- Dimension BBD (circuit-faithful DC-2 "Dimension C" port) --- a
     // second, separate Dimension-style pedal from Ensemble above: this one is
     // the faithful dual-MN3007 BBD + NE570 compander engine (see
-    // DimensionDBBDModule.h), exposing the real unit's 4-position Mode switch
+    // DimensionDBBDModule.h), exposing the real unit's 4-button Mode switch
     // plus input/output level trims rather than Ensemble's continuous
-    // rate/depth/width/tone/mix surface.
+    // rate/depth/width/tone/mix surface. The four modes are independent
+    // toggles (dimBbdMode1..4) so they can be engaged in combination, matching
+    // the SDD-320's documented press-several-buttons-at-once behavior.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("dimBbdOn"), "Dimension BBD On", false));
+    // dimBbdMode is DEPRECATED in place -- the mode selector was originally a
+    // single 4-position choice, replaced by the four independent dimBbdMode1..4
+    // toggles above the comment below. Kept registered so old sessions/presets/
+    // host automation lanes keep their identity; it no longer drives the DSP.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("dimBbdMode"), "Dimension BBD Mode",
         juce::StringArray { "Mode I", "Mode II", "Mode III", "Mode IV" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("dimBbdMode1"), "Dimension BBD Mode I", true));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("dimBbdMode2"), "Dimension BBD Mode II", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("dimBbdMode3"), "Dimension BBD Mode III", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("dimBbdMode4"), "Dimension BBD Mode IV", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("dimBbdInput"), "Dimension BBD Input",
         Range (0.0f, 100.0f, 0.1f), 70.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("dimBbdOutput"), "Dimension BBD Output",

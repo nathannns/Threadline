@@ -51,7 +51,7 @@ void DimensionDBBDModule::prepare (const juce::dsp::ProcessSpec& spec)
     expAttack = compAttack;
     expRelease = compRelease;
 
-    for (auto* value : { &centerDelay, &swing, &rate, &inputGain, &outputGain })
+    for (auto* value : { &inputGain, &outputGain })
         value->reset (sampleRate, 0.05);
     reset();
 }
@@ -67,23 +67,17 @@ void DimensionDBBDModule::reset()
     reconB.reset();
     bbdSaturation.reset();
     writeIndex = 0;
-    lfoPhase = 0.0f;
+    for (auto& phase : lfoPhase) phase = 0.0f;
     compEnv = 0.0f;
     expEnvA = 0.0f;
     expEnvB = 0.0f;
-    centerDelay.setCurrentAndTargetValue (presets[0].centerSec);
-    swing.setCurrentAndTargetValue (presets[0].swingSec);
-    rate.setCurrentAndTargetValue (presets[0].rateHz);
     inputGain.setCurrentAndTargetValue (1.4f);
     outputGain.setCurrentAndTargetValue (0.7f);
 }
 
-void DimensionDBBDModule::setParameters (int mode, float inputLevel01, float outputLevel01)
+void DimensionDBBDModule::setParameters (int modeMaskIn, float inputLevel01, float outputLevel01)
 {
-    const auto& preset = presets[(size_t) juce::jlimit (0, 3, mode)];
-    centerDelay.setTargetValue (preset.centerSec);
-    swing.setTargetValue (preset.swingSec);
-    rate.setTargetValue (preset.rateHz);
+    modeMask = modeMaskIn & 0xF;
     // Input level is the SDD-320's INPUT trim -- it drives the BBD harder as
     // it rises (into the tanh saturation), so 0-1 maps to 0-2x gain rather
     // than a straight 0-1x. Output level is a plain output trim.
@@ -146,13 +140,18 @@ void DimensionDBBDModule::process (juce::AudioBuffer<float>& buffer)
     constexpr float dryGain = 0.85f;
     constexpr float wetGain = 0.55f;
 
+    // How many of the four Dimension modes are engaged. The summed taps are
+    // divided by this so stacking modes thickens rather than boosts -- the
+    // combined-buttons RMS stays in line with the single-mode RMS the blend
+    // was calibrated for.
+    int activeCount = 0;
+    for (int m = 0; m < 4; ++m)
+        if ((modeMask >> m) & 1) ++activeCount;
+
     const auto chs = juce::jmin (2, numChannels);
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const auto center = centerDelay.getNextValue();   // seconds
-        const auto depth = swing.getNextValue();          // seconds
-        const auto rateHz = rate.getNextValue();
         const auto inGain = inputGain.getNextValue();
         const auto outGain = outputGain.getNextValue();
 
@@ -166,6 +165,22 @@ void DimensionDBBDModule::process (juce::AudioBuffer<float>& buffer)
             mono += dry[ch];
         }
         mono /= (float) chs;
+
+        if (activeCount == 0)
+        {
+            // No mode engaged => dry passthrough (the pedal's own On toggle
+            // remains the master bypass; this is just "no mode = no effect").
+            if (numChannels >= 2)
+            {
+                buffer.setSample (0, i, dry[0] * dryGain);
+                buffer.setSample (1, i, dry[1] * dryGain);
+            }
+            else
+            {
+                buffer.setSample (0, i, dry[0] * dryGain);
+            }
+            continue;
+        }
 
         // --- NE570 compressor (2:1), rectified on the pre-emphasised input.
         const auto dc = dcBlock.processSample (mono * inGain);
@@ -187,28 +202,41 @@ void DimensionDBBDModule::process (juce::AudioBuffer<float>& buffer)
         delayLine.setSample (0, writeIndex, bbdIn);
         delayLine.setSample (1, writeIndex, bbdIn);
 
-        // --- triangle LFO, both lines swept in opposition around slightly
-        // different centres (line A takes +tri, line B takes -tri).
-        const auto tri = triangleWave (lfoPhase);
-        lfoPhase += juce::MathConstants<float>::twoPi * rateHz / (float) sampleRate;
-        if (lfoPhase >= juce::MathConstants<float>::twoPi)
-            lfoPhase -= juce::MathConstants<float>::twoPi;
+        // --- sum the active modes' modulated taps. Each mode runs its own
+        // triangle LFO at its own rate around its own centre; summing several
+        // is the SDD-320's "several mode buttons pressed at once" behaviour.
+        auto wetA = 0.0f;
+        auto wetB = 0.0f;
+        for (int m = 0; m < 4; ++m)
+        {
+            if (! ((modeMask >> m) & 1))
+                continue;
+            const auto& preset = presets[(size_t) m];
+            const auto tri = triangleWave (lfoPhase[m]);
+            lfoPhase[m] += juce::MathConstants<float>::twoPi * preset.rateHz / (float) sampleRate;
+            if (lfoPhase[m] >= juce::MathConstants<float>::twoPi)
+                lfoPhase[m] -= juce::MathConstants<float>::twoPi;
 
-        const auto delayA = (center - lineOffset * 0.5f + tri * depth) * (float) sampleRate;
-        const auto delayB = (center + lineOffset * 0.5f - tri * depth) * (float) sampleRate;
+            const auto delayA = (preset.centerSec - lineOffset * 0.5f + tri * preset.swingSec) * (float) sampleRate;
+            const auto delayB = (preset.centerSec + lineOffset * 0.5f - tri * preset.swingSec) * (float) sampleRate;
+            wetA += readDelay (0, delayA);
+            wetB += readDelay (1, delayB);
+        }
+        wetA /= (float) activeCount;
+        wetB /= (float) activeCount;
 
-        // --- reconstruction LP + NE570 expander (1:2) per line.
-        auto wetA = reconA.processSample (readDelay (0, delayA));
-        auto wetB = reconB.processSample (readDelay (1, delayB));
+        // --- reconstruction LP + NE570 expander (1:2) on the summed wet.
+        const auto reconOutA = reconA.processSample (wetA);
+        const auto reconOutB = reconB.processSample (wetB);
 
-        const auto absA = std::abs (wetA);
-        const auto absB = std::abs (wetB);
+        const auto absA = std::abs (reconOutA);
+        const auto absB = std::abs (reconOutB);
         expEnvA += (absA > expEnvA ? expAttack : expRelease) * (absA - expEnvA);
         expEnvB += (absB > expEnvB ? expAttack : expRelease) * (absB - expEnvB);
         const auto expGainA = juce::jlimit (0.1f, 3.0f, expEnvA / referenceLevel);
         const auto expGainB = juce::jlimit (0.1f, 3.0f, expEnvB / referenceLevel);
-        const auto outA = deEmphasis.processSample (wetA * expGainA);
-        const auto outB = deEmphasis.processSample (wetB * expGainB);
+        const auto outA = deEmphasis.processSample (reconOutA * expGainA);
+        const auto outB = deEmphasis.processSample (reconOutB * expGainB);
 
         // --- fixed dry + delayed blend, then output trim.
         const auto wetL = outA * wetGain * outGain;

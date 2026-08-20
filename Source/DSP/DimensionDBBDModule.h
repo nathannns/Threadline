@@ -31,7 +31,12 @@ class DimensionDBBDModule
 public:
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
-    void setParameters (int mode, float inputLevel01, float outputLevel01);
+    // `modeMask` is a 4-bit set of active Dimension modes (bit 0 = Mode I, ...
+    // bit 3 = Mode IV). Several bits may be set at once -- the real SDD-320
+    // lets you press more than one mode button simultaneously (Boss/Roland's
+    // own re-creations model the combinations), and this sums the active
+    // modes' modulated delay taps, normalized by the active count.
+    void setParameters (int modeMask, float inputLevel01, float outputLevel01);
     void process (juce::AudioBuffer<float>& buffer);
 
     // Exposed for the verification harness: the per-mode base delay window
@@ -70,11 +75,16 @@ private:
     // nonlinearity doesn't alias inside the recursive BBD path.
     AdaaTanh bbdSaturation;
 
-    juce::SmoothedValue<float> centerDelay, swing, rate, inputGain, outputGain;
+    juce::SmoothedValue<float> inputGain, outputGain;
 
     double sampleRate = 44100.0;
     int writeIndex = 0;
-    float lfoPhase = 0.0f;
+    int modeMask = 1; // bit 0 = Mode I, the default single mode
+    // One independent LFO phase per mode -- when several modes are engaged at
+    // once, each keeps its own triangle wave running at its own rate, so the
+    // summed taps drift in and out of phase (the "thickening" the real unit's
+    // combined buttons give).
+    float lfoPhase[4] = {};
 
     // NE570 envelope detectors: the compressor rectifies the (pre-emphasised)
     // input, the two expanders each rectify their own BBD line's output.

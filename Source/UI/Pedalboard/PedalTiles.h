@@ -66,13 +66,16 @@ private:
 };
 
 // Dimension BBD ("Dimension"): the real SDD-320/DC-2 mode selector is four
-// latching push-buttons (one per mode), not a dropdown -- this tile renders
-// them as a 4-button radio row wired to the single dimBbdMode choice param.
-// The param stays a choice (so saved sessions/presets/automation keep
-// working); the buttons just write to it, and a timer polls it back so a
-// preset load / host automation re-syncs the highlighted button. Input/
-// Output knobs below in the usual 2-column stomp grid.
-class DimensionBBDTile : public PedalTileComponent, private juce::Timer
+// latching push-buttons (one per mode), and the real unit lets you press
+// more than one at once for a thicker chorus (Boss/Roland's own re-creations
+// model the combinations too) -- so this renders four INDEPENDENT toggle
+// buttons, one per dimBbdMode1..4 bool param, rather than a radio group.
+// Each ButtonAttachment gives two-way sync for free: clicking the button,
+// loading a preset, and host automation all move the same bool, so no timer
+// polling is needed (the old single-choice dimBbdMode is deprecated in
+// place, kept registered but no longer read). Input/Output knobs below in
+// the usual 2-column stomp grid.
+class DimensionBBDTile : public PedalTileComponent
 {
 public:
     explicit DimensionBBDTile (juce::AudioProcessorValueTreeState& apvtsIn)
@@ -88,19 +91,19 @@ public:
         addAndMakeVisible (modeCaption);
 
         static const char* roman[] = { "I", "II", "III", "IV" };
+        static const char* paramIds[] = { "dimBbdMode1", "dimBbdMode2", "dimBbdMode3", "dimBbdMode4" };
         for (int i = 0; i < 4; ++i)
         {
             auto& b = modeButtons[i];
             b.setClickingTogglesState (true);
-            b.setRadioGroupId (1);
             b.setButtonText (roman[i]);
             b.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
             b.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
             b.setColour (juce::TextButton::textColourOnId, ThreadlineColours::accentBright);
-            b.onClick = [this, i] { setModeFromButton (i); };
             addAndMakeVisible (b);
+            modeAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+                apvtsIn, paramIds[i], b);
         }
-        startTimerHz (15);
     }
 
     int getPreferredWidth() const override { return stompTileWidth; }
@@ -127,22 +130,10 @@ protected:
     }
 
 private:
-    void setModeFromButton (int idx)
-    {
-        if (auto* parameter = apvts.getParameter ("dimBbdMode"))
-            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) idx));
-    }
-
-    void timerCallback() override
-    {
-        const auto mode = juce::jlimit (0, 3, (int) apvts.getRawParameterValue ("dimBbdMode")->load());
-        for (int i = 0; i < 4; ++i)
-            modeButtons[i].setToggleState (i == mode, juce::dontSendNotification);
-    }
-
     std::unique_ptr<TileKnob> inputKnob, outputKnob;
     juce::Label modeCaption;
     juce::TextButton modeButtons[4];
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> modeAttachments[4];
 };
 
 // Amp: Drive/Volume always shown, plus either Tone (Vintage 5E3) or
