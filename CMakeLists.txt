@@ -20,7 +20,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 juce_add_binary_data(ThreadlineData SOURCES
-    Resources/Images/tweed_main.png
     Resources/Images/plugin_background_subtle.png
     Resources/Images/knob_pointer.png
     Resources/Images/knob_effects.png
@@ -40,14 +39,6 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/Buttons/button_on.png
     Resources/Images/Buttons/rocker_off.png
     Resources/Images/Buttons/rocker_on.png
-    Resources/Images/RackPlates/plate_compressor.png
-    Resources/Images/RackPlates/plate_klon.png
-    Resources/Images/RackPlates/plate_ts9.png
-    Resources/Images/RackPlates/plate_tremolo.png
-    Resources/Images/RackPlates/plate_chorus.png
-    Resources/Images/RackPlates/plate_delay.png
-    Resources/Images/RackPlates/plate_reverb.png
-    Resources/Images/RackPlates/plate_eq.png
     Resources/Reference/threadline_logo.png
     Resources/Fonts/IBMPlexSans-Regular.ttf
     Resources/Fonts/IBMPlexSans-Medium.ttf

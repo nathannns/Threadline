@@ -10,56 +10,46 @@ on/off toggle regardless) via the Overdrive Order switch.
 ## Issues / next work
 
 Active backlog for the next session. Tagged by repo — `[T]` Threadline,
-`[R]` Rockalizer, `[T+R]` both.
+`[R]` Rockalizer, `[T+R]` both. Numbers are stable ids, not a dense
+sequence — completed items are removed rather than renumbered, so
+Rockalizer's `README.md` subset can keep citing the same numbers. Six UI/
+cosmetic items (former #8, #10, #13, #14, #15, #16) shipped 2026-08-20; see
+`PREFERENCES.md` "Current task status" for what changed.
 
-1. `[T]` **Amp loudness parity** — the 7 amp voices still have a big volume
-   gap at identical knob settings: Jazz Chorus is notably quiet, JTM45 is
-   notably loud. Re-verify the drive-dependent normalization against a level
-   probe across the whole Drive range plus a real listen, and re-tune until
-   there's no massive jump between voices.
-2. `[T+R]` **Tape fidelity** — make Tape faithful to the real machines
-   (Studer A800 service manual + Tascam 244 schematic are in hand, see
-   context.md). Real NAB/CCIR record+playback EQ time constants (3180/50 µs,
-   70/35/17.5 µs), the playback head bump, bias (240 kHz A800 vs cassette),
-   and ground "Studio"/"Cassette" in the two machines.
-3. `[T+R]` **Threadline quieter than Rockalizer** — same effects (Tape,
-   Chorus/Ensemble, Echo/Satellite, Spring) at the same settings, but
-   Threadline outputs noticeably less level. Suspect the global output
-   calibration (Rockalizer has a +1.8 dB `outputCalibrationDb`); check
-   Threadline's staging.
-4. `[T]` **Fuzz research** — some fuzzes are uncontrollable in a VST (as in
-   real life). Research which fuzz topologies are easy to replicate and
-   behave/tame well, to inform replacements.
-5. `[T]` **Bison (Big Muff) too hard to control** — reconsider whether it
-   stays in the plugin; possibly replace it with a better-behaved fuzz from
-   #4.
-6. `[T]` **Remove unused sources** — e.g. the "threadline layout" image and
-   any other unreferenced resource/doc files.
-7. `[T]` **Delay (Plexer/Copier) mix too strong** — a small mix already
-   produces loud feedback; reduce the effective strength of the mix knob.
-8. `[R]` **Echo UI tidy-up** — align the ECHO wordmark with the other
-   pedals; move the Drive knob right; move the echo-type selector to the
-   left with the Sync button below it.
-9. `[R]` **Single spike after running a while** — one brief spike then gone;
-   find and fix the cause (denormal, discontinuity, latency change, buffer
-   edge).
-10. `[R]` **UI consistency** — make Rockalizer's layout/size/design/spacing
-    cohesive and matching across panels and pedals.
-11. `[T+R]` **Effects upgrade sweep** — review each effect for worthwhile
-    upgrades (accuracy, character, controls).
-12. `[R]` **Doubler** — it doesn't audibly double the playing; rework the
-    detune/widening so the doubling is clearly audible.
-13. `[T+R]` **Options button** — clicking anywhere else should close the
-    options bar (currently needs the option button pressed again).
-14. `[T]` **Expandable bar opens downward only** — the amp sim's expandable
-    bar must only expand downward like the others; apply to any future
-    expandable bar.
-15. `[T]` **Pedal 'x' close button** — the 'x' that closes a pedal tile is
-    buggy; make it behave reliably.
-16. `[T]` **Pedal name → swap** — clicking the pedal name on top should open
-    the effects bar to swap it for another pedal.
-17. `[T]` **JC Chorus modes** — add Juno-style chorus modes (Mode 1 / 2 /
-    1+2) to the JC Chorus pedal.
+- `#1` `[T]` **Amp loudness parity** — the 7 amp voices still have a big
+  volume gap at identical knob settings: Jazz Chorus is notably quiet,
+  JTM45 is notably loud. Re-verify the drive-dependent normalization
+  against a level probe across the whole Drive range plus a real listen,
+  and re-tune until there's no massive jump between voices.
+- `#2` `[T+R]` **Tape fidelity** — make Tape faithful to the real machines
+  (Studer A800 service manual + Tascam 244 schematic are in hand, see
+  context.md). Real NAB/CCIR record+playback EQ time constants (3180/50 µs,
+  70/35/17.5 µs), the playback head bump, bias (240 kHz A800 vs cassette),
+  and ground "Studio"/"Cassette" in the two machines.
+- `#3` `[T+R]` **Threadline quieter than Rockalizer** — same effects (Tape,
+  Chorus/Ensemble, Echo/Satellite, Spring) at the same settings, but
+  Threadline outputs noticeably less level. Suspect the global output
+  calibration (Rockalizer has a +1.8 dB `outputCalibrationDb`); check
+  Threadline's staging.
+- `#4` `[T]` **Fuzz research** — some fuzzes are uncontrollable in a VST (as
+  in real life). Research which fuzz topologies are easy to replicate and
+  behave/tame well, to inform replacements.
+- `#5` `[T]` **Bison (Big Muff) too hard to control** — reconsider whether
+  it stays in the plugin; possibly replace it with a better-behaved fuzz
+  from #4.
+- `#6` `[T]` **Remove unused sources** — e.g. the "threadline layout" image
+  and any other unreferenced resource/doc files.
+- `#7` `[T]` **Delay (Plexer/Copier) mix too strong** — a small mix already
+  produces loud feedback; reduce the effective strength of the mix knob.
+- `#9` `[R]` **Single spike after running a while** — one brief spike then
+  gone; find and fix the cause (denormal, discontinuity, latency change,
+  buffer edge).
+- `#11` `[T+R]` **Effects upgrade sweep** — review each effect for
+  worthwhile upgrades (accuracy, character, controls).
+- `#12` `[R]` **Doubler** — it doesn't audibly double the playing; rework
+  the detune/widening so the doubling is clearly audible.
+- `#17` `[T]` **JC Chorus modes** — add Juno-style chorus modes (Mode 1 / 2
+  / 1+2) to the JC Chorus pedal.
 
 ## Modules
 

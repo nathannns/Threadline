@@ -218,6 +218,46 @@ last edit.)
 - The forward-looking backlog (17 issues across both repos) now lives in
   README.md under "Issues / next work"; this file's queue below tracks only
   the original circuit-accuracy pass.
+- **UI/cosmetic backlog sweep (2026-08-20)**, explicitly scoped to layout
+  and interaction only — no DSP/topology/effect-behavior changes. Six of
+  the 17 backlog items shipped, verified by a clean CMake build of both
+  repos' Standalone targets plus a visual screenshot check of Rockalizer's
+  Echo pedal:
+  - `[T+R]` **Options button**: both editors now call
+    `addMouseListener (this, true)` and close the Options panel from a new
+    `mouseDown` override on any click outside the panel/gear button
+    (previously only the gear button itself could close it).
+  - `[T]` **Expandable bar opens downward only**: no dedicated "expandable
+    bar" widget exists in this codebase — the real mechanism is
+    `juce::PopupMenu` direction. Added
+    `.withPreferredPopupDirection (downwards)` to the pedal-add/insert menu
+    (`PedalboardComponent::showAddMenu`) and the Parallel-slot picker
+    (`ParallelTile::showSlotMenu`), matching the preset dropdown's existing
+    rule (`showPresetMenu`).
+  - `[T]` **Pedal 'x' close button**: `removeButton` now disables itself
+    synchronously inside its own `onClick`, before `removePedal`'s deferred
+    `MessageManager::callAsync` rebuild runs, so a fast second click can't
+    double-fire the removal.
+  - `[T]` **Pedal name → swap**: clicking a tile's name label now opens a
+    new `PedalboardComponent::showSwapMenu`, which replaces that pedal in
+    place (same board position) instead of the "+ Add Pedal" picker's
+    append-only behavior. Wired via a new `onNameClicked` callback on
+    `PedalTileComponent`, hit-tested against `nameLabel`'s bounds inside the
+    tile's existing `mouseDown` (the label itself still doesn't intercept
+    clicks, same as before).
+  - `[R]` **Echo UI tidy-up**: the ECHO title wordmark was 42px lower than
+    Tape/Chorus/Spring's shared y=438 because Echo's 7th knob (Drive) and
+    its Pattern/Sync selectors needed a whole extra row. Fixed by stacking
+    Sync directly below Pattern in the row's left column (freeing the row
+    Drive used to have alone) and moving Drive to the row's right column —
+    title now lines up with its siblings.
+  - `[R]` **UI consistency**: survey found Echo was the only outlier (all
+    other pedal tiles already share tile/knob size and label conventions);
+    covered by the Echo fix above. Flagged but *not* changed: Rockalizer's
+    `resized()` hardcodes `tapeCardX`/`chorusCardX`/`echoCardX`/
+    `springCardX` separately from `paint()`'s computed `cardWidth`/`gap` —
+    currently in sync, not a visible bug, so left as a latent-risk note
+    rather than a refactor.
 
 **Not done — queued, in this order (user chose "tractable first, defer
 the biggest"):**

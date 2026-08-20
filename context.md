@@ -133,6 +133,12 @@ second source when exactness matters.
 - Casual, low-punctuation communication style; prefers being offered a
   short multiple-choice question at a real decision fork rather than a
   wall of options to read through.
-- **Expandable bars open downward only.** The amp sim's expandable bar (and
-  any future one) must expand downward like the other pedals, never upward
-  — a stated UI rule to apply consistently.
+- **Expandable bars open downward only.** No dedicated "expandable bar"
+  component actually exists in this codebase (confirmed 2026-08-20, full
+  grep of `Source/`) — the real mechanism behind every dropdown/picker is
+  `juce::PopupMenu::Options`, and only the preset dropdown
+  (`showPresetMenu`) had already forced `.withPreferredPopupDirection
+  (downwards)`. Applied the same option to the other two popup-based
+  pickers (`PedalboardComponent::showAddMenu`, `ParallelTile::showSlotMenu`)
+  so the rule holds everywhere, not just the preset bar. Keep applying it to
+  any future `juce::PopupMenu::Options` call in this codebase.

@@ -281,6 +281,7 @@ private:
     void timerCallback() override;
     void showPresetMenu();
     void refreshPresetList();
+    void mouseDown (const juce::MouseEvent&) override;
 
     ThreadlineAudioProcessor& processor;
     // Declared before all controls so it outlives every component using it.

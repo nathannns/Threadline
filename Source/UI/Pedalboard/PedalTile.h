@@ -131,7 +131,19 @@ public:
         removeButton.setButtonText ("X");
         removeButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff3a1f19));
         removeButton.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textDim);
-        removeButton.onClick = [this] { if (onRemoveClicked) onRemoveClicked (pedalId); };
+        removeButton.onClick = [this]
+        {
+            // The actual removal (PedalboardComponent::removePedal) defers
+            // its rebuild via MessageManager::callAsync since it can't
+            // destroy this button synchronously from inside its own click
+            // callback -- so guard against a second click landing in that
+            // window and firing the handler twice.
+            if (removeButton.isEnabled())
+            {
+                removeButton.setEnabled (false);
+                if (onRemoveClicked) onRemoveClicked (pedalId);
+            }
+        };
         addAndMakeVisible (removeButton);
 
         hasToggle = toggleParamId.isNotEmpty();
@@ -156,6 +168,7 @@ public:
     virtual int getPreferredHeight() const { return -1; }
 
     std::function<void (const juce::String&)> onRemoveClicked;
+    std::function<void()> onNameClicked;
     std::function<void (PedalTileComponent&)> onDragStart;
     std::function<void (PedalTileComponent&, int newXInParent)> onDragTo;
     std::function<void (PedalTileComponent&)> onDragEnd;
@@ -180,7 +193,17 @@ public:
 
     void mouseDown (const juce::MouseEvent& e) override
     {
-        // Anywhere on the tile's own surface is a drag handle -- every
+        // The name label doesn't intercept its own clicks (see its
+        // setInterceptsMouseClicks(false, false) above), so a click there
+        // lands here too -- hit-test its bounds first and treat it as
+        // "open the swap picker" rather than the drag-handle below.
+        if (nameLabel.getBounds().contains (e.getPosition()))
+        {
+            if (onNameClicked) onNameClicked();
+            return;
+        }
+
+        // Anywhere else on the tile's own surface is a drag handle -- every
         // actual control (knob, combo, toggle, button) is a child
         // component that already captures its own clicks first, so this
         // only ever fires on genuinely empty space, not on top of a knob.

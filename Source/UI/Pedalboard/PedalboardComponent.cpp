@@ -117,7 +117,9 @@ void PedalboardComponent::rebuildTiles()
         auto tile = PedalTileFactory::createTile (id, processor);
         if (tile == nullptr)
             continue;
+        auto* tilePtr = tile.get();
         tile->onRemoveClicked = [this] (const juce::String& removedId) { removePedal (removedId); };
+        tile->onNameClicked = [this, tilePtr, id] { showSwapMenu (*tilePtr, id); };
         tile->onDragStart = [this] (PedalTileComponent& t) { handleDragStart (t); };
         tile->onDragTo = [this] (PedalTileComponent& t, int x) { handleDragTo (t, x); };
         tile->onDragEnd = [this] (PedalTileComponent& t) { handleDragEnd (t); };
@@ -238,16 +240,70 @@ void PedalboardComponent::showAddMenu (juce::Component& anchor, int insertIndex)
     if (menuIds.empty())
     {
         menu.addItem (1, "All pedals already on board", false, false);
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor));
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor)
+            .withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::downwards));
         return;
     }
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor),
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor)
+        .withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::downwards),
         [safe = juce::Component::SafePointer<PedalboardComponent> (this), menuIds, insertIndex] (int result)
         {
             if (safe == nullptr || result <= 0 || result > (int) menuIds.size())
                 return;
             const auto clampedIndex = juce::jlimit (0, safe->middleOrder.size(), insertIndex);
             safe->middleOrder.insert (clampedIndex, menuIds[(size_t) result - 1]);
+            safe->publishOrder();
+            safe->rebuildTiles();
+        });
+}
+
+void PedalboardComponent::showSwapMenu (juce::Component& anchor, const juce::String& pedalId)
+{
+    // Same "not already live elsewhere on the board" exclusion as
+    // showAddMenu(), except pedalId itself stays in the list -- it's the
+    // pedal being replaced, not a duplicate.
+    auto parkedInParallel = [this] (const char* paramId)
+    {
+        const auto choiceIndex = (int) processor.apvts.getRawParameterValue (paramId)->load();
+        const auto& ids = PedalboardOrder::parallelSlotChoiceIds();
+        const auto idx = choiceIndex - 1;
+        return choiceIndex > 0 && idx >= 0 && idx < ids.size() ? ids[idx] : juce::String();
+    };
+    const auto slotA = parkedInParallel ("parallelSlotA");
+    const auto slotB = parkedInParallel ("parallelSlotB");
+
+    const auto& allIds = processor.getAllPedalIds();
+    juce::PopupMenu menu;
+    std::vector<juce::String> menuIds;
+    int itemId = 1;
+    for (auto& id : allIds)
+    {
+        if (id != pedalId && (isPinned (id) || middleOrder.contains (id) || id == slotA || id == slotB))
+            continue;
+        menu.addItem (itemId, PedalTileFactory::displayNameFor (id));
+        menuIds.push_back (id);
+        ++itemId;
+    }
+    if (menuIds.empty())
+    {
+        menu.addItem (1, "No other pedals available", false, false);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor)
+            .withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::downwards));
+        return;
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor)
+        .withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::downwards),
+        [safe = juce::Component::SafePointer<PedalboardComponent> (this), menuIds, pedalId] (int result)
+        {
+            if (safe == nullptr || result <= 0 || result > (int) menuIds.size())
+                return;
+            const auto chosenId = menuIds[(size_t) result - 1];
+            if (chosenId == pedalId)
+                return;
+            const auto index = safe->middleOrder.indexOf (pedalId);
+            if (index < 0)
+                return;
+            safe->middleOrder.set (index, chosenId);
             safe->publishOrder();
             safe->rebuildTiles();
         });

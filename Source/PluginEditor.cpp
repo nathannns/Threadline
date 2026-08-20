@@ -94,6 +94,7 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
         powerButton.toFront (false);
     };
     addAndMakeVisible (optionsMenuButton);
+    addMouseListener (this, true);
 
     for (auto* button : { &input1Button, &input2Button })
     {
@@ -229,6 +230,25 @@ void ThreadlineAudioProcessorEditor::paint (juce::Graphics& g)
     paintThreadlineBackground (g, getLocalBounds());
     paintCard (g, presetCardBounds, 8.0f);
     paintCard (g, bottomBarBounds, 8.0f);
+}
+
+void ThreadlineAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
+{
+    if (! optionsVisible)
+        return;
+
+    // Click-outside-to-close: registered with addMouseListener(this, true) so
+    // every child's mouseDown is also delivered here. Ignore clicks that
+    // originate on the panel itself or its own gear toggle (which already
+    // handles its own open/close).
+    auto* originator = e.eventComponent;
+    if (originator == &optionsGroup || optionsGroup.isParentOf (originator))
+        return;
+    if (originator == &optionsMenuButton)
+        return;
+
+    optionsVisible = false;
+    optionsGroup.setVisible (false);
 }
 
 void ThreadlineAudioProcessorEditor::timerCallback()

@@ -83,6 +83,7 @@ private:
     void rebuildTiles();
     void layoutTiles();
     void showAddMenu (juce::Component& anchor, int insertIndex);
+    void showSwapMenu (juce::Component& anchor, const juce::String& pedalId);
     void removePedal (const juce::String& id);
     void publishOrder();
     juce::StringArray fullOrderForProcessor() const;

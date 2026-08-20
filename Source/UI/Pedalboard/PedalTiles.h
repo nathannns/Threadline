@@ -746,10 +746,12 @@ private:
         if (menuChoiceIndices.empty())
         {
             menu.addItem (1, "No pedals available", false, false);
-            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor));
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor)
+                .withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::downwards));
             return;
         }
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor),
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (anchor)
+            .withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::downwards),
             [safe = juce::Component::SafePointer<ParallelTile> (this), targetParamId, menuChoiceIndices] (int result)
             {
                 if (safe == nullptr || result <= 0 || result > (int) menuChoiceIndices.size())
