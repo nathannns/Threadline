@@ -8,13 +8,24 @@
 // "scooped mid" tone stack): not a copy of any specific traced schematic
 // or component BOM -- this project has no rights to reproduce a
 // particular commercial pedal's exact values -- but built from the same
-// well-documented, decades-old topology family: a signal driven hard
-// enough to swing a transistor stage's output into a pair of clamping
-// diodes, twice in a row, through a coupling network that strips each
+// well-documented, decades-old topology family: a transistor gain stage
+// with an antiparallel diode pair clamping its OWN feedback path (base to
+// collector), twice in a row, through a coupling network that strips each
 // stage's DC bias before the next, followed by a passive tone control
 // that sums a lowpass and an inverted highpass -- the well-known reason
 // this whole pedal family's tone control produces a genuine notch/scoop
 // rather than a simple shelf (see ComplementaryToneStack.h).
+//
+// Checked a real Big Muff Pi schematic directly (el34world archive) to
+// confirm that feedback-clamp structure -- both of its two clipping
+// stages show their diode pair wired in parallel with the stage's own
+// 470k feedback resistor, base to collector, the same general "diode
+// clamps a gain stage's own feedback loop" family TS9/Klon's clippers
+// already use (just built around a bare transistor instead of an op-amp)
+// rather than a post-gain shunt clamp to ground -- so ClipStage below is
+// now structured the same way TS9Clipper is (Norton current injection
+// into a feedback resistance terminated by the diode pair), not copying
+// any of the real circuit's actual component values, just its topology.
 //
 // Each clipping stage reuses this project's existing WDF (Wave Digital
 // Filter) antiparallel-diode-pair machinery (WDFCore.h -- the same real
@@ -32,26 +43,23 @@
 class BisonModule
 {
 public:
-    // A shunt clamp: the stage's own (already-gain-scaled) open-circuit
-    // output voltage, Norton-converted through its own loading resistance
-    // Rc into a node clamped by an antiparallel diode pair to ground --
-    // WDFCore's DiodePair rooted directly on a ResistiveCurrentSource,
-    // the same tractable pattern TS9Clipper uses, just without a
-    // feedback loop around an op-amp (this is a plain shunt stage, not an
-    // inverting-amplifier feedback clipper).
+    // Diode-in-feedback clamp -- structurally identical to TS9Clipper
+    // (Norton current injection representing Vin/Rin, summed against a
+    // feedback resistance terminated by the diode pair), see class
+    // comment for why that's the right shape for this stage.
     struct ClipStage
     {
-        WDF::ResistiveCurrentSource node { 47000.0f };
-        WDF::DiodePair<WDF::ResistiveCurrentSource> dp { node, 2.52e-9f, 0.02585f };
+        WDF::ResistiveCurrentSource feedbackR { 47000.0f };
+        WDF::DiodePair<WDF::ResistiveCurrentSource> dp { feedbackR, 2.52e-9f, 0.02585f };
 
-        void reset() noexcept { node.wdf.a = node.wdf.b = 0.0f; }
+        void reset() noexcept { feedbackR.wdf.a = feedbackR.wdf.b = 0.0f; }
 
-        float processSample (float theveninVoltage) noexcept
+        float processSample (float vin, float inputOneOverR) noexcept
         {
-            node.setCurrent (theveninVoltage / node.wdf.R);
-            dp.incident (node.reflected());
-            node.incident (dp.reflected());
-            return WDF::voltage (node.wdf);
+            feedbackR.setCurrent (-vin * inputOneOverR);
+            dp.incident (feedbackR.reflected());
+            feedbackR.incident (dp.reflected());
+            return WDF::voltage (feedbackR.wdf);
         }
     };
 
@@ -141,9 +149,9 @@ public:
             for (int i = 0; i < osSamples; ++i)
             {
                 const auto x = osBlock.getSample ((int) ch, i) * driveGain;
-                const auto clipped1 = stage1[(size_t) ch].processSample (x) * interStageGain;
+                const auto clipped1 = stage1[(size_t) ch].processSample (x, oneOverRin) * interStageGain;
                 const auto coupled = couplingHighpass[ch].processSample (clipped1);
-                auto clipped2 = stage2[(size_t) ch].processSample (coupled) * outputCalibration;
+                auto clipped2 = stage2[(size_t) ch].processSample (coupled, oneOverRin) * outputCalibration;
                 clipped2 = safetyCeiling * std::tanh (clipped2 / safetyCeiling);
                 osBlock.setSample ((int) ch, i, clipped2);
             }
@@ -182,7 +190,23 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::AudioBuffer<float> wetBuffer;
     ClipStage stage1[2], stage2[2];
-    static constexpr float interStageGain = 6.0f;
+    // Generic input-resistor magnitude feeding each clip stage's feedback
+    // network -- not a traced real value (see class comment on why this
+    // stays generic rather than copying a BOM). Re-tuned via a standalone
+    // harness after the topology change above: the old 10k (paired with
+    // the old shunt-clamp topology's own calibration) left the diode pair
+    // already fully saturated at Sustain=0, leaving the knob almost inert
+    // -- a sweep across Rin/interStageGain confirmed 100k/1.0 gives a
+    // meaningful clean(-ish)-to-hot range across the full Sustain sweep
+    // instead (maxAbs ~0.52 at Sustain=0 up to ~1.38 at Sustain=1, of the
+    // 3.0 safety ceiling -- see FangsClipper-style calibration comments
+    // elsewhere in this file for the same discipline).
+    static constexpr float oneOverRin = 1.0f / 100000.0f;
+    // No longer boosting between stages -- each diode-in-feedback clip
+    // stage already carries its own real gain via feedbackR/Rin, unlike
+    // the old shunt-clamp stages which needed an external multiplier to
+    // reach a useful clipping range.
+    static constexpr float interStageGain = 1.0f;
     // Empirically-tuned via a standalone harness (same discipline as
     // Klon/TS9's own calibration constants) -- stage2's raw output peak
     // plateaus around 0.24-0.26 across the Sustain range (both stages'
