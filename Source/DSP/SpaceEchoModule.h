@@ -20,6 +20,13 @@
 // Bass/Treble shelves and processHysteresisDrive() below, an explicit-
 // integration Jiles-Atherton-style model, which replace the single
 // one-pole "Tone" and plain tanh saturator this used to have.
+//
+// Section-name mapping: this is Threadline's "Satellite - 201" pedal, the
+// SAME effect as Rockalizer's "delay" (Rockalizer's EchoModule.h). It is
+// named SpaceEchoModule rather than EchoModule because Threadline already
+// uses EchoModule for the unrelated "Plexer" EP-3 delay above. Rockalizer's
+// EchoModule is the older single-"Tone" version; this is the upgraded
+// Bass/Treble-shelf + hysteresis port.
 class SpaceEchoModule
 {
 public:

@@ -9,6 +9,10 @@
 // pedal (ChorusModule.h, modeled on the Walrus Julia's Dry-Chorus-Vibrato
 // control surface instead). Renamed from ChorusModule to avoid colliding
 // with that existing class.
+//
+// Section-name mapping: this is Threadline's "Ensemble" pedal, the SAME
+// effect as Rockalizer's "chorus" (Rockalizer's ChorusModule.h) -- ported
+// byte-for-byte, only the class name differs.
 class DimensionChorusModule
 {
 public:
