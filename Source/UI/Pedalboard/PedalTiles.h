@@ -80,7 +80,7 @@ public:
         bassKnob = makeTileKnob (*this, apvtsIn, "ampBass", "Bass");
         midKnob = makeTileKnob (*this, apvtsIn, "ampMid", "Mid");
         trebleKnob = makeTileKnob (*this, apvtsIn, "ampTreble", "Treble");
-        voiceCombo = makeTileCombo (*this, apvtsIn, "ampVoice", "", { "Vintage 5E3", "Boutique", "Vox Top Boost", "Deluxe 63" });
+        voiceCombo = makeTileCombo (*this, apvtsIn, "ampVoice", "", { "Vintage 5E3", "Boutique", "Vox Top Boost", "Deluxe 63", "JTM45" });
         updateVoiceVisibility (true);
         startTimerHz (15);
     }
@@ -96,7 +96,7 @@ protected:
         body.removeFromTop (rowGap);
 
         std::vector<TileKnob*> visible { driveKnob.get(), outputKnob.get() };
-        if (voiceIndex == 1 || voiceIndex == 3)
+        if (voiceIndex == 1 || voiceIndex == 3 || voiceIndex == 4)
             visible.insert (visible.end(), { bassKnob.get(), midKnob.get(), trebleKnob.get() });
         else if (voiceIndex == 2)
             visible.insert (visible.end(), { bassKnob.get(), trebleKnob.get() });
@@ -123,14 +123,14 @@ private:
 
     void updateVoiceVisibility (bool force)
     {
-        const auto nowVoiceIndex = juce::jlimit (0, 3, (int) apvts.getRawParameterValue ("ampVoice")->load());
+        const auto nowVoiceIndex = juce::jlimit (0, 4, (int) apvts.getRawParameterValue ("ampVoice")->load());
         if (! force && nowVoiceIndex == voiceIndex)
             return;
         voiceIndex = nowVoiceIndex;
         const auto showTone = voiceIndex == 0;
-        const auto showBass = voiceIndex == 1 || voiceIndex == 2 || voiceIndex == 3;
-        const auto showMid = voiceIndex == 1 || voiceIndex == 3;
-        const auto showTreble = voiceIndex == 1 || voiceIndex == 2 || voiceIndex == 3;
+        const auto showBass = voiceIndex == 1 || voiceIndex == 2 || voiceIndex == 3 || voiceIndex == 4;
+        const auto showMid = voiceIndex == 1 || voiceIndex == 3 || voiceIndex == 4;
+        const auto showTreble = voiceIndex == 1 || voiceIndex == 2 || voiceIndex == 3 || voiceIndex == 4;
         toneKnob->slider.setVisible (showTone); toneKnob->label.setVisible (showTone);
         bassKnob->slider.setVisible (showBass); bassKnob->label.setVisible (showBass);
         midKnob->slider.setVisible (showMid); midKnob->label.setVisible (showMid);

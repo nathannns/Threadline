@@ -37,7 +37,7 @@ public:
         {
             selected.setEnabled (true);
             selected.setParameters (p ("ampDrive"), p ("ampTone"), p ("ampOutput"),
-                static_cast<AmpModule::Voice> (juce::jlimit (0, 3, (int) p ("ampVoice"))),
+                static_cast<AmpModule::Voice> (juce::jlimit (0, 4, (int) p ("ampVoice"))),
                 p ("ampBass"), p ("ampMid"), p ("ampTreble"));
             selected.process (b);
         });

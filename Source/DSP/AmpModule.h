@@ -185,7 +185,7 @@ public:
     //    with the same struct. ~420V plate supply, ~415V screen, ~6k
     //    plate-to-plate output transformer (Mercury Magnetics' published
     //    spec) reflecting to 1.5k/tube.
-    enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3 };
+    enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3, jtm45 = 4 };
 
     void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 2)
     {
@@ -304,6 +304,53 @@ public:
                 tube->gridBiasOffset = -35.0f;
                 tube->prepare (processingSampleRate);
             }
+
+            // Marshall JTM45 voice -- see class comment for full sourcing.
+            // Real component values/voltages read directly from the
+            // "Basic Schematic for Marshall Trem Amps (Types 1961, 1962,
+            // 1987T)" (drtube.com JTM45 archive) -- the same underlying
+            // amp chassis the plain JTM45 uses, just with an added
+            // tremolo channel this voice doesn't model (Tremolo already
+            // exists as its own separate pedal, same reasoning as every
+            // other voice not re-modeling effects it has a dedicated
+            // pedal for). V1 (input pair, shared cathode) reads 310V at
+            // its plate rail on the schematic's own circled B+ taps; the
+            // second stage (feeding the tone stack) reads 380V.
+            triodeJTM45V1[ch].Vb = 310.0f;
+            triodeJTM45V1[ch].prepare (processingSampleRate);
+            triodeJTM45V2[ch].Vb = 380.0f;
+            triodeJTM45V2[ch].prepare (processingSampleRate);
+            jtm45InterstageCoupling[ch].prepare (osSpec);
+
+            // JTM45's long-tail-pair PI, symmetric plate resistors (unlike
+            // Fender's deliberately asymmetric one) -- 82k/82k, 10k tail,
+            // both widely published JTM45/Plexi-era values (couldn't read
+            // the PI's exact resistor print reliably off the scan itself,
+            // this is the well-established community figure rather than a
+            // guess).
+            jtm45PI[ch].Ra1 = 82000.0f; jtm45PI[ch].Ra2 = 82000.0f;
+            jtm45PI[ch].Rtail = 10000.0f;
+            jtm45PI[ch].Vb = 360.0f; // interpolated between the 380V/450V taps either side of it on the schematic
+            jtm45PI[ch].prepare (processingSampleRate);
+
+            for (auto* tube : { &powerTubeJTM45A[ch], &powerTubeJTM45B[ch] })
+            {
+                // Real KT66 (Koren-fit parameters, community-published
+                // SPICE model derived from Norman Koren's own methodology
+                // -- the same modeling approach every other tube in this
+                // file already uses, just not a figure this codebase had
+                // independently sourced before now).
+                tube->mu = 11.68f; tube->ex = 1.197f; tube->kg1 = 510.9f;
+                tube->kg2 = 4500.0f; tube->kp = 34.0f; tube->kvb = 22.3f;
+                tube->screenVoltage = 400.0f; // KT66 datasheet-adjacent max screen rating
+                tube->Vb = 455.0f;            // schematic's own circled 450V/460V rectifier-area taps
+                tube->Ra = 2000.0f;           // ~8k plate-to-plate OT (commonly published JTM45 figure) / 4, same halving rule as elsewhere
+                // Cathode-biased (self-biased), not fixed-bias -- the early
+                // JTM45 famously has no bias pot. Shared cathode resistor,
+                // commonly published value for this era.
+                tube->Rk = 130.0f;
+                tube->prepare (processingSampleRate);
+            }
         }
 
         // Real blackface component values (see class comment) -- R1/R2/R4
@@ -351,9 +398,15 @@ public:
             fenderInterstageCoupling[ch].reset();
             fenderPI[ch].reset();
             powerTubeFenderA[ch].reset(); powerTubeFenderB[ch].reset();
+
+            triodeJTM45V1[ch].reset(); triodeJTM45V2[ch].reset();
+            jtm45InterstageCoupling[ch].reset();
+            jtm45PI[ch].reset();
+            powerTubeJTM45A[ch].reset(); powerTubeJTM45B[ch].reset();
         }
         bassmanStack.reset();
         fenderToneStack.reset();
+        jtm45ToneStack.reset();
         sagEnvelope = 0.0f;
         sagDetectorLP.fill (0.0f);
         outputGain.setCurrentAndTargetValue (targetOutputGain);
@@ -404,6 +457,8 @@ public:
                 fenderToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
             else if (voice == Voice::voxAC30)
                 updateVoxToneFilters();
+            else if (voice == Voice::jtm45)
+                jtm45ToneStack.updateCoefficients (processingSampleRate, lastBass01, lastMid01, lastTreble01);
         }
     }
 
@@ -454,6 +509,11 @@ public:
             if (voice == Voice::fenderAB763)
             {
                 processFenderSample (block, i, channels);
+                continue;
+            }
+            if (voice == Voice::jtm45)
+            {
+                processJTM45Sample (block, i, channels);
                 continue;
             }
 
@@ -740,6 +800,71 @@ private:
         }
     }
 
+    // Marshall JTM45 -- same overall topology shape as Deluxe 63's path
+    // above (V1 -> interstage coupling -> shared tone-stack family -> V2 ->
+    // long-tail-pair PI -> cathode-biased power pair -> OT saturation), just
+    // with this voice's own dedicated stage instances/values (see the
+    // Voice::jtm45 prepare() block for full sourcing). jtm45ToneStack reuses
+    // BassmanToneStack's own default component values (JTM45's tone stack is
+    // a near-verbatim copy of the 5F6-A Bassman's), so it shares
+    // bassmanStackMakeupGain with the modern3Band path rather than needing
+    // its own makeup-gain constant.
+    void processJTM45Sample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
+    {
+        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
+        const auto powerDrive = 1.15f + driveAmount * 2.7f;
+
+        float detector = 0.0f;
+        std::array<float, 2> plate1 {}, plate2 {};
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
+            auto t1 = triodeJTM45V1[ch].processSample (x * inputVoltsScale);
+            t1 = jtm45InterstageCoupling[ch].processSample (t1);
+
+            const auto toned = jtm45ToneStack.processSample (ch, t1) * bassmanStackMakeupGain;
+
+            const auto t2Raw = triodeJTM45V2[ch].processSample (toned);
+            const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+
+            float p1, p2;
+            jtm45PI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            plate1[(size_t) ch] = p1;
+            plate2[(size_t) ch] = p2;
+
+            auto& bassTap = sagDetectorLP[(size_t) ch];
+            bassTap += sagDetectorLPCoefficient * (p1 - bassTap);
+            const auto weighted = std::abs (p1) * 0.5f + std::abs (bassTap) * 0.5f;
+            detector = juce::jmax (detector, weighted);
+        }
+
+        const auto coefficient = detector > sagEnvelope ? sagAttack : sagRelease;
+        sagEnvelope = coefficient * sagEnvelope + (1.0f - coefficient) * detector;
+        const auto sag = juce::jlimit (0.0f, 0.42f, sagEnvelope * (0.20f + 0.34f * driveAmount));
+
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto driveScale = effectiveDrive * powerStageInputScale;
+            const auto tubeA = powerTubeJTM45A[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto tubeB = powerTubeJTM45B[ch].processSample (plate2[(size_t) ch] * driveScale);
+            auto power = (tubeA - tubeB) * powerStageOutputScale;
+            power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+
+            constexpr float otKnee = 0.65f;
+            const auto otMagnitude = std::abs (power);
+            if (otMagnitude > otKnee)
+            {
+                const auto excess = otMagnitude - otKnee;
+                const auto headroom = 1.0f - otKnee;
+                const auto compressed = otKnee + headroom * std::tanh (excess / headroom);
+                power = std::copysign (compressed, power);
+            }
+
+            block.setSample (ch, i, transformerLowPass[ch].processSample (power));
+        }
+    }
+
     void updateStaticFilters()
     {
         auto inputHP = juce::dsp::IIR::Coefficients<float>::makeHighPass (processingSampleRate, 48.0f, 0.707f);
@@ -760,6 +885,7 @@ private:
             // interstageCoupling, since both play the identical role.
             *voxInterstageCoupling[ch].coefficients = *couplingHP;
             *fenderInterstageCoupling[ch].coefficients = *couplingHP;
+            *jtm45InterstageCoupling[ch].coefficients = *couplingHP;
         }
     }
 
@@ -1525,6 +1651,18 @@ private:
     PentodeStage powerTubeFenderA[2], powerTubeFenderB[2];
     juce::dsp::IIR::Filter<float> fenderInterstageCoupling[2];
     BassmanToneStack fenderToneStack;
+    // Marshall JTM45 voice's own preamp/PI/power-stage instances -- see
+    // Voice::jtm45's own comment. Reuses inputCoupling/transformerLowPass
+    // above too, same reasoning as the Vox/Fender voices. jtm45ToneStack
+    // is deliberately left at BassmanToneStack's own default component
+    // values -- JTM45's tone stack is a well-documented near-verbatim
+    // copy of the 5F6-A Bassman's (Marshall's first amps literally cloned
+    // that circuit), so the same real '59 Bassman values apply here too.
+    TriodeStage triodeJTM45V1[2], triodeJTM45V2[2];
+    LongTailPairStage jtm45PI[2];
+    PentodeStage powerTubeJTM45A[2], powerTubeJTM45B[2];
+    juce::dsp::IIR::Filter<float> jtm45InterstageCoupling[2];
+    BassmanToneStack jtm45ToneStack;
     juce::SmoothedValue<float> outputGain;
     std::array<float, 2> sagDetectorLP {};
     // V2A's raw plate-voltage output (real volts, tens to hundreds of volts
