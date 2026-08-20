@@ -2,7 +2,6 @@
 
 #include <JuceHeader.h>
 #include "Antialiasing.h"
-#include "SpringModule.h"
 
 // Roland RE-201 Space Echo-inspired: 3 tape playback heads at fixed,
 // equally-spaced positions (delay ratio exactly 1:2:3 off head 1's time).
@@ -21,13 +20,6 @@
 // Bass/Treble shelves and processHysteresisDrive() below, an explicit-
 // integration Jiles-Atherton-style model, which replace the single
 // one-pole "Tone" and plain tanh saturator this used to have.
-//
-// The real RE-201 also has its own built-in spring reverb tank (its mode
-// selector blends Repeat/Echo with Reverb) -- internalReverb reuses
-// SpringModule as-is (its own "Space" impulse response) rather than
-// re-deriving a second spring model from scratch, run independently of
-// the tape-echo path below so Reverb still works even with the echo
-// itself fully dry.
 class SpaceEchoModule
 {
 public:
@@ -36,18 +28,12 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
     void setParameters (float timeMs, float repeats, float bassPercent, float treblePercent,
-                        float wobble, float drive, float mix, float reverbAmount,
+                        float wobble, float drive, float mix,
                         bool enabled, int patternIndex);
     void process (juce::AudioBuffer<float>& buffer);
     bool isWetTransitionActive() const noexcept
     {
-        // Also checks internalReverb's own state -- it can still be fading
-        // out after the echo's own wetMix has already settled to 0 (its
-        // enabled/mix are independent), and SpaceEchoNode calls reset()
-        // (which resets internalReverb too) the moment this returns false,
-        // which would otherwise cut its tail short mid-fade.
-        return wetMix.isSmoothing() || wetMix.getCurrentValue() > 0.00001f
-            || internalReverb.isWetTransitionActive();
+        return wetMix.isSmoothing() || wetMix.getCurrentValue() > 0.00001f;
     }
 
 private:
@@ -88,7 +74,6 @@ private:
     // nonlinearity in its own right, so it no longer needs its own
     // separate ADAA saturator on top.
     AdaaSmoothRail writeRail[2];
-    SpringModule internalReverb;
     double sampleRate = 44100.0;
     int writeIndex = 0;
     int validSamples = 0;

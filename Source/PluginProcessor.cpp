@@ -391,9 +391,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 100.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("spaceEchoMix"), "Space Echo Mix",
         Range (0.0f, 100.0f, 0.1f), 30.0f));
-    // The real RE-201's own built-in spring tank -- blends independently of
-    // Mix (the tape repeats), matching the real unit's mode selector
-    // letting Reverb stand alone -- see SpaceEchoModule.h's own comment.
+    // Deprecated in place, never wired to anything anymore -- briefly drove
+    // a built-in reverb tank on the Space Echo pedal, pulled since it was a
+    // strictly worse, fixed-parameter copy of the standalone Spring pedal.
+    // Left registered (rather than removed) so no saved session/preset that
+    // already references this id breaks -- same discipline as odOrder/the
+    // *SectionOn params.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("spaceEchoReverb"), "Space Echo Reverb",
         Range (0.0f, 100.0f, 0.1f), 20.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("spaceEchoPattern"), "Space Echo Pattern",

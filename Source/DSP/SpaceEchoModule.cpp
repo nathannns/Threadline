@@ -59,7 +59,6 @@ void SpaceEchoModule::prepare (const juce::dsp::ProcessSpec& spec)
     cachedBassGainDb = std::numeric_limits<float>::lowest();
     cachedTrebleGainDb = std::numeric_limits<float>::lowest();
     updateShelfCoefficients();
-    internalReverb.prepare (spec);
     reset();
 }
 
@@ -71,7 +70,6 @@ void SpaceEchoModule::reset()
     for (auto& rail : writeRail) rail.reset();
     for (auto& shelf : bassShelf) shelf.reset();
     for (auto& shelf : trebleShelf) shelf.reset();
-    internalReverb.reset();
     writeIndex = 0;
     validSamples = 0;
     lfoPhase = 0.0f;
@@ -84,7 +82,7 @@ void SpaceEchoModule::reset()
 }
 
 void SpaceEchoModule::setParameters (float timeMs, float repeats, float bassPercent, float treblePercent,
-                                float wobble, float drive, float mix, float reverbAmount,
+                                float wobble, float drive, float mix,
                                 bool enabled, int patternIndex)
 {
     delaySamples.setTargetValue (juce::jlimit (0.04f, 2.5f, timeMs * 0.001f)
@@ -101,16 +99,6 @@ void SpaceEchoModule::setParameters (float timeMs, float repeats, float bassPerc
     const auto normalisedMix = juce::jlimit (0.0f, 1.0f, mix * 0.01f);
     wetMix.setTargetValue (enabled ? std::pow (normalisedMix, 1.55f) : 0.0f);
     pattern = juce::jlimit (0, 5, patternIndex);
-
-    // Fixed decay/dwell/tone/drip -- the real unit's own reverb tank isn't
-    // independently adjustable beyond its overall level, so only that one
-    // knob (Reverb) is exposed here, same as the real front panel. Model 0
-    // ("Space") both for the name association and because it's the
-    // shortest/least-cavernous of SpringModule's three impulses, matching
-    // a compact built-in tank rather than a dedicated outboard unit.
-    const auto normalisedReverb = juce::jlimit (0.0f, 1.0f, reverbAmount * 0.01f);
-    internalReverb.setParameters (0.45f, 0.2f, 0.6f, 0.0f, normalisedReverb,
-                                  enabled && normalisedReverb > 0.001f, 0);
 }
 
 void SpaceEchoModule::updateShelfCoefficients()
@@ -224,16 +212,8 @@ void SpaceEchoModule::getPattern (float* ratios, float* gains, int& taps) const
 
 void SpaceEchoModule::process (juce::AudioBuffer<float>& buffer)
 {
-    // Reverb runs independently below (even with the echo itself fully
-    // dry, matching the real unit's mode selector letting Reverb stand
-    // alone) -- only the tape-echo loop itself gates on the echo's own
-    // wetMix.
     if (! wetMix.isSmoothing() && wetMix.getCurrentValue() <= 0.00001f)
-    {
-        if (internalReverb.isWetTransitionActive())
-            internalReverb.process (buffer);
         return;
-    }
 
     float ratios[3] {}, gains[3] {}; int taps = 1;
     getPattern (ratios, gains, taps);
@@ -356,7 +336,4 @@ void SpaceEchoModule::process (juce::AudioBuffer<float>& buffer)
         if (flutterPhase >= juce::MathConstants<float>::twoPi)
             flutterPhase -= juce::MathConstants<float>::twoPi;
     }
-
-    if (internalReverb.isWetTransitionActive())
-        internalReverb.process (buffer);
 }

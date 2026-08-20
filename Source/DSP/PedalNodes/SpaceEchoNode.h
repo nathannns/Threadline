@@ -28,7 +28,7 @@ public:
         {
             echo.setParameters (p ("spaceEchoTime"), p ("spaceEchoRepeats"), p ("spaceEchoBass"),
                 p ("spaceEchoTreble"), p ("spaceEchoWobble"), p ("spaceEchoDrive"), p ("spaceEchoMix"),
-                p ("spaceEchoReverb"), true, (int) p ("spaceEchoPattern"));
+                true, (int) p ("spaceEchoPattern"));
             echo.process (buffer);
             wasActive = true;
         }
@@ -36,7 +36,7 @@ public:
         {
             echo.setParameters (p ("spaceEchoTime"), p ("spaceEchoRepeats"), p ("spaceEchoBass"),
                 p ("spaceEchoTreble"), p ("spaceEchoWobble"), p ("spaceEchoDrive"), p ("spaceEchoMix"),
-                p ("spaceEchoReverb"), false, (int) p ("spaceEchoPattern"));
+                false, (int) p ("spaceEchoPattern"));
             echo.process (buffer);
             if (! echo.isWetTransitionActive())
             {
