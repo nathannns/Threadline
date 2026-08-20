@@ -289,6 +289,20 @@ private:
         const float midA = std::sqrt (midGainLinear);
         const float midQIn = midQ * midA / std::sqrt (std::max (midA * midA * midA * midA - 2.0f, 1e-3f));
 
+        // Bilinear-transform Q pre-warp. The bilinear transform maps analog
+        // frequency through w_a = 2*fs*tan(w_d/2), whose derivative at w0 is
+        // sec^2(w0/2) = 1 + tan^2(w0/2). A peak's -3 dB bandwidth therefore
+        // compresses by that same factor in the digital domain, so the
+        // realised digital Q reads Q_digital = Q_in * w0/sin(w0). (Derivation:
+        // d_wd = (w_a0/Q_in)/sec^2(w0/2), Q_d = w_d0/d_wd; with
+        // w_a0 = 2*fs*tan(w0/2) the sec^2/tan^2 terms collapse to w0/sin w0.)
+        // That factor is ~1.000 at 360 Hz but 1.069 at 4.8 kHz and 1.165 at
+        // 7.2 kHz -- exactly the 2.16/2.38-vs-2.0 error the harness measured
+        // before this fix. Pre-compensate so the realised Q lands back on the
+        // LC circuit's own Q.
+        const float w0 = 2.0f * kPi * midHz / (float) sampleRate;
+        const float midQInWarped = midQIn * std::sin (w0) / w0;
+
         // Shelves are 2nd-order LC shelves: the same linear system as a
         // biquad shelf at the same corner with a Butterworth (non-ringing)
         // Q. Corners are the real panel frequencies; the B205 high shelf's
@@ -296,7 +310,7 @@ private:
         auto lowShelfCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (
             sampleRate, lowHz, 0.707f, juce::Decibels::decibelsToGain (cachedLowGainDb));
         auto midPeakCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
-            sampleRate, midHz, midQIn, midGainLinear);
+            sampleRate, midHz, midQInWarped, midGainLinear);
         auto highShelfCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
             sampleRate, highShelfFrequency, 0.707f, juce::Decibels::decibelsToGain (cachedHighGainDb));
         auto hpf1Coeffs = juce::dsp::IIR::Coefficients<float>::makeFirstOrderHighPass (sampleRate, hpfHz);
