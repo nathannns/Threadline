@@ -792,7 +792,19 @@ public:
         }
 
         oversampling->processSamplesDown (inputBlock);
-        const auto voiceScale = perVoiceNormalise[static_cast<size_t> (voice)];
+        // Per-voice output normalisation is a function of Drive, not a single
+        // scalar: the seven circuits' loudness-vs-Drive curves have different
+        // SHAPES (see perVoiceNormaliseByDrive's comment), so a value tuned at
+        // one Drive point only matches at that point -- measured up to ~12dB
+        // spread at Drive=0 (jtm45 loudest, vintage5E3/rolandJC120 quietest),
+        // which is exactly the "Jazz Chorus / Vintage / Boutique too quiet when
+        // clean" report. Linearly interpolate the measured 11-knot table so
+        // every voice lands on the group-median loudness curve at every Drive.
+        const auto driveIndex = juce::jlimit (0.0f, 1.0f, driveAmount) * 10.0f;
+        const auto knot = juce::jmin (9, static_cast<int> (driveIndex));
+        const auto frac = driveIndex - static_cast<float> (knot);
+        const auto& normRow = perVoiceNormaliseByDrive[static_cast<size_t> (voice)];
+        const auto voiceScale = normRow[knot] + frac * (normRow[knot + 1] - normRow[knot]);
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
             const auto gain = outputGain.getNextValue();
@@ -2052,32 +2064,36 @@ private:
     static constexpr float cathodyneInputScale = 4.0f;
     static constexpr float powerStageInputScale = 0.02f;
     static constexpr float powerStageOutputScale = 0.20f;
-    // Per-voice output normalisation (final loudness trim). Each voice's
-    // circuit has genuinely different gain (long-tail-pair vs cathodyne phase
-    // inverter, EL84 vs 6V6 power tubes, different B+/plate loads), but the
-    // calibration constants above are SHARED across all six tube voices
-    // (tuned for the original 5E3/Boutique, then reused for Vox/Fender/JTM45/
-    // MarkI as a first-pass), so the same knob settings land each voice at a
-    // very different loudness -- measured ~12dB spread (voxAC30 quietest,
-    // jtm45 loudest, the latter already hard-clipping past full scale). These
-    // constants normalise each voice's settled RMS to a common -6dBFS target
-    // so the Output knob means the same thing on every voice. Values are the
-    // reciprocal of each voice's settled RMS, averaged over 110/440/1760Hz
-    // sines at Drive=0.5, input 0.3, flat EQ, Output 0dB -- measured in
-    // Source/AmpLevelProbe.cpp, same "measure, don't guess" provenance as
-    // outputCalibration/v1GainCompensation above. Applied at the final output
-    // trim (with outputGain), AFTER each voice's own OT knee, so it's a pure
-    // level change that does not alter how hard each voice saturates its
-    // power stage at a given Drive. (5E3 + modern3Band values therefore
-    // already include the pre-knee vintageOutputBoost below.)
-    static constexpr float perVoiceNormalise[7] {
-        1.6792f, // vintage5E3
-        1.3534f, // modern3Band
-        2.5899f, // voxAC30
-        1.3237f, // fenderAB763
-        0.5691f, // jtm45
-        0.6931f, // mesaMarkI
-        0.8179f  // rolandJC120
+    // Per-voice output normalisation (final loudness trim), indexed by both
+    // voice and Drive. Each voice's circuit has genuinely different gain
+    // (long-tail-pair vs cathodyne phase inverter, EL84 vs 6V6 power tubes,
+    // different B+/plate loads), but the calibration constants above are
+    // SHARED across all six tube voices, so the same knob settings land each
+    // voice at a very different loudness -- and that difference is not a fixed
+    // offset: each voice's loudness-vs-Drive curve has a different SHAPE, so a
+    // single scalar tuned at one Drive point only matches at that one point.
+    // Measured in Source/AmpLevelProbe.cpp (110/440/1760Hz sines at input 0.3,
+    // flat EQ, Output 0dB): at Drive=0.5 all seven sit within ~0.2dB of
+    // -6dBFS, but at Drive=0 the spread is ~12dB (jtm45 loudest, vintage5E3
+    // quietest) and it inverts by Drive=0.9 (jtm45/mesaMarkI compress hardest,
+    // ~2.4dB quieter). Each row below is the final-trim multiplier for one
+    // voice at Drive = 0.0, 0.1, ..., 1.0 (11 knots, linearly interpolated in
+    // process()); it is the old single perVoiceNormalise value (the Drive=0.5
+    // knot) times the ratio of the group-median RMS to that voice's own RMS at
+    // that Drive, so every voice lands on the same loudness-vs-Drive curve
+    // (the group median) rather than only matching at 0.5. Applied at the
+    // final output trim (with outputGain), AFTER each voice's own OT knee, so
+    // it's a pure level change that does not alter how hard each voice
+    // saturates its power stage at a given Drive. (5E3 + modern3Band values
+    // already include the pre-knee vintageOutputBoost.)
+    static constexpr float perVoiceNormaliseByDrive[7][11] {
+        { 2.5970f, 2.1448f, 1.9880f, 1.8624f, 1.7632f, 1.6792f, 1.6030f, 1.5864f, 1.6133f, 1.6543f, 1.6792f }, // vintage5E3
+        { 1.7728f, 1.5323f, 1.4324f, 1.3897f, 1.3648f, 1.3373f, 1.2973f, 1.2792f, 1.2884f, 1.3116f, 1.3241f }, // modern3Band
+        { 2.5899f, 2.5899f, 2.5899f, 2.5899f, 2.5899f, 2.5828f, 2.5493f, 2.5334f, 2.5524f, 2.5823f, 2.5892f }, // voxAC30
+        { 1.1086f, 1.1289f, 1.2092f, 1.2703f, 1.3046f, 1.3221f, 1.3237f, 1.3237f, 1.3237f, 1.3237f, 1.3141f }, // fenderAB763
+        { 0.2154f, 0.2849f, 0.3706f, 0.4495f, 0.5180f, 0.5767f, 0.6219f, 0.6611f, 0.6962f, 0.7280f, 0.7493f }, // jtm45
+        { 0.4092f, 0.4300f, 0.4901f, 0.5655f, 0.6386f, 0.7020f, 0.7523f, 0.7953f, 0.8315f, 0.8617f, 0.8783f }, // mesaMarkI
+        { 1.0056f, 0.8942f, 0.8592f, 0.8417f, 0.8328f, 0.8292f, 0.8242f, 0.8250f, 0.8307f, 0.8395f, 0.8419f }  // rolandJC120
     };
     // Soft-knee threshold for the final output trim -- linear below it, soft-
     // clips toward 1.0 above, so the +8dB normalisation boost on the quiet

@@ -3,8 +3,13 @@
 // Feeds sines at several representative frequencies through each of the 7
 // voices (Output 0dB, flat EQ), lets sag/filters settle, then reports each
 // voice's settled RMS and the scale needed to hit a target RMS. This is the
-// measurement tool that produced AmpModule::perVoiceNormalise's constants --
-// the "measure, don't guess" provenance for the per-voice loudness trim.
+// measurement tool that produced AmpModule::perVoiceNormaliseByDrive's
+// constants -- the "measure, don't guess" provenance for the per-voice
+// loudness trim. The reference() spot-checks at Drive=0.3/0.5/0.9 show the
+// imbalance the single-scalar trim used to leave behind; the Drive sweep at
+// the bottom is the full 0.0-1.0 measurement the 11-knot table was fitted to
+// (each voice's RMS is divided into the group median to land it on the common
+// loudness curve).
 #include <JuceHeader.h>
 #include "DSP/AmpModule.h"
 #include <cmath>
@@ -75,5 +80,25 @@ int main()
     reference (48000.0, 0.30f, 0.30f, 0.500f);
     reference (48000.0, 0.50f, 0.30f, 0.500f);
     reference (48000.0, 0.90f, 0.30f, 0.500f);
+
+    // Finer drive sweep at a fixed input level -- prints the per-voice RMS
+    // at each drive so the spread (and the drive point where it is worst)
+    // can be read directly rather than inferred from three spot checks.
+    std::printf ("drive sweep, input=0.30, per-voice RMS (avg 110/440/1760Hz):\n");
+    std::printf ("  drive    ");
+    for (int v = 0; v <= 6; ++v) std::printf ("%12s", voiceNames[v]);
+    std::printf ("\n");
+    for (int k = 0; k <= 10; ++k)
+    {
+        const auto drive = 0.1f * static_cast<float> (k);
+        std::printf ("  %.2f    ", drive);
+        for (int v = 0; v <= 6; ++v)
+        {
+            double sum = 0.0;
+            for (float f : probeFreqs) sum += measureRms (v, 48000.0, drive, 0.30f, f);
+            std::printf ("%12.4f", (float) (sum / 3.0));
+        }
+        std::printf ("\n");
+    }
     return 0;
 }
