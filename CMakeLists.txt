@@ -365,3 +365,24 @@ target_link_libraries(GrowlValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Tape (tape saturation/compression) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real TapeModule and sweeps drive x compression x tone x
+# age x tape-type x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up.
+# See Source/TapeValidation.cpp.
+juce_add_console_app(TapeValidation PRODUCT_NAME "TapeValidation")
+juce_generate_juce_header(TapeValidation)
+target_sources(TapeValidation PRIVATE
+    Source/TapeValidation.cpp
+    Source/DSP/TapeModule.cpp
+)
+target_compile_features(TapeValidation PRIVATE cxx_std_17)
+target_link_libraries(TapeValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
