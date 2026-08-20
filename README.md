@@ -32,13 +32,17 @@ on/off toggle regardless) via the Overdrive Order switch.
 - `TS9Module` ("Breaker" in the UI) — switchable TS9/TS808/TS10 variants,
   each sharing a genuine WDF simulation of the real op-amp/diode-pair
   clipping stage (ideal-op-amp limit of Chowdhury-DSP/BYOD's own Tube
-  Screamer model, with that model's real component/diode values: Rin=4.7k,
+  Screamer model, with that model's real component/diode values: Rin=10k,
   Rf=51k+0-500k from Drive, 1N4148 Is=4.352nA/Vt=25.85mV×1.906) — Drive now
   moves the actual feedback resistor rather than pre-scaling the signal
   into a fixed curve. Per-variant differences still live in the pre-clip
   highpass corner and post-clip Tone range, same as before. Same
   selectable-oversampling treatment as Klon above (`ts9Oversampling`,
-  `PluginProcessor::ts9s`).
+  `PluginProcessor::ts9s`). Rin was originally coded as 4.7k (an R4-for-R5
+  mislabeling -- R4 is real, but it's part of the feedback network, not
+  the input resistor); the feedback network's own 51pF cap and 4.7k+47nF
+  branch, and BYOD's modeling of the op-amp's own finite gain/impedance,
+  aren't ported yet -- see "Known gaps / next steps."
 - `AmpModule` — dynamic, oversampled 5E3-inspired model (Rob Robinette's 5E3
   circuit writeup): input/interstage coupling caps, a two-stage 12AY7/12AX7
   preamp whose nonlinearity is a genuine triode current model (`TriodeStage`
@@ -805,15 +809,116 @@ more bite/presence than the IR alone gives you.
 
 ## Known gaps / next steps
 
-(Both items previously listed here -- a single-voice amp with no 3-band EQ
-option, and an unskinned UI with no custom knob art -- are done: AmpModule
-has had a Modern3Band voice with the real Bassman tone-stack derivation for
-a while, and the UI uses photographed knob/rack-plate art throughout. Ask
-if you want a fresh look for genuinely open items rather than trusting this
-section blindly -- it drifted out of date once already.)
+(This section has drifted out of date more than once -- most of the module
+descriptions above predate the pedalboard rewrite (one flat, reorderable
+strip of tiles replacing the old 4-tab UI), the amp's Vox/Fender/JTM45/
+Mark I/JC-120 voices, and the `FangsModule`/`BisonModule`/`GrowlModule`/
+`DimensionChorusModule`/`ChannelEQModule`/`SpaceEchoModule` pedals, none of
+which are documented in "Modules" above yet. Ask if you want that brought
+current rather than trusting this file blindly.)
+
+**Circuit-accuracy pass, checked against real schematics one pedal/amp at a
+time (see "Schematic / reference sources" below for what was actually
+read) -- current status:**
+- Done: Marshall JTM45, Mesa/Boogie Mark I, and Roland JC-120 amp voices
+  (new); Deluxe 63, RE-201/Satellite, and Tweed 5E3 amp accuracy upgrades.
+  RE-201's built-in reverb was added then removed again -- redundant with
+  the standalone Spring pedal, which does the same job with full user
+  control over the same underlying convolution engine.
+- Done: TS9's clipper input resistor was mislabeled (4.7k, real value
+  10k -- confirmed against BYOD's own live source, not just the schematic
+  image). `FangsModule` (RAT/Distortion+ archetype) restructured from
+  diode-in-feedback to the real gain-stage-then-diode-clip-to-ground
+  topology both real schematics show. `BisonModule` (Big Muff archetype)
+  fixed the opposite way -- from a shunt clamp to the real diode-in-
+  feedback topology -- plus recalibrated (the old constants left Sustain
+  almost inert against the new topology). `GrowlModule` (Fuzz Face
+  archetype): the Fuzz knob now also drives the second clip stage,
+  matching the real circuit's single shared Q1/Q2 feedback loop instead
+  of only touching Q1's bias current.
+- Not done: TS9's feedback network is still missing a real 51pF cap and a
+  4.7k+47nF branch (the documented source of the "mid-hump"); the real
+  fix needs general N-port R-type-adaptor support added to `WDFCore.h`
+  (only has 2-port Series/Parallel today) plus porting BYOD's own
+  symbolically-derived scattering matrix (already pulled verbatim, not
+  yet wired in).
+- Not done: Klon -- not re-investigated this pass. `KlonModule`'s own
+  header comment already claims it was built from and verified against
+  jatinchowdhury18/KlonCentaur's traced schematic, so there may be little
+  gap here, but that hasn't actually been re-checked against the real
+  schematic the way the other five were.
+- Not done: `DimensionChorusModule` (Roland SDD-320 Dimension D) -- a real
+  source (Roland's original Service Notes) has been identified but not
+  yet fetched/read.
+- Not done (deliberately deferred as the largest single item):
+  `ChannelEQModule` ("Redface", Neve 1073-style). Real schematics for the
+  top-level channel amp (EH10023) and the BA283 card's full discrete-
+  transistor circuit (EX/10283) are already in hand from an 11-page
+  archive.org document, only 6 of 11 pages read so far -- still need
+  BA284/BA182/BA205/BA211's own circuit diagrams, then real transfer
+  functions for all 4 switched active-filter networks (HPF, Low-Freq
+  shelf, Presence peak, HF shelf). Open question not yet settled: does
+  the "archetype only, don't clone a commercial pedal's exact BOM" policy
+  set for Fangs/Bison/Growl also apply to a rack-mount studio EQ clone,
+  or is that a different case?
 - Cab IR loading is basic next to something like Ignite Amps' NadIR
   (dual-IR cab convolver): no Resonance control (speaker-cone/power-amp
   interaction, independent of whatever IR is loaded), no manual timing
   offset between the A/B slots beyond automatic alignment + a binary phase
   flip, no automatic phase-polarity detection on load (invert is manual-only
   right now). Discussed and deliberately not pursued yet.
+
+## Schematic / reference sources
+
+Real schematics/documentation actually read (via WebFetch + rendering the
+saved file as images, since none of these are text-searchable PDFs) for
+the amp-voice and pedal-accuracy work above -- not worked from memory or
+secondhand descriptions:
+
+**Amps:**
+- [el34world.com Mesa Boogie archive](https://el34world.com/charts/Schematics/files/Mesa_boogie/Mesa_boogie_Schematics.htm) --
+  [`Boogie_mki_reissue.pdf`](https://el34world.com/charts/Schematics/files/Mesa_boogie/Boogie_mki_reissue.pdf)
+  (Mark I), plus the Lonestar/Lonestar Special PDFs in the same archive
+  (referenced during the amp-selection discussion, not modeled).
+- [el34world.com Roland archive](https://el34world.com/charts/Schematics/files/Roland/Roland_Schematics.htm) --
+  [`Roland_jazz_chorus.pdf`](https://el34world.com/charts/Schematics/files/Roland/Roland_jazz_chorus.pdf)
+  (JC-120, Dec-1984 factory service manual) and
+  [`Roland_re_101_re_201_service_manual.pdf`](https://el34world.com/charts/Schematics/files/Roland/Roland_re_101_re_201_service_manual.pdf)
+  (RE-201/Satellite).
+- [drtube.com Marshall JTM45 archive](https://www.drtube.com/marshall-jmp/) --
+  "Basic Schematic for Marshall Trem Amps (Types 1961, 1962, 1987T)".
+- Real KT66/6L6GC Koren-fit tube parameters cross-verified via web search
+  against community-published SPICE models (KT66) and Cohen & Hélie's
+  DAFx-10 "Real-Time Simulation of a Guitar Power Amplifier" paper
+  (6L6GC), same methodology as the 6V6GT/EL84 parameters already cited
+  above.
+
+**Stompboxes** (all from
+[el34world.com's Effects archive](https://el34world.com/charts/Schematics/files/Effects/Effects_Schematics.htm)):
+- [`Ibanez_ts9_tubescreamer.pdf`](https://el34world.com/charts/Schematics/files/Effects/Ibanez_ts9_tubescreamer.pdf) --
+  the real Ibanez TS-9 schematic, including Jack Orman (AMZ)'s clean
+  traced-from-a-real-unit diagram with explicit TS9-to-TS808 component
+  differences called out.
+- [`Proco_rat_dist.pdf`](https://el34world.com/charts/Schematics/files/Effects/Proco_rat_dist.pdf) --
+  ProCo RAT.
+- [`Mxr_dist_plus.pdf`](https://el34world.com/charts/Schematics/files/Effects/Mxr_dist_plus.pdf) --
+  MXR Distortion+.
+- [`Eh_bigmuff.pdf`](https://el34world.com/charts/Schematics/files/Effects/Eh_bigmuff.pdf) --
+  Electro-Harmonix Big Muff Pi.
+- [`Hendrix_fuzzface.pdf`](https://el34world.com/charts/Schematics/files/Effects/Hendrix_fuzzface.pdf) --
+  Jimi Hendrix (Dunlop JH-2) Fuzz Face.
+- [Chowdhury-DSP/BYOD](https://github.com/Chowdhury-DSP/BYOD)'s
+  `TubeScreamerWDF.h` -- fetched directly (verbatim, via `curl`, not the
+  summarized WebFetch path) to cross-check TS9's WDF clipper topology
+  against a real reference implementation rather than the schematic image
+  alone; this is the same repo `WDFCore.h`'s own header already cites for
+  Klon/TS9's original derivation.
+
+**Not yet modeled, sourced for the still-pending Redface/Neve work:**
+- [AMS Neve 1073N official user manual](https://www.ams-neve.com/wp-content/uploads/2021/08/1073n_user_manual_issue_1_4.pdf) --
+  current specs/control ranges, no schematics (just a drawing-number index).
+- [archive.org: Neve 1073 channel amplifier schematic, EH10023](https://archive.org/details/neve_1073_channel_amplifer_schematic_EH10023) --
+  the real top-level channel-amp interconnect drawing.
+- [archive.org: Neve 1073 fullpak](https://archive.org/details/neve_1073-fullpak) --
+  the full card-level pack (BA283/BA284/BA182/BA205/BA211 schematics),
+  11 pages, only 6 read so far.
