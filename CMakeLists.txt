@@ -310,3 +310,21 @@ target_link_libraries(JCChorusValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Fangs (op-amp diode-clip fuzz) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real FangsModule and sweeps gain x filter x level x mix
+# x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. See
+# Source/FangsValidation.cpp.
+juce_add_console_app(FangsValidation PRODUCT_NAME "FangsValidation")
+juce_generate_juce_header(FangsValidation)
+target_sources(FangsValidation PRIVATE Source/FangsValidation.cpp)
+target_compile_features(FangsValidation PRIVATE cxx_std_17)
+target_link_libraries(FangsValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
