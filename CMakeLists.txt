@@ -541,3 +541,46 @@ target_link_libraries(DimensionChorusValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Echo (Plexer, Echoplex-style tape echo) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real EchoModule and sweeps time x sustain x volume x mode
+# x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up, holding the
+# self-oscillating feedback loop at steady state. See Source/EchoValidation.cpp.
+juce_add_console_app(EchoValidation PRODUCT_NAME "EchoValidation")
+juce_generate_juce_header(EchoValidation)
+target_sources(EchoValidation PRIVATE
+    Source/EchoValidation.cpp
+    Source/DSP/EchoModule.cpp
+)
+target_compile_features(EchoValidation PRIVATE cxx_std_17)
+target_link_libraries(EchoValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Carbon Copy (Copier, BBD analog delay) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real CarbonCopyModule and sweeps time x regen x mix x mod
+# x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up, holding the
+# near-self-oscillating feedback loop at steady state. See
+# Source/CarbonCopyValidation.cpp.
+juce_add_console_app(CarbonCopyValidation PRODUCT_NAME "CarbonCopyValidation")
+juce_generate_juce_header(CarbonCopyValidation)
+target_sources(CarbonCopyValidation PRIVATE
+    Source/CarbonCopyValidation.cpp
+    Source/DSP/CarbonCopyModule.cpp
+)
+target_compile_features(CarbonCopyValidation PRIVATE cxx_std_17)
+target_link_libraries(CarbonCopyValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
