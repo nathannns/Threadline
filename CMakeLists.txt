@@ -477,3 +477,24 @@ target_link_libraries(AmpValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Tremolo (bias + harmonic voices) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real TremoloModule and sweeps amount x rate x voice x
+# amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. See
+# Source/TremoloValidation.cpp.
+juce_add_console_app(TremoloValidation PRODUCT_NAME "TremoloValidation")
+juce_generate_juce_header(TremoloValidation)
+target_sources(TremoloValidation PRIVATE
+    Source/TremoloValidation.cpp
+    Source/DSP/TremoloModule.cpp
+)
+target_compile_features(TremoloValidation PRIVATE cxx_std_17)
+target_link_libraries(TremoloValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
