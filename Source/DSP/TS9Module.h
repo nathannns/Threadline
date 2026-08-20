@@ -234,8 +234,17 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::AudioBuffer<float> preClipBuffer;
     TS9Clipper clipper[2];
-    // Real Tube Screamer input resistor (R4 in BYOD's traced schematic).
-    static constexpr float oneOverRin = 1.0f / 4700.0f;
+    // Real Tube Screamer input resistor -- R5 in BYOD's TubeScreamerWDF.h
+    // (verified against their live source directly, not just the traced
+    // schematic image: `wdft::ResistorT<float> R5 { 10.0e3f };`, the
+    // resistor paired with the input coupling cap feeding the op-amp's "-"
+    // input). Previously coded as 4.7k, mislabeled after R4 -- R4 is a
+    // real component in this circuit too, but it's part of the FEEDBACK
+    // network (R4 in series with C3=47nF), not the input resistor. Getting
+    // this wrong mattered: Rf/Rin sets the clipper's effective gain before
+    // the diodes conduct, so a 4.7k-vs-10k Rin was scaling how hard a given
+    // input drove into clipping by more than 2x off the real circuit.
+    static constexpr float oneOverRin = 1.0f / 10000.0f;
     // Empirically-tuned, not physically derived -- see KlonModule's own
     // outputCalibration for why. A harness sweep showed the ideal-op-amp
     // diode clamp caps this stage's raw output around ~0.5-0.6V regardless
