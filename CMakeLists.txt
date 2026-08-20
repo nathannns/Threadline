@@ -229,3 +229,22 @@ target_link_libraries(TS9Validation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Klon gain-stage numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real KlonModule (the full-faithful PreAmpWDF -> AmpStage ->
+# ClippingWDF -> FeedForward2WDF -> SummingAmp chain) and sweeps it for
+# NaN/Inf/blow-up, then checks the IIR stages' poles and reports output levels
+# to calibrate outputNormalization. See Source/KlonValidation.cpp.
+juce_add_console_app(KlonValidation PRODUCT_NAME "KlonValidation")
+juce_generate_juce_header(KlonValidation)
+target_sources(KlonValidation PRIVATE Source/KlonValidation.cpp)
+target_compile_features(KlonValidation PRIVATE cxx_std_17)
+target_link_libraries(KlonValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)

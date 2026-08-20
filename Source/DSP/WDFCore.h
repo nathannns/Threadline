@@ -67,8 +67,15 @@ namespace WDF
     struct Resistor
     {
         Port wdf;
-        explicit Resistor (float ohms) { setResistance (ohms); }
-        void setResistance (float ohms) { wdf.R = ohms; wdf.G = 1.0f / ohms; }
+        float R_value = 1.0e-9f;
+        explicit Resistor (float ohms) : R_value (ohms) { calcImpedance(); }
+        // Settable resistance (Klon FeedForward2's RVTop/RVBot move with the
+        // Gain knob). Matches chowdsp_wdf's ResistorT::setResistanceValue,
+        // except the parent-chain impedance propagation is done manually by
+        // the stage that owns the tree (see KlonModule) -- our one-ports
+        // carry no parent pointers.
+        void setResistanceValue (float newR) { R_value = newR; calcImpedance(); }
+        void calcImpedance() { wdf.R = R_value; wdf.G = 1.0f / wdf.R; }
         void incident (float x) noexcept { wdf.a = x; }
         float reflected() noexcept { wdf.b = 0.0f; return wdf.b; }
     };
@@ -82,6 +89,11 @@ namespace WDF
         Port wdf;
         float z = 0.0f;
         float farads = 1.0e-6f;
+        // Default-constructed capacitor is inert (R stays at the 1e-9
+        // sentinel) until prepare() gives it a real value + sample rate --
+        // needed so the Klon PreAmp/FeedForward2 trees can declare their
+        // capacitors as plain members and set them up in prepare().
+        Capacitor() = default;
         Capacitor (float capacitanceFarads, double sampleRate) { prepare (capacitanceFarads, sampleRate); }
         void prepare (float capacitanceFarads, double sampleRate)
         {
@@ -100,10 +112,33 @@ namespace WDF
     {
         Port wdf;
         float Vs = 0.0f;
-        explicit ResistiveVoltageSource (float seriesOhms) { wdf.R = seriesOhms; wdf.G = 1.0f / seriesOhms; }
+        float R_value = 1.0e-9f;
+        // Default series resistance 1e-9 (near-ideal) matches chowdsp_wdf's
+        // ResistiveVoltageSourceT default; the Klon PreAmp's Vbias starts
+        // here and is moved by setGain.
+        explicit ResistiveVoltageSource (float seriesOhms = 1.0e-9f) : R_value (seriesOhms) { calcImpedance(); }
+        void setResistanceValue (float newR) { R_value = newR; calcImpedance(); }
+        void calcImpedance() { wdf.R = R_value; wdf.G = 1.0f / wdf.R; }
         void setVoltage (float v) noexcept { Vs = v; }
         void incident (float x) noexcept { wdf.a = x; }
         float reflected() noexcept { wdf.b = Vs; return wdf.b; }
+    };
+
+    // Ideal voltage source (zero internal resistance) -- the root element of
+    // the Klon PreAmp and FeedForward2 WDF trees. Ported from chowdsp_wdf's
+    // IdealVoltageSourceT: incident() only stores the incident wave `a`
+    // (it does NOT drive `next` downward), and reflected() is b = -a + 2*Vs.
+    // Because there is no downward propagation from the root, the owning
+    // stage's processSample() drives the tree by hand with
+    // `I1.incident (Vin.reflected())` after reading the output -- exactly the
+    // order the reference ChowCentaur uses.
+    struct IdealVoltageSource
+    {
+        Port wdf;
+        float Vs = 0.0f;
+        void setVoltage (float v) noexcept { Vs = v; }
+        void incident (float x) noexcept { wdf.a = x; }
+        float reflected() noexcept { wdf.b = -wdf.a + 2.0f * Vs; return wdf.b; }
     };
 
     // Current source with parallel resistance Rp (a Norton source) --
