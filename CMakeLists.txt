@@ -629,3 +629,36 @@ target_link_libraries(HallRoomReverbValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Spring (Rockalizer, spring reverb) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real SpringModule and sweeps decay x dwell x tone x drip x
+# mix x impulse-model x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up,
+# holding the dispersion-line and orthogonal tail-FDN feedback loops at steady
+# state. The module loads its IR asynchronously via AsyncUpdater, so the
+# harness drives the message-manager dispatch loop after prepare/setParameters;
+# it links ThreadlineData (the juce_add_binary_data target holding the three
+# spring WAVs) and juce_audio_formats (WavAudioFormat used by loadImpulse).
+# See Source/SpringValidation.cpp.
+juce_add_console_app(SpringValidation PRODUCT_NAME "SpringValidation")
+juce_generate_juce_header(SpringValidation)
+target_sources(SpringValidation PRIVATE
+    Source/SpringValidation.cpp
+    Source/DSP/SpringModule.cpp
+)
+target_compile_features(SpringValidation PRIVATE cxx_std_17)
+# runDispatchLoopUntil() is guarded off by default in JUCE 8 (JUCE_MODAL_LOOPS_PERMITTED=0);
+# re-enable it so this headless console app can drain the module's async IR load on its
+# own thread without a dedicated message thread.
+target_compile_definitions(SpringValidation PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(SpringValidation
+    PRIVATE
+        juce::juce_dsp
+        juce::juce_audio_formats
+        juce::juce_events
+        ThreadlineData
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
