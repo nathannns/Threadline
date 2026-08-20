@@ -662,3 +662,49 @@ target_link_libraries(SpringValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Graphic EQ (9-band) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real GraphicEQModule and sweeps band-gain pattern x HPF/LPF
+# x amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. The module is a
+# linear parallel biquad bank (no feedback/nonlinearity), so this is a
+# completeness smoke test rather than a blow-up risk. See
+# Source/GraphicEQValidation.cpp.
+juce_add_console_app(GraphicEQValidation PRODUCT_NAME "GraphicEQValidation")
+juce_generate_juce_header(GraphicEQValidation)
+target_sources(GraphicEQValidation PRIVATE Source/GraphicEQValidation.cpp)
+target_compile_features(GraphicEQValidation PRIVATE cxx_std_17)
+target_link_libraries(GraphicEQValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Cab (speaker-cab IR loader) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real CabModule and sweeps built-in-IR x mix x polarity x
+# amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. Convolution is
+# linear (cannot blow up); this confirms the built-in WAV decode + FFT build
+# and fade-in stay finite/bounded. Like SpringModule, CabModule loads IRs via
+# AsyncUpdater, so it links ThreadlineData + juce_audio_formats + juce_events
+# and defines JUCE_MODAL_LOOPS_PERMITTED=1 for the dispatch-loop drain. See
+# Source/CabValidation.cpp.
+juce_add_console_app(CabValidation PRODUCT_NAME "CabValidation")
+juce_generate_juce_header(CabValidation)
+target_sources(CabValidation PRIVATE Source/CabValidation.cpp)
+target_compile_features(CabValidation PRIVATE cxx_std_17)
+target_compile_definitions(CabValidation PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(CabValidation
+    PRIVATE
+        juce::juce_dsp
+        juce::juce_audio_formats
+        juce::juce_events
+        ThreadlineData
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
