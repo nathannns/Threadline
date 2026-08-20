@@ -244,7 +244,7 @@ private:
         constexpr float Is = 8.0e-7f;             // germanium AF-transistor-typical base-emitter saturation current
         constexpr float nVt = 1.15f * 0.02585f;   // ideality-scaled thermal voltage (germanium-typical n ~ 1.1-1.2)
         auto vb = vbState;
-        for (int iter = 0; iter < 8; ++iter)
+        for (int iter = 0; iter < 64; ++iter)
         {
             const auto expTerm = std::exp (juce::jlimit (-40.0f, 40.0f, vb / nVt));
             const auto f = (vin - vb) / sourceResistance + biasCurrent - Is * (expTerm - 1.0f);

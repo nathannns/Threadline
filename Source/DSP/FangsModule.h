@@ -245,7 +245,13 @@ private:
     // already saturate the diode pair at *minimum* Gain for any
     // realistic playing level, leaving the knob almost inert).
     static constexpr float oneOverRin = 1.0f / 47000.0f;
-    static constexpr float outputCalibration = 6.0f;
+    // Empirically-tuned, not physically derived (same role as Klon/TS9's own
+    // calibration constants). 6.0 mapped the diode-pair clip point (~0.63V)
+    // to ~2.5 peak at level=0.5 -- deep into hard clipping with the knob at
+    // noon. Retuned (measured via PedalLevelProbe, same discipline as
+    // AmpModule::perVoiceNormalise) to 1.48 so the clipped peak lands at ~0.9
+    // at level=0.5; the level knob (0-2x) still pushes into clip on demand.
+    static constexpr float outputCalibration = 1.48f;
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;
     int channelCount = 2;

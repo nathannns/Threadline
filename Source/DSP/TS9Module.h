@@ -280,11 +280,13 @@ private:
     // port: the TS9Validation harness shows this topology's diode clamp caps
     // the raw mid-band output around ~1.0V (vs ~0.5V for the old ideal-op-
     // amp/inverting model), so the old 4.5 multiplier pushed the tanh safety
-    // rail into hard limiting. 2.25 maps ~1V raw -> 2.25 pre-tanh -> ~1.9
-    // audio units, the same mid level the old 4.5 produced, while the real
-    // mid-hump inside the clipper leaves the bass a touch lower (correct for
-    // a real Tube Screamer). The tanh rail stays a backstop, not the limiter.
-    static constexpr float outputCalibration = 2.25f;
+    // rail into hard limiting. The tanh rail stays a backstop, not the limiter.
+    // 2.25 mapped that ~1V raw clip to ~1.45 peak at level=0.5 -- hot enough
+    // to hard-clip the chain with the knob at noon. Retuned (measured via
+    // PedalLevelProbe, same discipline as AmpModule::perVoiceNormalise) to
+    // 1.25 so the clip-limited peak lands at ~0.9 at level=0.5, leaving the
+    // level knob (0-2x) to push into clip only if the user asks for it.
+    static constexpr float outputCalibration = 1.25f;
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;
     int channelCount = 2;

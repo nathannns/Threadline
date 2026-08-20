@@ -215,6 +215,25 @@ target_link_libraries(AmpLevelProbe
         juce::juce_recommended_warning_flags
 )
 
+# --- Pedal output-level calibration probe ---
+# A diagnostic console app, not part of the shipping plugin -- feeds a sine
+# through the 5 overdrive/fuzz pedals at a common reference and reports
+# settled RMS + peak. Produced TS9Module::outputCalibration=1.25 and
+# FangsModule::outputCalibration=1.48; its Growl bias x fuzz grid doubles as
+# a regression check for the fuzz-collapse bug. See Source/PedalLevelProbe.cpp.
+juce_add_console_app(PedalLevelProbe PRODUCT_NAME "PedalLevelProbe")
+juce_generate_juce_header(PedalLevelProbe)
+target_sources(PedalLevelProbe PRIVATE Source/PedalLevelProbe.cpp)
+target_compile_features(PedalLevelProbe PRIVATE cxx_std_17)
+target_link_libraries(PedalLevelProbe
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- AmpModule CPU benchmark ---
 # A throwaway diagnostic console app, not part of the shipping plugin --
 # runs the real AmpModule::process() code directly (no plugin/host
