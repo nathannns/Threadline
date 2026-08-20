@@ -202,6 +202,22 @@ last edit.)
   real-time budget at 4× oversampling while *keeping* 4×. Direct side-by-side
   A/B (steady + blocking-distortion + impulse) came out bit-exact on all 7
   voices; `AmpValidation` still clean at 48/96/192k. See README "Amp CPU".
+- Amp voice loudness normalization across the Drive range (drive-dependent
+  `perVoiceNormaliseByDrive[7][11]` table replacing the scalar per-voice
+  gain), 583b1e0. The user has since re-flagged residual imbalance (Jazz
+  Chorus still quiet, JTM45 still loud) — see README "Issues / next work" #1.
+- Tape Volume knob added to both repos (Threadline c46c1ee, Rockalizer
+  2e6b03f): `tapeVolume` 0–100%, default 100% unity, final linear scale in
+  `TapeModule::processCore` after the drive trim.
+- Tape research (2026-08-20): Studer A800 service manual + Tascam 244
+  schematic OCR'd (image-only scans, Vision-framework OCR — see context.md).
+  Extracted A800 specs (bias 240 kHz / erase 80 kHz, NAB/CCIR EQ time
+  constants, ~1% THD, S/N ~66–70 dB) and the 244's architecture (TA7136AP
+  preamp, NJM4558D dbx, bias osc). Upgrade direction set: real EQ curves +
+  head bump + bias + grounded Studio/Cassette machine models (README #2).
+- The forward-looking backlog (17 issues across both repos) now lives in
+  README.md under "Issues / next work"; this file's queue below tracks only
+  the original circuit-accuracy pass.
 
 **Not done — queued, in this order (user chose "tractable first, defer
 the biggest"):**

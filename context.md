@@ -52,6 +52,23 @@ working preferences for continuing this project across sessions.
 - [AnClark/ClassicReverb-RE04](https://github.com/AnClark/ClassicReverb-RE04) — Roland-style reverb plugin, possible reference for the algorithmic `HallRoomReverbModule` if revisited.
 - [xunil-cloud/CloudReverb](https://github.com/xunil-cloud/CloudReverb) — Dattorro/CloudSeed-family algorithmic reverb, same possible use.
 
+### Tape machines (sourced 2026-08-20)
+
+- Studer A800 24-track 2" service manual — local:
+  `/Users/nathanielsantiaji/Downloads/A800_Serv.pdf` (536 pp, image-only
+  scan, no text layer; OCR'd with the Vision tool below). Extracted specs:
+  bias 240 kHz / erase 80 kHz; NAB EQ 50/3180 µs (7.5/15 ips) and 17.5 µs
+  (30 ips); CCIR/IEC 70/35/17.5 µs (7.5/15/30 ips); freq resp 30 Hz–20 kHz
+  ±2 dB @ 15 ips; S/N ~70 dB (8/16ch) / 66 dB (24ch); distortion 1% max
+  @ 1 kHz; wow/flutter 0.04–0.06%. Plug-in module architecture:
+  microprocessor unit / tape-deck electronics / reproduce preamps mounted
+  under the headblock / record amps.
+- Tascam 244 Portastudio 4-track cassette — record/play amplifier PCB
+  schematic: `/Users/nathanielsantiaji/Downloads/tascam_244_portastudio_schematics.pdf_2-1757079384.png`
+  (the `_2` page). Extracted architecture: playback preamp `TA7136AP`,
+  dbx encode/decode on `NJM4558D` (4558 dual op-amp) per channel, master
+  bias oscillator, 4 channels (CH1–4).
+
 ## How schematic PDFs actually get read
 
 `WebFetch` cannot extract text from scanned/vector PDFs (always returns a
@@ -63,6 +80,17 @@ PDFs). For oversized images (>2000×2000px), `sips -Z 1900 <in> --out
 matter more than a visual read (e.g. cross-checking a WDF scattering
 matrix), `curl` a raw source file directly instead of `WebFetch` — WebFetch
 always summarizes through a small model, which loses exact fidelity.
+
+**Non-vision model caveat (2026-08-20):** when the running model can't view
+images, `Read` returns `[Unsupported Image]` for raster/PDF pages, so scans
+can't be visually inspected and must be OCR'd instead. Working method:
+`pdftoppm -r 150 -png` to rasterize PDF pages, then a compiled Swift +
+Vision-framework tool (`VNRecognizeTextRequest`, `.accurate`, no language
+correction) — `swiftc -O ocr.swift -o ocr`, run `ocr <image>` to get each
+line with its normalized bounding box (keeps schematic labels
+position-associated). Spec tables and block-diagram text OCR cleanly; tiny
+schematic component values OCR noisily, so cross-check those against a
+second source when exactness matters.
 
 ## Working preferences
 
@@ -105,3 +133,6 @@ always summarizes through a small model, which loses exact fidelity.
 - Casual, low-punctuation communication style; prefers being offered a
   short multiple-choice question at a real decision fork rather than a
   wall of options to read through.
+- **Expandable bars open downward only.** The amp sim's expandable bar (and
+  any future one) must expand downward like the other pedals, never upward
+  — a stated UI rule to apply consistently.
