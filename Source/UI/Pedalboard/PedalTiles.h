@@ -166,27 +166,41 @@ protected:
         voiceCombo->box.setBounds (comboArea.reduced (55, 0));
         body.removeFromTop (rowGap);
 
-        std::vector<TileKnob*> visible { driveKnob.get(), outputKnob.get() };
+        // Always-on Drive/Volume on the top row, then the voice-specific EQ
+        // band(s) on their own row beneath -- so Bass/Mid/Treble sit together
+        // on one line instead of Bass wrapping up beside Drive/Volume.
+        std::vector<TileKnob*> fixed { driveKnob.get(), outputKnob.get() };
+        std::vector<TileKnob*> eq;
         if (voiceIndex == 1 || voiceIndex == 3 || voiceIndex == 4 || voiceIndex == 5 || voiceIndex == 6)
-            visible.insert (visible.end(), { bassKnob.get(), midKnob.get(), trebleKnob.get() });
+            eq = { bassKnob.get(), midKnob.get(), trebleKnob.get() };
         else if (voiceIndex == 2)
-            visible.insert (visible.end(), { bassKnob.get(), trebleKnob.get() });
+            eq = { bassKnob.get(), trebleKnob.get() };
         else
-            visible.push_back (toneKnob.get());
+            fixed.push_back (toneKnob.get());  // 5E3: Drive/Volume/Tone on one line
 
-        // Bounded rows of up to 3 knobs each, real-stompbox-sized rather
-        // than one wide row stretched across the tile's full height.
-        const auto columns = juce::jmin (3, (int) visible.size());
-        const auto rows = (int) ((visible.size() + (size_t) columns - 1) / (size_t) columns);
-        const auto cellW = body.getWidth() / juce::jmax (1, columns);
-        const auto cellH = juce::jmin (175, body.getHeight() / juce::jmax (1, rows));
-        for (size_t i = 0; i < visible.size(); ++i)
+        const auto layRow = [&] (const std::vector<TileKnob*>& knobs, juce::Rectangle<int> area)
         {
-            auto cell = juce::Rectangle<int> (body.getX() + (int) (i % (size_t) columns) * cellW,
-                                              body.getY() + (int) (i / (size_t) columns) * cellH, cellW, cellH).reduced (cellPadX, cellPadY);
-            visible[i]->label.setBounds (cell.removeFromTop (captionHeight));
-            visible[i]->slider.setBounds (cell);
+            const auto cellW = area.getWidth() / juce::jmax (1, (int) knobs.size());
+            for (int i = 0; i < (int) knobs.size(); ++i)
+            {
+                auto cell = juce::Rectangle<int> (area.getX() + i * cellW, area.getY(),
+                                                  cellW, area.getHeight()).reduced (cellPadX, cellPadY);
+                knobs[(size_t) i]->label.setBounds (cell.removeFromTop (captionHeight));
+                knobs[(size_t) i]->slider.setBounds (cell);
+            }
+        };
+
+        if (eq.empty())
+        {
+            // Single row (5E3) keeps the original full-height layout.
+            const auto h = juce::jmin (175, body.getHeight());
+            layRow (fixed, juce::Rectangle<int> (body.getX(), body.getY(), body.getWidth(), h));
+            return;
         }
+
+        const auto cellH = juce::jmin (175, body.getHeight() / 2);
+        layRow (fixed, juce::Rectangle<int> (body.getX(), body.getY(), body.getWidth(), cellH));
+        layRow (eq, juce::Rectangle<int> (body.getX(), body.getY() + cellH, body.getWidth(), cellH));
     }
 
 private:
