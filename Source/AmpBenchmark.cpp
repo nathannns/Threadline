@@ -66,9 +66,12 @@ int main()
     struct VoiceEntry { AmpModule::Voice voice; const char* name; };
     const VoiceEntry voices[] = {
         { AmpModule::Voice::vintage5E3,   "Vintage 5E3" },
-        { AmpModule::Voice::modern3Band,  "Boutique" },
-        { AmpModule::Voice::voxAC30,      "Vox Top Boost" },
-        { AmpModule::Voice::fenderAB763,  "Deluxe 63" },
+        { AmpModule::Voice::modern3Band,  "Modern 3-band" },
+        { AmpModule::Voice::voxAC30,      "Vox AC30" },
+        { AmpModule::Voice::fenderAB763,  "Fender AB763" },
+        { AmpModule::Voice::jtm45,        "Marshall JTM45" },
+        { AmpModule::Voice::mesaMarkI,    "Mesa Mark I" },
+        { AmpModule::Voice::rolandJC120,  "Roland JC-120" },
     };
 
     for (auto& v : voices)
