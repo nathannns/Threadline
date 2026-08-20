@@ -498,3 +498,24 @@ target_link_libraries(TremoloValidation
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Chorus (July, Julia-style BBD chorus) numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real ChorusModule and sweeps rate x depth x lag x
+# waveform x dry/chorus/vibrato x amplitude x frequency at 48/96/192k for
+# NaN/Inf/blow-up. See Source/ChorusValidation.cpp.
+juce_add_console_app(ChorusValidation PRODUCT_NAME "ChorusValidation")
+juce_generate_juce_header(ChorusValidation)
+target_sources(ChorusValidation PRIVATE
+    Source/ChorusValidation.cpp
+    Source/DSP/ChorusModule.cpp
+)
+target_compile_features(ChorusValidation PRIVATE cxx_std_17)
+target_link_libraries(ChorusValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
