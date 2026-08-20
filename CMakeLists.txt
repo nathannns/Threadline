@@ -115,6 +115,8 @@ target_sources(Threadline
         Source/DSP/ChorusModule.h
         Source/DSP/DimensionChorusModule.cpp
         Source/DSP/DimensionChorusModule.h
+        Source/DSP/DimensionDBBDModule.cpp
+        Source/DSP/DimensionDBBDModule.h
         Source/DSP/EchoModule.cpp
         Source/DSP/EchoModule.h
         Source/DSP/SpaceEchoModule.cpp
@@ -163,6 +165,7 @@ target_sources(Threadline
         Source/DSP/PedalNodes/TremoloNode.h
         Source/DSP/PedalNodes/ChorusNode.h
         Source/DSP/PedalNodes/DimensionChorusNode.h
+        Source/DSP/PedalNodes/DimensionDBBDNode.h
         Source/DSP/PedalNodes/DelayNode.h
         Source/DSP/PedalNodes/SpaceEchoNode.h
         Source/DSP/PedalNodes/ReverbNode.h
@@ -241,6 +244,28 @@ juce_generate_juce_header(KlonValidation)
 target_sources(KlonValidation PRIVATE Source/KlonValidation.cpp)
 target_compile_features(KlonValidation PRIVATE cxx_std_17)
 target_link_libraries(KlonValidation
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Dimension BBD numeric verification ---
+# A throwaway diagnostic console app, not part of the shipping plugin --
+# instantiates the real DimensionDBBDModule (dual-MN3007 BBD + NE570 compander)
+# and sweeps it for NaN/Inf/blow-up, then reports the per-mode delay window and
+# output levels to calibrate the dry/wet blend. See
+# Source/DimensionDBBDValidation.cpp.
+juce_add_console_app(DimensionDBBDValidation PRODUCT_NAME "DimensionDBBDValidation")
+juce_generate_juce_header(DimensionDBBDValidation)
+target_sources(DimensionDBBDValidation PRIVATE
+    Source/DimensionDBBDValidation.cpp
+    Source/DSP/DimensionDBBDModule.cpp
+)
+target_compile_features(DimensionDBBDValidation PRIVATE cxx_std_17)
+target_link_libraries(DimensionDBBDValidation
     PRIVATE
         juce::juce_dsp
     PUBLIC

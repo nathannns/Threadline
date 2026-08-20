@@ -14,6 +14,7 @@
 #include "PedalNodes/TremoloNode.h"
 #include "PedalNodes/ChorusNode.h"
 #include "PedalNodes/DimensionChorusNode.h"
+#include "PedalNodes/DimensionDBBDNode.h"
 #include "PedalNodes/DelayNode.h"
 #include "PedalNodes/SpaceEchoNode.h"
 #include "PedalNodes/ReverbNode.h"
@@ -43,6 +44,7 @@ PedalChainRunner::PedalChainRunner (juce::AudioProcessorValueTreeState& apvtsToU
     registry.push_back (std::make_unique<TremoloNode> (apvts));
     registry.push_back (std::make_unique<ChorusNode> (apvts));
     registry.push_back (std::make_unique<DimensionChorusNode> (apvts));
+    registry.push_back (std::make_unique<DimensionDBBDNode> (apvts));
     registry.push_back (std::make_unique<DelayNode> (apvts));
     registry.push_back (std::make_unique<SpaceEchoNode> (apvts));
     registry.push_back (std::make_unique<ReverbNode> (apvts));

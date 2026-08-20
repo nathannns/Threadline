@@ -112,6 +112,17 @@ namespace PedalTileFactory
                 std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
                     { "dimChorusFlangerMode", "Mode", juce::StringArray { "Off", "Mode I", "Mode II", "Mode III" } } });
 
+        // Circuit-faithful DC-2 "Dimension C" BBD chorus, a separate pedal
+        // from Ensemble above (see DimensionDBBDModule.h). The real unit's
+        // control surface is just the 4-position Mode switch + input/output
+        // level trims -- no rate/depth knobs, those are fixed per mode.
+        if (id == "dimBbd")
+            return std::make_unique<GenericKnobsTile> (apvts, id, "Dimension", "dimBbdOn",
+                std::vector<std::pair<juce::String, juce::String>> {
+                    { "dimBbdInput", "Input" }, { "dimBbdOutput", "Output" } },
+                std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
+                    { "dimBbdMode", "Mode", juce::StringArray { "Mode I", "Mode II", "Mode III", "Mode IV" } } });
+
         // Sync (tap-tempo) toggles + note-division reuse the global
         // "tapTempoBpm" set by the header bar's Tap button -- see
         // TapTempo.h. Scoped to Plexer/Copier only (Delay), not the other

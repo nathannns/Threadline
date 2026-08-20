@@ -323,6 +323,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("dimChorusFlangerMode"), "Dimension Flanger Mode",
         juce::StringArray { "Off", "Mode I", "Mode II", "Mode III" }, 0));
 
+    // --- Dimension BBD (circuit-faithful DC-2 "Dimension C" port) --- a
+    // second, separate Dimension-style pedal from Ensemble above: this one is
+    // the faithful dual-MN3007 BBD + NE570 compander engine (see
+    // DimensionDBBDModule.h), exposing the real unit's 4-position Mode switch
+    // plus input/output level trims rather than Ensemble's continuous
+    // rate/depth/width/tone/mix surface.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("dimBbdOn"), "Dimension BBD On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("dimBbdMode"), "Dimension BBD Mode",
+        juce::StringArray { "Mode I", "Mode II", "Mode III", "Mode IV" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("dimBbdInput"), "Dimension BBD Input",
+        Range (0.0f, 100.0f, 0.1f), 70.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("dimBbdOutput"), "Dimension BBD Output",
+        Range (0.0f, 100.0f, 0.1f), 70.0f));
+
     // --- Delay --- two selectable engines sharing one on/off toggle and one
     // Delay section: Plexer (our name for an Echoplex-style tape echo —
     // Echoplex is Maestro/Dunlop's trademark) and Copier (our name for a
