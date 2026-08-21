@@ -156,13 +156,11 @@ namespace PedalTileFactory
                     { "spaceEchoPattern", "",
                       juce::StringArray { "Straight", "Bounce", "Gallop", "Cluster", "Wash", "Ping-Pong" } } });
 
+        // Photo-skinned tile (real enclosure + knob art) -- see ReverbTile
+        // in PedalTiles.h for the param list every other GenericKnobsTile
+        // pedal would otherwise pass here directly.
         if (id == "reverb")
-            return std::make_unique<GenericKnobsTile> (apvts, id, "Reverb", "reverbOn",
-                std::vector<std::pair<juce::String, juce::String>> {
-                    { "reverbPreDelay", "PreDelay" }, { "reverbDecay", "Decay" }, { "reverbTone", "Tone" },
-                    { "reverbMix", "Mix" }, { "reverbWidth", "Width" } },
-                std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
-                    { "reverbModel", "", juce::StringArray { "Room", "Hall", "Plate" } } });
+            return std::make_unique<ReverbTile> (apvts);
 
         // Ported from Rockalizer -- spring-tank reverb, a separate pedal
         // from the algorithmic Hall/Room/Plate reverb above.

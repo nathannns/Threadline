@@ -147,8 +147,10 @@ void EchoModule::setParameters (float timeMs, float sustainPercent, float volume
     // being retuned the same way above. Raising the exponent above 1 and
     // dropping the headroom multiplier keeps low-to-mid Volume settings
     // genuinely subtle, so the two knobs' effects add up predictably
-    // instead of both needing to be kept near zero to avoid clipping.
-    volumeValue.setTargetValue (std::pow (volume01, 1.3f) * 0.9f * modeVolumeScale);
+    // instead of both needing to be kept near zero to avoid clipping. The
+    // 1.8-power taper keeps the bottom half quieter while preserving the
+    // established 0.9 full-scale endpoint.
+    volumeValue.setTargetValue (mapVolume (volume01) * modeVolumeScale);
 
     wetMix.setTargetValue (enabled ? 1.0f : 0.0f);
 }

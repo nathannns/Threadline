@@ -179,6 +179,24 @@ links" section and `git log` for anything more recent than this file's
 last edit.)
 
 **Done and shipped:**
+- **Local UI/cab asset migration (2026-08-21):** Threadline now embeds the
+  replacement enclosure/knob/LED asset directories and the replacement
+  22-IR cabinet library. Cab A/B are active again as independent convolution
+  instances: A feeds left, B feeds right when both are enabled, Balance
+  controls their relative level, and mono hosts retain a parallel blend.
+  Available pedal-specific knobs are wired for Comp, Bull, Breaker, Fangs,
+  Bison, Growl, Dynamix, Tape, Tremolo, and July; other controls use the
+  shared effects knob. Pedal title chrome now sits above rather than over
+  the enclosure image. `channel_enclosure.png` is the Redface tile art.
+- **Low-risk verification pass (2026-08-21):** `CabValidation` now exercises
+  the production dual-cab router (A-only, B-only, stereo A-left/B-right,
+  both Balance endpoints, and mono fallback) in addition to the existing
+  finite/bounded convolution sweep at 48/96/192k. The unchanged
+  `AmpLevelProbe` reports near-identical synthetic RMS for all seven voices
+  across Drive 0..1, despite the real-listening report that JC is quiet and
+  JTM45 loud. That is a negative result: the present sine/RMS probe does not
+  reproduce the perceptual imbalance and must not be used to dismiss it or
+  justify a blind normalization change.
 - All 6 originally-requested amp items: Marshall JTM45, Mesa/Boogie Mark I,
   Roland JC-120 (new voices); Deluxe 63, RE-201/Satellite, Tweed 5E3
   (accuracy upgrades). RE-201's embedded reverb was added, then removed

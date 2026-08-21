@@ -69,7 +69,10 @@ void CarbonCopyModule::setParameters (float timeMs, float regenPercent, float mi
     }
     feedbackValue.setTargetValue (feedbackTarget);
 
-    wetMix.setTargetValue (enabled ? juce::jlimit (0.0f, 1.0f, mixPercent * 0.01f) : 0.0f);
+    // Slow the first half of the physical Mix control without changing its
+    // fully-wet endpoint; the equal-power law below still handles the
+    // actual dry/wet crossfade after this perceptual knob taper.
+    wetMix.setTargetValue (enabled ? mapMix (mixPercent * 0.01f) : 0.0f);
     modEnabled = modOn;
 }
 

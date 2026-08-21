@@ -30,6 +30,10 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
     void setParameters (float timeMs, float regenPercent, float mixPercent, bool modOn, bool enabled);
+    static float mapMix (float mix01)
+    {
+        return std::pow (juce::jlimit (0.0f, 1.0f, mix01), 1.7f);
+    }
     void process (juce::AudioBuffer<float>& buffer);
     bool isWetTransitionActive() const noexcept
     {

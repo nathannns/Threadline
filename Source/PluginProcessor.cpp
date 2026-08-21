@@ -217,21 +217,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampTreble"), "Amp Treble",
         Range (0.0f, 1.0f, 0.001f), 0.5f));
 
-    // --- Cab: a single IR loader (previously two, cabA/cabB, processed in
-    // parallel and blended by cabBlend -- simplified down to one at the
-    // user's request). cabB*/cabBlend stay registered below but deprecated
-    // in place (never remove a shipped AudioParameter, same treatment as
-    // odOrder/klonOversampling/ts9Oversampling) — CabUnitNode no longer
-    // reads them.
-    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabAOn"), "Cab On", true));
+    // --- Cab: two independent convolution loaders. A feeds the left output
+    // and B the right when both are enabled; cabBlend balances the stereo
+    // pair. Existing parameter ids are retained for session compatibility.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabAOn"), "Cab A On", true));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("cabAIRSelect"), "Cab IR",
-        juce::StringArray { CabModule::getBuiltInIRName (0), CabModule::getBuiltInIRName (1),
-                             CabModule::getBuiltInIRName (2), CabModule::getBuiltInIRName (3),
-                             CabModule::getBuiltInIRName (4), CabModule::getBuiltInIRName (5),
-                             CabModule::getBuiltInIRName (6), CabModule::getBuiltInIRName (7),
-                             CabModule::getBuiltInIRName (8), CabModule::getBuiltInIRName (9),
-                             CabModule::getBuiltInIRName (10), CabModule::getBuiltInIRName (11) },
-        9 /* default: Tweed */));
+        CabModule::getBuiltInIRNames(), 16 /* default: Tweed 57 */));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabAMix"), "Cab Mix",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
     // Onset alignment (CabModule::alignOnset) handles *timing* differences
@@ -239,16 +230,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     // from the IR data alone — this is the manual safety-net toggle for it.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabAPhase"), "Cab Phase", false));
 
-    // Deprecated, unused (see comment above) — kept only so old sessions/
-    // presets that reference these ids don't break.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabBOn"), "Cab B On", false));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("cabBIRSelect"), "Cab B IR",
-        juce::StringArray { CabModule::getBuiltInIRName (0), CabModule::getBuiltInIRName (1),
-                             CabModule::getBuiltInIRName (2), CabModule::getBuiltInIRName (3),
-                             CabModule::getBuiltInIRName (4), CabModule::getBuiltInIRName (5),
-                             CabModule::getBuiltInIRName (6), CabModule::getBuiltInIRName (7),
-                             CabModule::getBuiltInIRName (8) },
-        0));
+        CabModule::getBuiltInIRNames(), 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("cabBMix"), "Cab B Mix",
         Range (0.0f, 1.0f, 0.001f), 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("cabBPhase"), "Cab B Phase", false));

@@ -10,19 +10,21 @@
 
 // A real 3:4 (width:height) stompbox proportion against the strip's own
 // standard row height (375, see PedalboardComponent::tileHeight) -- shared
-// by every simple, GenericKnobsTile-based pedal (Comp, Bull, Breaker,
-// Fangs, Bison, Growl, Tape, Tremolo, July, Ensemble, Satellite, Reverb,
-// Spring, Desk) plus LowDynamicTile/Dynamix, uniformly, rather than each
-// sizing itself to its own knob count. The wider multi-control tiles (Amp,
-// Cab, Delay, EQ, ChannelEQ, Parallel) keep their own content-driven width
-// instead -- forcing e.g. EQ's 9 bands or Delay's dual-engine controls
-// into this same narrow box would clip/cram them.
+// by every simple, single-effect pedal (Comp, Bull, Breaker, Fangs, Bison,
+// Growl, Tape, Tremolo, July, Ensemble, Satellite, Reverb, Spring, Desk)
+// plus LowDynamicTile/Dynamix, uniformly, rather than each sizing itself to
+// its own knob count. Used by both GenericKnobsTile and the one-off tile
+// classes below it (currently just ReverbTile) that still want the same
+// footprint. The wider multi-control tiles (Amp, Cab, Delay, EQ, ChannelEQ,
+// Parallel) keep their own content-driven width instead -- forcing e.g.
+// EQ's 9 bands or Delay's dual-engine controls into this same narrow box
+// would clip/cram them.
 static constexpr int stompTileWidth = 281; // 375 * 3/4, rounded
 
 // One or more knobs (+ optional combos below them) -- covers every pedal
 // whose whole control surface is "N continuous knobs and maybe a couple of
-// discrete choices": NoiseGate, Compressor, Klon, TS9, Tremolo, Chorus,
-// Reverb. See PedalTileFactory.h for each one's exact param list.
+// discrete choices": NoiseGate, Compressor, Klon, TS9, Tremolo, Chorus.
+// See PedalTileFactory.h for each one's exact param list.
 class GenericKnobsTile : public PedalTileComponent
 {
 public:
@@ -32,8 +34,9 @@ public:
                        std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> comboParams = {})
         : PedalTileComponent (apvtsIn, id, displayName, toggleParamId)
     {
+        const auto style = knobStyleFor (id);
         for (auto& [paramId, label] : knobParams)
-            knobs.push_back (makeTileKnob (*this, apvtsIn, paramId, label));
+            knobs.push_back (makePhotoTileKnob (*this, apvtsIn, paramId, label, style));
         for (auto& [paramId, label, choices] : comboParams)
             combos.push_back (makeTileCombo (*this, apvtsIn, paramId, label, choices));
     }
@@ -61,8 +64,86 @@ protected:
     }
 
 private:
-    std::vector<std::unique_ptr<TileKnob>> knobs;
+    static PhotoKnob::Style knobStyleFor (const juce::String& id)
+    {
+        if (id == "compressor") return PhotoKnob::Style::Comp;
+        if (id == "klon")       return PhotoKnob::Style::Bull;
+        if (id == "ts9")        return PhotoKnob::Style::Breaker;
+        if (id == "fangs")      return PhotoKnob::Style::Fangs;
+        if (id == "bison")      return PhotoKnob::Style::Bison;
+        if (id == "growl")      return PhotoKnob::Style::Growl;
+        if (id == "tape")       return PhotoKnob::Style::Tape;
+        if (id == "tremolo")    return PhotoKnob::Style::Tremolo;
+        if (id == "chorus")     return PhotoKnob::Style::July;
+        return PhotoKnob::Style::Modern;
+    }
+
+    std::vector<std::unique_ptr<PhotoTileKnob>> knobs;
     std::vector<std::unique_ptr<TileCombo>> combos;
+};
+
+// Reverb gets a real photographed enclosure + knob skin (see
+// Resources/Images/reverb_enclosure.png and reverb_knob.png) instead of the
+// plain vector card/slider every other GenericKnobsTile pedal uses -- same
+// PreDelay/Decay/Tone/Mix/Width knobs and Room/Hall/Plate model combo,
+// same stompTileWidth footprint, just a one-off skin.
+class ReverbTile : public PedalTileComponent
+{
+public:
+    explicit ReverbTile (juce::AudioProcessorValueTreeState& apvtsIn)
+        : PedalTileComponent (apvtsIn, "reverb", "Reverb", "reverbOn")
+    {
+        for (auto& [paramId, label] : std::vector<std::pair<juce::String, juce::String>> {
+                 { "reverbPreDelay", "PreDelay" }, { "reverbDecay", "Decay" }, { "reverbTone", "Tone" },
+                 { "reverbMix", "Mix" }, { "reverbWidth", "Width" } })
+            knobs.push_back (makePhotoTileKnob (*this, apvtsIn, paramId, label, PhotoKnob::Style::Reverb));
+        model = makeTileCombo (*this, apvtsIn, "reverbModel", "", juce::StringArray { "Room", "Hall", "Plate" });
+    }
+
+    int getPreferredWidth() const override { return stompTileWidth; }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds();
+        auto headerBounds = bounds.removeFromTop (headerHeight);
+        auto pedalBounds = bounds;
+        static const juce::Image enclosure = juce::ImageCache::getFromMemory (
+            BinaryData::reverb_enclosure_png, BinaryData::reverb_enclosure_pngSize);
+        if (enclosure.isValid())
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            juce::Path clip;
+            clip.addRoundedRectangle (pedalBounds.toFloat(), 8.0f);
+            g.reduceClipRegion (clip);
+            // The source photo has its own solid slate background around the
+            // plate -- crop to just the plate itself (measured with
+            // `magick reverb_enclosure.png -fuzz 8% -trim info:`) rather than
+            // stretching the whole canvas, background included, into the tile.
+            g.drawImage (enclosure, pedalBounds.getX(), pedalBounds.getY(),
+                         pedalBounds.getWidth(), pedalBounds.getHeight(),
+                         59, 26, 1013, 1347, false);
+        }
+        else
+        {
+            paintCard (g, pedalBounds, 8.0f);
+        }
+        g.setColour (ThreadlineColours::panelDark.withAlpha (0.96f));
+        g.fillRoundedRectangle (headerBounds.toFloat().reduced (1.0f), 6.0f);
+    }
+
+protected:
+    void resizedBody (juce::Rectangle<int> body) override
+    {
+        auto comboArea = body.removeFromBottom (55);
+        layoutTileKnobRow (knobs, body, 2);
+        auto cell = comboArea.reduced (cellPadX, cellPadY);
+        model->label.setBounds (cell.removeFromTop (captionHeight));
+        model->box.setBounds (cell);
+    }
+
+private:
+    std::vector<std::unique_ptr<PhotoTileKnob>> knobs;
+    std::unique_ptr<TileCombo> model;
 };
 
 // Dimension BBD ("Dimension"): the real SDD-320/DC-2 mode selector is four
@@ -228,43 +309,60 @@ private:
     int voiceIndex = 0;
 };
 
-// Cab: a single IR loader (previously two parallel-blended slots, cabA/
-// cabB, simplified down to one at the user's request -- see CabUnitNode's
-// own comment). cabA* param ids are reused directly as this tile's only
-// controls, following the same "base-class bypass toggle + a couple of
-// extra independent controls" pattern as ChannelEQTile/LowDynamicTile.
+// Dual cabinet loader. Cab A feeds left and Cab B feeds right when both are
+// active; each side has its own IR, mix and polarity, with a shared balance.
 class CabTile : public PedalTileComponent
 {
 public:
     explicit CabTile (juce::AudioProcessorValueTreeState& apvtsIn)
-        : PedalTileComponent (apvtsIn, "cab", "Cab", "cabAOn")
+        : PedalTileComponent (apvtsIn, "cab", "Cab", {})
     {
         juce::StringArray irNames;
         for (int i = 0; i < CabModule::numBuiltInIRs; ++i)
             irNames.add (CabModule::getBuiltInIRName (i));
 
-        phase = makeTileToggle (*this, apvtsIn, "cabAPhase", juce::CharPointer_UTF8 ("\xc3\x98"));
-        irSelect = makeTileCombo (*this, apvtsIn, "cabAIRSelect", "", irNames);
-        mix = makeTileKnob (*this, apvtsIn, "cabAMix", "Mix");
+        aOn = makeTileToggle (*this, apvtsIn, "cabAOn", "A");
+        aPhase = makeTileToggle (*this, apvtsIn, "cabAPhase", juce::CharPointer_UTF8 ("\xc3\x98"));
+        aIR = makeTileCombo (*this, apvtsIn, "cabAIRSelect", "Left / A", irNames);
+        aMix = makeTileKnob (*this, apvtsIn, "cabAMix", "Mix");
+        bOn = makeTileToggle (*this, apvtsIn, "cabBOn", "B");
+        bPhase = makeTileToggle (*this, apvtsIn, "cabBPhase", juce::CharPointer_UTF8 ("\xc3\x98"));
+        bIR = makeTileCombo (*this, apvtsIn, "cabBIRSelect", "Right / B", irNames);
+        bMix = makeTileKnob (*this, apvtsIn, "cabBMix", "Mix");
+        balance = makeTileKnob (*this, apvtsIn, "cabBlend", "Balance");
     }
 
-    int getPreferredWidth() const override { return 238; }
+    int getPreferredWidth() const override { return 420; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
     {
-        auto row = body.removeFromTop (28);
-        phase->button.setBounds (row.removeFromRight (33));
-        irSelect->box.setBounds (row.reduced (cellPadX, 0));
-        body.removeFromTop (rowGap);
-        mix->label.setBounds (body.removeFromTop (captionHeight));
-        mix->slider.setBounds (body.removeFromTop (163).reduced (cellPadX, 0));
+        auto balanceArea = body.removeFromBottom (105).withSizeKeepingCentre (110, 105);
+        balance->label.setBounds (balanceArea.removeFromTop (captionHeight));
+        balance->slider.setBounds (balanceArea);
+        body.removeFromBottom (rowGap);
+        auto left = body.removeFromLeft (body.getWidth() / 2);
+        layoutSide (left, *aOn, *aPhase, *aIR, *aMix);
+        layoutSide (body, *bOn, *bPhase, *bIR, *bMix);
     }
 
 private:
-    std::unique_ptr<TileToggle> phase;
-    std::unique_ptr<TileCombo> irSelect;
-    std::unique_ptr<TileKnob> mix;
+    static void layoutSide (juce::Rectangle<int> area, TileToggle& on, TileToggle& phase,
+                            TileCombo& ir, TileKnob& mix)
+    {
+        auto selector = area.removeFromTop (55).reduced (cellPadX, cellPadY);
+        ir.label.setBounds (selector.removeFromTop (captionHeight));
+        auto buttons = selector.removeFromRight (64);
+        on.button.setBounds (buttons.removeFromLeft (32));
+        phase.button.setBounds (buttons);
+        ir.box.setBounds (selector);
+        mix.label.setBounds (area.removeFromTop (captionHeight));
+        mix.slider.setBounds (area.reduced (cellPadX, 0));
+    }
+
+    std::unique_ptr<TileToggle> aOn, aPhase, bOn, bPhase;
+    std::unique_ptr<TileCombo> aIR, bIR;
+    std::unique_ptr<TileKnob> aMix, bMix, balance;
 };
 
 // Delay: one card shared between two engines (Plexer / Copier), matching
@@ -516,9 +614,9 @@ public:
     explicit LowDynamicTile (juce::AudioProcessorValueTreeState& apvtsIn)
         : PedalTileComponent (apvtsIn, "lowDynamic", "Dynamix", "lowDynamicOn")
     {
-        up = makeTileKnob (*this, apvtsIn, "lowDynamicUp", "Up");
-        down = makeTileKnob (*this, apvtsIn, "lowDynamicDown", "Down");
-        mix = makeTileKnob (*this, apvtsIn, "lowDynamicMix", "Mix");
+        up = makePhotoTileKnob (*this, apvtsIn, "lowDynamicUp", "Up", PhotoKnob::Style::Dynamix);
+        down = makePhotoTileKnob (*this, apvtsIn, "lowDynamicDown", "Down", PhotoKnob::Style::Dynamix);
+        mix = makePhotoTileKnob (*this, apvtsIn, "lowDynamicMix", "Mix", PhotoKnob::Style::Dynamix);
         fastToggle = makeTileToggle (*this, apvtsIn, "lowDynamicFast", "Fast");
     }
 
@@ -530,7 +628,7 @@ protected:
         auto fastRow = body.removeFromBottom (35);
         fastToggle->button.setBounds (fastRow.withSizeKeepingCentre (100, 30));
 
-        std::vector<std::unique_ptr<TileKnob>*> knobs { &up, &down, &mix };
+        std::vector<std::unique_ptr<PhotoTileKnob>*> knobs { &up, &down, &mix };
         const auto columns = 2;
         const auto rows = (int) ((knobs.size() + (size_t) columns - 1) / (size_t) columns);
         const auto cw = body.getWidth() / columns;
@@ -545,7 +643,7 @@ protected:
     }
 
 private:
-    std::unique_ptr<TileKnob> up, down, mix;
+    std::unique_ptr<PhotoTileKnob> up, down, mix;
     std::unique_ptr<TileToggle> fastToggle;
 };
 

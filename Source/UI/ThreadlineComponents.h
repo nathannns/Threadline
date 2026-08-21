@@ -32,25 +32,16 @@ private:
     float peak = 0.0f;
 };
 
-// A rotary knob rendered from a real knob photo. Two styles are shot from
-// different reference photos with different geometry:
-//   - Vintage: the tweed amp's chicken-head knob — reserved for the Amp
-//     page's own Drive/Tone/Output, mirroring the real 5E3 panel. The photo
-//     is taller than it is wide (the pointer extends above the round base),
-//     so it rotates around the base's centre, well below image-centre.
-//   - Modern: the brushed dark/bronze disc knob used for every other
-//     ("effects") control — Gate, Input/Output, Compressor, Klon, TS9, Cab
-//     Mix, Tremolo, Chorus, Delay, Reverb. Symmetric, so it rotates around
-//     its own image centre.
+// A rotary knob rendered from the available pedal-specific photo assets.
 class PhotoKnob : public juce::Slider
 {
 public:
-    enum class Style { Vintage, Modern, EQ, Compressor, Klon, Breaker, Tremolo, Chorus, Delay, Reverb, Gold };
+    enum class Style { Modern, Comp, Bull, Breaker, Fangs, Bison, Growl, Dynamix, Tape, Tremolo, July, Reverb };
 
     PhotoKnob() : PhotoKnob (Style::Modern) {}
     explicit PhotoKnob (Style initialStyle) : style (initialStyle)
     {
-        setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        setSliderStyle (juce::Slider::RotaryVerticalDrag);
         // No built-in text box -- the value readout instead uses JUCE's
         // popup display (see setValueVisible below), a floating bubble that
         // only exists while actively dragging. That reserves no layout
@@ -84,22 +75,16 @@ public:
 
         auto bounds = getLocalBounds().toFloat();
 
-        // Keep rotated photo corners and the lower shadow inside the component.
-        // Vintage chicken-heads need a little more rotational clearance.
-        const auto clearance = style == Style::Vintage ? 0.80f : 0.86f;
-        auto side = juce::jmin (bounds.getWidth(), bounds.getHeight()) * clearance;
+        // Render at 75% of the original diameter (1.5x the reduced size)
+        // while retaining the full component as the drag target.
+        const auto side = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.645f;
         auto knobBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
 
         // The source PNGs contain transparent pixels around and within the
         // photographed hardware. A solid backing keeps light rack artwork
-        // from showing through the compressor and other effect knobs.
-        // Vintage's chicken-head image is the one exception -- its own body
-        // is already fully opaque, so it doesn't need one.
-        if (style != Style::Vintage)
-        {
-            g.setColour (juce::Colour (0xff211a16));
-            g.fillEllipse (knobBounds.reduced (side * 0.08f));
-        }
+        // from showing through.
+        g.setColour (juce::Colour (0xff211a16));
+        g.fillEllipse (knobBounds.reduced (side * 0.08f));
 
         const auto rotary = getRotaryParameters();
         const auto normalised = (float) getNormalisableRange().convertTo0to1 ((float) getValue());
@@ -108,9 +93,8 @@ public:
         const auto imgW = (float) image.getWidth();
         const auto imgH = (float) image.getHeight();
         const auto scale = juce::jmin (knobBounds.getWidth() / imgW, knobBounds.getHeight() / imgH);
-        const auto pivotYRatio = style == Style::Vintage ? vintagePivotYRatio : 0.5f;
         const auto pivotPxX = imgW * 0.5f;
-        const auto pivotPxY = imgH * pivotYRatio;
+        const auto pivotPxY = imgH * 0.5f;
 
         auto transform = juce::AffineTransform::translation (-pivotPxX, -pivotPxY)
                               .scaled (scale)
@@ -126,96 +110,58 @@ public:
         g.drawImageTransformed (image, transform);
     }
 
-    static const juce::Image& getVintageImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_pointer_png, BinaryData::knob_pointer_pngSize);
-        return image;
-    }
-
     static const juce::Image& getModernImage()
     {
         static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_effects_png, BinaryData::knob_effects_pngSize);
         return image;
     }
 
-    static const juce::Image& getEQImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_eq_png, BinaryData::knob_eq_pngSize);
-        return image;
-    }
-
-    static const juce::Image& getCompressorImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_compressor_png, BinaryData::knob_compressor_pngSize);
-        return image;
-    }
-
-    static const juce::Image& getKlonImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_klon_png, BinaryData::knob_klon_pngSize);
-        return image;
-    }
-
-    static const juce::Image& getBreakerImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_breaker_png, BinaryData::knob_breaker_pngSize);
-        return image;
-    }
-
-    static const juce::Image& getTremoloImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_tremolo_png, BinaryData::knob_tremolo_pngSize);
-        return image;
-    }
-
-    static const juce::Image& getChorusImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_chorus_png, BinaryData::knob_chorus_pngSize);
-        return image;
-    }
-
-    static const juce::Image& getDelayImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_delay_png, BinaryData::knob_delay_pngSize);
-        return image;
-    }
-
     static const juce::Image& getReverbImage()
     {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_reverb_png, BinaryData::knob_reverb_pngSize);
-        return image;
+        // Reverb currently has enclosure art but no dedicated knob file in
+        // the migrated asset set. Keep its photographed-control path alive
+        // with the shared effects knob until a reverb-specific crop lands.
+        return getModernImage();
     }
 
-    static const juce::Image& getGoldImage()
-    {
-        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_gold_png, BinaryData::knob_gold_pngSize);
-        return image;
+#define THREADLINE_KNOB_IMAGE(METHOD, NAME) \
+    static const juce::Image& METHOD() { \
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::NAME##_png, BinaryData::NAME##_pngSize); \
+        return image; \
     }
+    THREADLINE_KNOB_IMAGE (getCompImage, knob_comp)
+    THREADLINE_KNOB_IMAGE (getBullImage, knob_bull)
+    THREADLINE_KNOB_IMAGE (getBreakerImage, knob_breaker)
+    THREADLINE_KNOB_IMAGE (getFangsImage, knob_fangs)
+    THREADLINE_KNOB_IMAGE (getBisonImage, knob_bison)
+    THREADLINE_KNOB_IMAGE (getGrowlImage, knob_growl)
+    THREADLINE_KNOB_IMAGE (getDynamixImage, knob_dynamix)
+    THREADLINE_KNOB_IMAGE (getTapeImage, knob_tape)
+    THREADLINE_KNOB_IMAGE (getTremoloImage, knob_tremolo)
+    THREADLINE_KNOB_IMAGE (getJulyImage, knob_july)
+#undef THREADLINE_KNOB_IMAGE
 
     static const juce::Image& getImageForStyle (Style style)
     {
         switch (style)
         {
-            case Style::Vintage:    return getVintageImage();
-            case Style::EQ:         return getEQImage();
-            case Style::Compressor: return getCompressorImage();
-            case Style::Klon:       return getKlonImage();
-            case Style::Breaker:    return getBreakerImage();
-            case Style::Tremolo:    return getTremoloImage();
-            case Style::Chorus:     return getChorusImage();
-            case Style::Delay:      return getDelayImage();
-            case Style::Reverb:     return getReverbImage();
-            case Style::Gold:       return getGoldImage();
+            case Style::Comp:     return getCompImage();
+            case Style::Bull:     return getBullImage();
+            case Style::Breaker:  return getBreakerImage();
+            case Style::Fangs:    return getFangsImage();
+            case Style::Bison:    return getBisonImage();
+            case Style::Growl:    return getGrowlImage();
+            case Style::Dynamix:  return getDynamixImage();
+            case Style::Tape:     return getTapeImage();
+            case Style::Tremolo:  return getTremoloImage();
+            case Style::July:     return getJulyImage();
+            case Style::Reverb: return getReverbImage();
             case Style::Modern:
-            default:                return getModernImage();
+            default:            return getModernImage();
         }
     }
 
 private:
-    // Measured shaft centre in the 279x417 crop. The previous 0.665 pivot was
-    // below the physical shaft and made the knob orbit like a wiper.
-    static constexpr float vintagePivotYRatio = 222.0f / 417.0f;
-
     Style style;
     bool valuesVisible = false;
 };
@@ -286,12 +232,6 @@ public:
         repaint();
     }
 
-    void setRenderedImageStyle (bool shouldUseImages)
-    {
-        renderedImageStyle = shouldUseImages;
-        repaint();
-    }
-
     void setWordmarkCentred (bool shouldCentre)
     {
         wordmarkCentred = shouldCentre;
@@ -317,21 +257,6 @@ public:
             g.drawFittedText (getButtonText(), bounds.reduced (3, 0).toNearestInt(),
                               wordmarkCentred ? juce::Justification::centred
                                               : juce::Justification::centredLeft, 1);
-            return;
-        }
-
-        static const auto off = juce::ImageCache::getFromMemory (
-            BinaryData::button_off_png, BinaryData::button_off_pngSize);
-        static const auto onImage = juce::ImageCache::getFromMemory (
-            BinaryData::button_on_png, BinaryData::button_on_pngSize);
-
-        const auto& image = on ? onImage : off;
-        if (renderedImageStyle && image.isValid())
-        {
-            const auto side = juce::jmin (bounds.getWidth(), bounds.getHeight());
-            auto imageBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
-            g.drawImage (image, imageBounds,
-                         juce::RectanglePlacement::stretchToFit);
             return;
         }
 
@@ -362,7 +287,6 @@ public:
 private:
     bool wordmarkStyle = false;
     bool wordmarkCentred = false;
-    bool renderedImageStyle = true;
 };
 
 // Narrow vertical rocker switch, styled after a physical amp-panel toggle

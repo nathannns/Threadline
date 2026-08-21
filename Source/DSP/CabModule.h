@@ -24,14 +24,27 @@ public:
     ~CabModule() override { cancelPendingUpdate(); }
 
 
-    static constexpr int numBuiltInIRs = 12;
+    static constexpr int numBuiltInIRs = 22;
     static const char* getBuiltInIRName (int index)
     {
         static const char* names[numBuiltInIRs] = {
-            "Blue", "Boutique", "British", "Classic", "Deluxe", "King",
-            "Modern", "Rect", "Rock", "Tweed", "Twin", "VC30"
+            "Rock", "Deluxe 57", "Deluxe 121", "Deluxe 421",
+            "King 57", "King 121", "King 421",
+            "Modern 57", "Modern 121", "Modern 421",
+            "Rect 57", "Rect 121", "Rect 421",
+            "Rock 57", "Rock 121", "Rock 421",
+            "Tweed 57", "Tweed 121", "Tweed 421",
+            "Vox 57", "Vox 121", "Vox 421"
         };
         return names[juce::jlimit (0, numBuiltInIRs - 1, index)];
+    }
+
+    static juce::StringArray getBuiltInIRNames()
+    {
+        juce::StringArray names;
+        for (int i = 0; i < numBuiltInIRs; ++i)
+            names.add (getBuiltInIRName (i));
+        return names;
     }
 
     void prepare (const juce::dsp::ProcessSpec& spec)
@@ -206,32 +219,24 @@ private:
             return;
 
         static const void* data[numBuiltInIRs] = {
-            BinaryData::BLUE_wav,
-            BinaryData::BOUTIQUE_wav,
-            BinaryData::BRITISH_wav,
-            BinaryData::CLASSIC_wav,
-            BinaryData::DELUXE_wav,
-            BinaryData::KING_wav,
-            BinaryData::MODERN_wav,
-            BinaryData::RECT_wav,
             BinaryData::ROCK_wav,
-            BinaryData::TWEED_wav,
-            BinaryData::TWIN_wav,
-            BinaryData::VC_30_wav
+            BinaryData::DLX_57_wav, BinaryData::DLX_121_wav, BinaryData::DLX_421_wav,
+            BinaryData::KING_57_wav, BinaryData::KING_121_wav, BinaryData::KING_421_wav,
+            BinaryData::MDRN_57_wav, BinaryData::MDRN_121_wav, BinaryData::MDRN_421_wav,
+            BinaryData::RECT_57_wav, BinaryData::RECT_121_wav, BinaryData::RECT_421_wav,
+            BinaryData::ROCK_57_wav, BinaryData::ROCK_121_wav, BinaryData::ROCK_421_wav,
+            BinaryData::TWEED_57_wav, BinaryData::TWEED_121_wav, BinaryData::TWEED_421_wav,
+            BinaryData::VOX_57_wav, BinaryData::VOX_121_wav, BinaryData::VOX_421_wav
         };
         static const int sizes[numBuiltInIRs] = {
-            BinaryData::BLUE_wavSize,
-            BinaryData::BOUTIQUE_wavSize,
-            BinaryData::BRITISH_wavSize,
-            BinaryData::CLASSIC_wavSize,
-            BinaryData::DELUXE_wavSize,
-            BinaryData::KING_wavSize,
-            BinaryData::MODERN_wavSize,
-            BinaryData::RECT_wavSize,
             BinaryData::ROCK_wavSize,
-            BinaryData::TWEED_wavSize,
-            BinaryData::TWIN_wavSize,
-            BinaryData::VC_30_wavSize
+            BinaryData::DLX_57_wavSize, BinaryData::DLX_121_wavSize, BinaryData::DLX_421_wavSize,
+            BinaryData::KING_57_wavSize, BinaryData::KING_121_wavSize, BinaryData::KING_421_wavSize,
+            BinaryData::MDRN_57_wavSize, BinaryData::MDRN_121_wavSize, BinaryData::MDRN_421_wavSize,
+            BinaryData::RECT_57_wavSize, BinaryData::RECT_121_wavSize, BinaryData::RECT_421_wavSize,
+            BinaryData::ROCK_57_wavSize, BinaryData::ROCK_121_wavSize, BinaryData::ROCK_421_wavSize,
+            BinaryData::TWEED_57_wavSize, BinaryData::TWEED_121_wavSize, BinaryData::TWEED_421_wavSize,
+            BinaryData::VOX_57_wavSize, BinaryData::VOX_121_wavSize, BinaryData::VOX_421_wavSize
         };
 
         juce::WavAudioFormat wav;

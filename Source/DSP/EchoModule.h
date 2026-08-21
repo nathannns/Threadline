@@ -60,6 +60,10 @@ public:
     void reset();
     void setParameters (float timeMs, float sustainPercent, float volumePercent,
                         bool enabled, Mode mode);
+    static float mapVolume (float volume01)
+    {
+        return std::pow (juce::jlimit (0.0f, 1.0f, volume01), 1.8f) * 0.9f;
+    }
     void process (juce::AudioBuffer<float>& buffer);
     bool isWetTransitionActive() const noexcept
     {

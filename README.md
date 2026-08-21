@@ -2,7 +2,7 @@
 
 Amp sim + drive stack, VST3 / AU / Standalone, one JUCE codebase.
 
-**Chain:** Noise Gate → Input Gain → Compressor → Klon → Breaker (TS9/TS808/TS10) → Amp (5E3 Tweed Deluxe-inspired) → Cab (your own IR) → Tremolo → July (Chorus/Vibrato) → Delay (Plexer or Copier, user-selectable) → Reverb (Hall/Room) → 9-Band EQ → Output Gain
+**Chain:** Noise Gate → Input Gain → Compressor → Klon → Breaker (TS9/TS808/TS10) → Amp → Stereo Cab A/B → Tremolo → July (Chorus/Vibrato) → Delay (Plexer or Copier, user-selectable) → Reverb (Room/Hall/Plate) → 9-Band EQ → Output Gain
 
 Klon and Breaker can run in either order ahead of the Amp (each keeps its own
 on/off toggle regardless) via the Overdrive Order switch.
@@ -125,9 +125,15 @@ cosmetic items (former #8, #10, #13, #14, #15, #16) shipped 2026-08-20; see
   down apparent Bass and Treble the way the real passive network does)
   placed at the identical point in the signal chain; everything else in the
   amp is unchanged between voices.
-- `CabModule` — `juce::dsp::Convolution` loading whatever IR file you point
-  it at via the in-UI file chooser. No bundled cab IRs. Two parallel IR
-  slots (A/B) blend from the same dry signal, like two mics on one cab.
+- `CabModule` — `juce::dsp::Convolution` with 22 bundled cabinet captures:
+  Deluxe, King, Modern, Rect, Rock, Tweed, and Vox families using 57, 121,
+  and 421 microphone variants, plus the retained Rock capture. Two
+  independently switchable instances receive the same pre-cab signal. With
+  both enabled, Cab A feeds the left output and Cab B feeds the right for a
+  genuine stereo cabinet image; each side has its own IR, wet mix, and
+  polarity control, while Balance can solo or attenuate either side. Mono
+  hosts fall back to the former parallel A/B blend because they cannot expose
+  a left/right image.
   `process()` used to build its wet-signal scratch buffer via a fresh local
   `AudioBuffer` + `makeCopyOf()` every single call -- a default-constructed
   buffer is always 0-sized, so `setSize()`'s reuse-optimization never had a
@@ -135,6 +141,10 @@ cosmetic items (former #8, #10, #13, #14, #15, #16) shipped 2026-08-20; see
   every block, doubled since both Cab A and Cab B instances did it. Now a
   persistent member buffer sized once in `prepare()`, matching how
   `HallRoomReverbModule`'s own `wetBuffer` already did this correctly.
+  `CabStereoRouter` contains the allocation-free channel routing and is
+  covered by `CabValidation` for A-only, B-only, stereo, balance endpoints,
+  and mono fallback; the same harness sweeps representative IRs at
+  48/96/192k for invalid or runaway output.
 - `TremoloModule` — two selectable voices sharing one LFO (Rate/Amount, same
   phase), so switching voices keeps the same speed and feel:
   - **Bias** (default) — bias-modulation tremolo, modeled on the real tube

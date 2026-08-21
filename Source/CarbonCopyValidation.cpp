@@ -78,6 +78,13 @@ int main()
 {
     std::printf ("CarbonCopyModule (Copier, BBD analog delay) numeric verification\n");
     std::printf ("================================================================\n\n");
+    if (std::abs (CarbonCopyModule::mapMix (0.0f)) > 0.00001f
+        || CarbonCopyModule::mapMix (0.25f) >= 0.12f
+        || std::abs (CarbonCopyModule::mapMix (1.0f) - 1.0f) > 0.00001f)
+    {
+        std::printf ("Mix taper check failed.\n");
+        return 1;
+    }
 
     std::printf ("Stability sweep (NaN/Inf/blow-up), ceiling 100:\n");
     const double rates[] = { 48000.0, 96000.0, 192000.0 };

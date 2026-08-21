@@ -94,6 +94,17 @@ second source when exactness matters.
 
 ## Working preferences
 
+### Current local asset/cab state (2026-08-21)
+
+- The local folders are the source of truth; do not pull before working.
+- Threadline's current Cab library is the 22-file set under
+  `Resources/CabIR`: Deluxe/King/Modern/Rect/Rock/Tweed/Vox microphone
+  variants (57/121/421) plus `ROCK.wav`.
+- Cab A and B are independent convolution paths. On stereo buses A feeds
+  left and B feeds right; on mono buses they blend in parallel.
+- New enclosure, knob, and LED art lives in the uppercase asset subfolders.
+  `channel_enclosure.png` is the current Redface/Channel EQ tile art.
+
 - **After every code change**: build all 3 formats (Standalone/VST3/AU),
   relaunch Standalone to confirm it's stable, commit with a detailed
   message explaining the change and why, push to GitHub. No exceptions,

@@ -8,7 +8,17 @@
 // from.
 struct TileKnob
 {
-    juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
+    juce::Slider slider { juce::Slider::RotaryVerticalDrag, juce::Slider::TextBoxBelow };
+    juce::Label label;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+};
+
+// Photo-skinned counterpart to TileKnob, for the rare pedal that gets a real
+// photographed knob (currently just Reverb -- see ReverbTile in
+// PedalTiles.h) instead of the plain slider every other tile uses.
+struct PhotoTileKnob
+{
+    PhotoKnob slider;
     juce::Label label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
 };
@@ -59,6 +69,23 @@ inline std::unique_ptr<TileKnob> makeTileKnob (juce::Component& parent, juce::Au
     return knob;
 }
 
+inline std::unique_ptr<PhotoTileKnob> makePhotoTileKnob (juce::Component& parent, juce::AudioProcessorValueTreeState& apvts,
+                                                          const juce::String& paramId, const juce::String& labelText,
+                                                          PhotoKnob::Style style)
+{
+    auto knob = std::make_unique<PhotoTileKnob>();
+    knob->slider.setStyle (style);
+    knob->slider.setScrollWheelEnabled (false); // see makeTileKnob for why
+    knob->label.setText (labelText, juce::dontSendNotification);
+    knob->label.setJustificationType (juce::Justification::centred);
+    knob->label.setFont (juce::FontOptions (14.0f));
+    knob->label.setColour (juce::Label::textColourId, ThreadlineColours::textCream);
+    parent.addAndMakeVisible (knob->slider);
+    parent.addAndMakeVisible (knob->label);
+    knob->attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, paramId, knob->slider);
+    return knob;
+}
+
 inline std::unique_ptr<TileCombo> makeTileCombo (juce::Component& parent, juce::AudioProcessorValueTreeState& apvts,
                                                   const juce::String& paramId, const juce::String& labelText,
                                                   const juce::StringArray& choices)
@@ -90,8 +117,11 @@ inline std::unique_ptr<TileToggle> makeTileToggle (juce::Component& parent, juce
 }
 
 // Lays out a row (optionally wrapped into `columns` columns) of knobs across
-// `area`, each getting a caption above its slider.
-inline void layoutTileKnobRow (std::vector<std::unique_ptr<TileKnob>>& knobs, juce::Rectangle<int> area, int columns = -1)
+// `area`, each getting a caption above its slider. Templated on the knob-UI
+// type (TileKnob or PhotoTileKnob) since both expose the same .label/.slider
+// shape and want identical grid math.
+template <typename KnobT>
+inline void layoutTileKnobRow (std::vector<std::unique_ptr<KnobT>>& knobs, juce::Rectangle<int> area, int columns = -1)
 {
     if (knobs.empty())
         return;
@@ -175,9 +205,26 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        paintCard (g, getLocalBounds(), 8.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.22f));
-        g.fillRect (juce::Rectangle<int> (0, 0, getWidth(), headerHeight).reduced (1));
+        auto bounds = getLocalBounds();
+        auto headerBounds = bounds.removeFromTop (headerHeight);
+        auto pedalBounds = bounds;
+        const auto enclosure = getEnclosureImage();
+        if (enclosure.isValid())
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            juce::Path clip;
+            clip.addRoundedRectangle (pedalBounds.toFloat(), 8.0f);
+            g.reduceClipRegion (clip);
+            g.drawImage (enclosure, pedalBounds.toFloat(), juce::RectanglePlacement::fillDestination);
+        }
+        else
+        {
+            paintCard (g, pedalBounds, 8.0f);
+        }
+        // The title/controls strip is separate chrome above the enclosure,
+        // not a translucent overlay painted across the pedal artwork.
+        g.setColour (ThreadlineColours::panelDark.withAlpha (0.96f));
+        g.fillRoundedRectangle (headerBounds.toFloat().reduced (1.0f), 6.0f);
     }
 
     void resized() override
@@ -232,6 +279,39 @@ public:
     }
 
 protected:
+    juce::Image getEnclosureImage() const
+    {
+        const void* data = nullptr;
+        int size = 0;
+#define THREADLINE_ENCLOSURE(ID, NAME) \
+        if (pedalId == ID) { data = BinaryData::NAME##_enclosure_png; size = BinaryData::NAME##_enclosure_pngSize; }
+        THREADLINE_ENCLOSURE ("compressor", comp)
+        THREADLINE_ENCLOSURE ("lowDynamic", dynamix)
+        THREADLINE_ENCLOSURE ("klon", klon)
+        THREADLINE_ENCLOSURE ("ts9", breaker)
+        THREADLINE_ENCLOSURE ("fangs", fangs)
+        THREADLINE_ENCLOSURE ("bison", bison)
+        THREADLINE_ENCLOSURE ("growl", growl)
+        THREADLINE_ENCLOSURE ("tape", tape)
+        THREADLINE_ENCLOSURE ("amp", amp)
+        THREADLINE_ENCLOSURE ("cab", cab)
+        THREADLINE_ENCLOSURE ("tremolo", tremolo)
+        THREADLINE_ENCLOSURE ("chorus", july)
+        THREADLINE_ENCLOSURE ("dimChorus", ensemble)
+        THREADLINE_ENCLOSURE ("dimBbd", dimension)
+        THREADLINE_ENCLOSURE ("jcChorus", jc_chorus)
+        THREADLINE_ENCLOSURE ("delay", delay)
+        THREADLINE_ENCLOSURE ("spaceEcho", satelite)
+        THREADLINE_ENCLOSURE ("reverb", reverb)
+        THREADLINE_ENCLOSURE ("spring", spring)
+        THREADLINE_ENCLOSURE ("channelEQ", channel)
+        THREADLINE_ENCLOSURE ("desk", desk)
+        THREADLINE_ENCLOSURE ("parallel", parallel)
+        THREADLINE_ENCLOSURE ("eq", eq)
+#undef THREADLINE_ENCLOSURE
+        return data != nullptr ? juce::ImageCache::getFromMemory (data, size) : juce::Image();
+    }
+
     virtual void resizedBody (juce::Rectangle<int> body) = 0;
 
     juce::AudioProcessorValueTreeState& apvts;

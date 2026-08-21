@@ -80,6 +80,13 @@ int main()
 {
     std::printf ("EchoModule (Plexer, Echoplex-style tape echo) numeric verification\n");
     std::printf ("================================================================\n\n");
+    if (std::abs (EchoModule::mapVolume (0.0f)) > 0.00001f
+        || EchoModule::mapVolume (0.25f) >= 0.10f
+        || std::abs (EchoModule::mapVolume (1.0f) - 0.9f) > 0.00001f)
+    {
+        std::printf ("Volume taper check failed.\n");
+        return 1;
+    }
 
     std::printf ("Stability sweep (NaN/Inf/blow-up), ceiling 100:\n");
     const double rates[] = { 48000.0, 96000.0, 192000.0 };

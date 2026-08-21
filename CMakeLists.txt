@@ -21,22 +21,46 @@ FetchContent_MakeAvailable(JUCE)
 
 juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/plugin_background_subtle.png
-    Resources/Images/knob_pointer.png
-    Resources/Images/knob_effects.png
-    Resources/Images/knob_eq.png
-    Resources/Images/knob_compressor.png
-    Resources/Images/knob_klon.png
-    Resources/Images/knob_breaker.png
-    Resources/Images/knob_tremolo.png
-    Resources/Images/knob_chorus.png
-    Resources/Images/knob_delay.png
-    Resources/Images/knob_reverb.png
-    Resources/Images/knob_gold.png
-    Resources/Images/eq_slider_cap.png
-    Resources/Images/led_effect_off.png
-    Resources/Images/led_effect_on.png
-    Resources/Images/Buttons/button_off.png
-    Resources/Images/Buttons/button_on.png
+    Resources/Images/KNOB/knob_effects.png
+    Resources/Images/KNOB/knob_comp.png
+    Resources/Images/KNOB/knob_bull.png
+    Resources/Images/KNOB/knob_breaker.png
+    Resources/Images/KNOB/knob_fangs.png
+    Resources/Images/KNOB/knob_bison.png
+    Resources/Images/KNOB/knob_growl.png
+    Resources/Images/KNOB/knob_dynamix.png
+    Resources/Images/KNOB/knob_tape.png
+    Resources/Images/KNOB/knob_tremolo.png
+    Resources/Images/KNOB/knob_july.png
+    Resources/Images/KNOB/eq_slider_cap.png
+    Resources/Images/LED/led_effect_off.png
+    Resources/Images/LED/led_effect_on.png
+    Resources/Images/LED/led_blue.png
+    Resources/Images/LED/led_orange.png
+    Resources/Images/LED/led_red.png
+    "Resources/Images/PEDAL ENCLOSURE/amp_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/bison_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/breaker_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/cab_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/channel_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/comp_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/delay_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/desk_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/dimension_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/dynamix_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/ensemble_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/eq_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/fangs_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/growl_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/jc_chorus_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/july_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/klon_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/parallel_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/reverb_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/satelite_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/spring_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/tape_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/tremolo_enclosure.png"
     Resources/Images/Buttons/rocker_off.png
     Resources/Images/Buttons/rocker_on.png
     Resources/Reference/threadline_logo.png
@@ -44,24 +68,31 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Fonts/IBMPlexSans-Medium.ttf
     Resources/Fonts/IBMPlexSans-SemiBold.ttf
     Resources/Fonts/IBMPlexSans-Bold.ttf
-    Resources/ImpulseResponses/HallRoom/large_hall.wav
-    Resources/ImpulseResponses/HallRoom/large_stage.wav
-    Resources/ImpulseResponses/HallRoom/small_room.wav
     Resources/ImpulseResponses/Spring/spring_space_clean.wav
     Resources/ImpulseResponses/Spring/spring_9100_clean.wav
     Resources/ImpulseResponses/Spring/spring_echomixer_clean.wav
-    Resources/CabIR/BLUE.wav
-    Resources/CabIR/BOUTIQUE.wav
-    Resources/CabIR/BRITISH.wav
-    Resources/CabIR/CLASSIC.wav
-    Resources/CabIR/DELUXE.wav
-    Resources/CabIR/KING.wav
-    Resources/CabIR/MODERN.wav
-    Resources/CabIR/RECT.wav
     Resources/CabIR/ROCK.wav
-    Resources/CabIR/TWEED.wav
-    Resources/CabIR/TWIN.wav
-    "Resources/CabIR/VC 30.wav"
+    "Resources/CabIR/DLX 57.wav"
+    "Resources/CabIR/DLX 121.wav"
+    "Resources/CabIR/DLX 421.wav"
+    "Resources/CabIR/KING 57.wav"
+    "Resources/CabIR/KING 121.wav"
+    "Resources/CabIR/KING 421.wav"
+    "Resources/CabIR/MDRN 57.wav"
+    "Resources/CabIR/MDRN 121.wav"
+    "Resources/CabIR/MDRN 421.wav"
+    "Resources/CabIR/RECT 57.wav"
+    "Resources/CabIR/RECT 121.wav"
+    "Resources/CabIR/RECT 421.wav"
+    "Resources/CabIR/ROCK 57.wav"
+    "Resources/CabIR/ROCK 121.wav"
+    "Resources/CabIR/ROCK 421.wav"
+    "Resources/CabIR/TWEED 57.wav"
+    "Resources/CabIR/TWEED 121.wav"
+    "Resources/CabIR/TWEED 421.wav"
+    "Resources/CabIR/VOX 57.wav"
+    "Resources/CabIR/VOX 121.wav"
+    "Resources/CabIR/VOX 421.wav"
 )
 
 juce_add_plugin(Threadline
@@ -132,6 +163,7 @@ target_sources(Threadline
         Source/DSP/TapeModule.h
         Source/DSP/AmpModule.h
         Source/DSP/CabModule.h
+        Source/DSP/CabStereoRouter.h
         Source/DSP/SpringModule.cpp
         Source/DSP/SpringModule.h
         Source/DSP/ChannelEQModule.h
@@ -714,9 +746,10 @@ target_link_libraries(GraphicEQValidation
 # --- Cab (speaker-cab IR loader) numeric verification ---
 # A throwaway diagnostic console app, not part of the shipping plugin --
 # instantiates the real CabModule and sweeps built-in-IR x mix x polarity x
-# amplitude x frequency at 48/96/192k for NaN/Inf/blow-up. Convolution is
-# linear (cannot blow up); this confirms the built-in WAV decode + FFT build
-# and fade-in stay finite/bounded. Like SpringModule, CabModule loads IRs via
+# amplitude x frequency at 48/96/192k for NaN/Inf/blow-up, then verifies the
+# production stereo router's A-only/B-only/dual/balance/mono paths.
+# Convolution is linear (cannot blow up); this confirms the built-in WAV
+# decode + FFT build and fade-in stay finite/bounded. Like SpringModule, CabModule loads IRs via
 # AsyncUpdater, so it links ThreadlineData + juce_audio_formats + juce_events
 # and defines JUCE_MODAL_LOOPS_PERMITTED=1 for the dispatch-loop drain. See
 # Source/CabValidation.cpp.
