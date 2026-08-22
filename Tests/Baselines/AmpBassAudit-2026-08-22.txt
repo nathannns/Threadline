@@ -1,0 +1,24 @@
+AmpModule low-frequency staging baseline
+Captured 2026-08-22 at 48kHz, 100mV RMS physical DI, Gain/EQ noon,
+4x oversampling and diagnostic final Output -18dB.
+
+Topology inventory from AmpModule::updateStaticFilters:
+- DI -> V1: 48Hz Q=0.707 high-pass for every voice.
+- V1 -> V2: 72Hz Q=0.707 high-pass for every tube voice.
+- Vintage: interstage Tone low-pass.
+- Boutique/JTM45/Mesa: passive Bassman-family tone stacks.
+- Vox: Bass/Treble network.
+- Deluxe: AB763 tone stack.
+- JC-120: IC2a clipping precedes its active Bass/Mid/Treble EQ.
+
+Measured output relative to 1kHz
+voice          40Hz     60Hz     80Hz    120Hz    250Hz   1k RMS
+Vintage      -12.51    -4.89    -1.74    -0.30     0.10  0.03452
+Boutique      -5.19     2.02     5.04     5.83     2.87  0.02338
+Vox          -14.15    -5.18    -1.70    -0.32    -0.02  0.03420
+Deluxe        -2.15     5.48     7.70     7.16     1.21  0.02149
+JTM45         -5.28     3.54     6.49     7.11     4.42  0.02114
+Mesa          -5.27     3.55     6.75     7.65     4.43  0.02050
+JC-120        -4.02    -1.18    -0.46    -0.11    -0.02  0.03381
+
+Measurement only. No bass filter, gain stage, or voice was retuned.

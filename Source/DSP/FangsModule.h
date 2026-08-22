@@ -1,17 +1,13 @@
 #pragma once
 #include <JuceHeader.h>
 #include "WDFCore.h"
+#include "GuitarSignalLevel.h"
 
-// "Fangs" -- an original op-amp gain-stage-then-diode-clip fuzz/
-// distortion, the general archetype behind pedals like the ProCo Rat and
-// MXR Distortion+: not a copy of either's specific schematic or component
-// values -- this project has no rights to reproduce a particular
-// commercial pedal's traced BOM -- but an original circuit built from the
-// same well-documented, decades-old textbook topology, reusing this
-// project's own from-scratch WDF (Wave Digital Filter) core -- the same
-// real circuit-simulation machinery already verified against Klon/TS9's
-// published, MIT-licensed reference models (see WDFCore.h's own header
-// for that provenance).
+// "Fangs" -- an original op-amp gain-stage-then-diode-clip distortion in
+// the RAT/Distortion+ family. The signal flow is checked against the ProCo
+// RAT and MXR Distortion+ drawings in el34world's Effects archive; Fangs
+// keeps its own control taper and calibration rather than claiming to be
+// either named pedal.
 //
 // Real RAT/Distortion+-family schematics (checked directly against both,
 // not just remembered folklore) share one structural trait that TS9/Klon
@@ -23,21 +19,11 @@
 // loop gain approaching the knee, unlike TS9Module's clipper), and it's
 // general textbook circuit topology, not either pedal's specific BOM, so
 // it's fair game to model structurally even while declining to copy
-// their exact component values. Two WDF stages now, not one:
-//  1. GainStage -- a linear (unclipped) inverting op-amp stage, Norton
-//     current injection into a feedback impedance of R_gain parallel
-//     with C_filter (unchanged from before), but terminated as an open
-//     boundary (self-reflected) instead of by a diode pair, since nothing
-//     here should clip yet. Same reasoning as before for *why* a
-//     capacitor sits in that feedback impedance: as Gain rises, the fixed
-//     cap becomes a proportionally bigger fraction of the impedance at
-//     high frequencies, rolling off the harmonics reaching the clip
-//     stage -- the well-known reason this whole pedal family gets
-//     progressively darker/tighter as gain increases.
-//  2. ClipStage -- that clean gain stage's output voltage, in series with
-//     a resistor, clamped by an antiparallel diode pair to ground
-//     (WDF::ResistiveVoltageSource + WDF::DiodePair, both already proven
-//     elsewhere in this codebase) -- the actual hard-clip event.
+// their exact component values. The RAT drawing exposes a detail the old
+// generic gain block missed: two feedback legs (560R/4.7uF and 47R/2.2uF)
+// introduce gain shelves at about 60.5Hz and 1.54kHz. That keeps deep bass
+// from receiving the same enormous gain as guitar mids. The one-pole states
+// below implement those legs' linear transfer before the WDF silicon pair.
 //
 // Post-clip "Filter" is a genuine treble-cut lowpass sweep -- the real
 // RAT-family "Filter" control is exactly this (darker at one end,
@@ -54,57 +40,50 @@ class FangsModule
 public:
     struct FangsClipper
     {
-        // Stage 1: clean, gain-dependent, frequency-dependent inverting
-        // amplifier -- see class comment. Left as an open (self-reflected)
-        // root since nothing external loads it; that's the standard WDF
-        // way to terminate a one-port with no further connections (all
-        // incident energy reflects straight back, matching "current
-        // source charging a parallel R/C with nothing else attached").
-        WDF::ResistiveCurrentSource feedbackR { 220000.0f };
-        WDF::Capacitor feedbackC { 1.0e-9f, 44100.0 };
-        WDF::Parallel<WDF::ResistiveCurrentSource, WDF::Capacitor> gainNode { feedbackR, feedbackC };
-
-        // Stage 2: that clean stage's output voltage, in series with a
-        // fixed resistor, clamped to ground by the diode pair -- the
-        // actual hard-clip event, structurally separate from the gain
-        // stage above.
         WDF::ResistiveVoltageSource clipSource { 1000.0f };
         WDF::DiodePair<decltype (clipSource)> dp { clipSource, 4.352e-9f, 0.02585f * 1.906f };
 
         void prepare (double wdfSampleRate)
         {
-            feedbackC.prepare (1.0e-9f, wdfSampleRate);
-            gainNode.calcImpedance();
+            lowShelfCoefficient = highPassCoefficient (wdfSampleRate, 560.0, 4.7e-6);
+            presenceCoefficient = highPassCoefficient (wdfSampleRate, 47.0, 2.2e-6);
             dp.calcImpedance();
             reset();
         }
 
         void reset()
         {
-            feedbackC.reset();
-            feedbackR.wdf.a = feedbackR.wdf.b = 0.0f;
             clipSource.wdf.a = clipSource.wdf.b = 0.0f;
+            lowShelfInput = presenceInput = lowShelfOutput = presenceOutput = 0.0f;
         }
 
-        void setFeedbackResistance (float ohms) noexcept
+        float processSample (float vin, float gainResistance) noexcept
         {
-            feedbackR.wdf.R = ohms;
-            feedbackR.wdf.G = 1.0f / ohms;
-            gainNode.calcImpedance();
-        }
+            const auto lowShelf = lowShelfCoefficient * (lowShelfOutput + vin - lowShelfInput);
+            const auto presence = presenceCoefficient * (presenceOutput + vin - presenceInput);
+            lowShelfInput = presenceInput = vin;
+            lowShelfOutput = lowShelf;
+            presenceOutput = presence;
 
-        float processSample (float vin, float inputOneOverR) noexcept
-        {
-            feedbackR.setCurrent (-vin * inputOneOverR);
-            const auto gainB = gainNode.reflected();
-            gainNode.incident (gainB); // open boundary: full self-reflection
-            const auto cleanGainOutput = WDF::voltage (gainNode.wdf);
+            const auto cleanGainOutput = vin
+                + gainResistance * (lowShelf / 560.0f + presence / 47.0f);
 
             clipSource.setVoltage (cleanGainOutput);
             dp.incident (clipSource.reflected());
             clipSource.incident (dp.reflected());
             return WDF::voltage (clipSource.wdf);
         }
+
+    private:
+        static float highPassCoefficient (double rate, double resistance, double capacitance) noexcept
+        {
+            const auto rc = resistance * capacitance;
+            return static_cast<float> (rc / (rc + 1.0 / rate));
+        }
+
+        float lowShelfCoefficient = 0.0f, presenceCoefficient = 0.0f;
+        float lowShelfInput = 0.0f, presenceInput = 0.0f;
+        float lowShelfOutput = 0.0f, presenceOutput = 0.0f;
     };
 
     // oversamplingMode: 0 = off (1x), 1 = 2x, 2 = 4x -- same convention as
@@ -118,6 +97,7 @@ public:
             (size_t) channelCount, stages,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
+        wetBuffer.setSize (channelCount, static_cast<int> (spec.maximumBlockSize), false, false, true);
         for (auto& c : clipper)
             c.prepare (sampleRate * (double) oversampling->getOversamplingFactor());
         for (auto& f : filterLowpass)
@@ -153,7 +133,8 @@ public:
     void setParameters (float gain01, float filter01, float level01, float mix01)
     {
         gainAmount = juce::jlimit (0.0f, 1.0f, gain01);
-        outputLevel = juce::jlimit (0.0f, 2.0f, level01 * 2.0f);
+        const auto level = juce::jlimit (0.0f, 1.0f, level01);
+        outputLevel = std::pow (level, 2.50f);
         mix = juce::jlimit (0.0f, 1.0f, mix01);
         filter01 = juce::jlimit (0.0f, 1.0f, filter01);
         if (! juce::approximatelyEqual (filter01, lastFilter01))
@@ -171,14 +152,10 @@ public:
         const auto numChannels = juce::jmin (buffer.getNumChannels(), channelCount);
         const auto numSamples = buffer.getNumSamples();
 
-        // Real op-amp fuzz/distortion Gain pots run from a few kohm up to
-        // ~1M -- low resistance = tight/low-gain feedback (mostly clean),
-        // high resistance = huge loop gain overdriving the diodes hard.
-        // Squared taper -- most of the pot's useful range sits in the
-        // last third, matching how these pots feel in practice.
-        const auto feedbackOhms = 4700.0f + gainAmount * gainAmount * 995300.0f;
-        for (auto& c : clipper)
-            c.setFeedbackResistance (feedbackOhms);
+        // Move resistance in the source-derived feedback network rather
+        // than pre-scaling the DI or driving a fixed clip curve. The deep
+        // audio taper keeps the useful low-gain range available.
+        const auto gainResistance = 100.0f + std::pow (gainAmount, 4.8f) * 149900.0f;
 
         dryDelay.setDelay ((float) getLatencySamples());
 
@@ -194,15 +171,15 @@ public:
         {
             for (int i = 0; i < osSamples; ++i)
             {
-                const auto x = osBlock.getSample ((int) ch, i);
+                const auto x = GuitarSignalLevel::toVolts (osBlock.getSample ((int) ch, i));
                 // Real op-amp clipper output (volts) -- outputCalibration
                 // brings that to a sensible audio range, same role as
                 // Klon/TS9's own calibration constants. A wide tanh safety
                 // rail backstops that guess (the diode pair itself already
                 // self-limits, same as real hardware).
-                auto clipped = clipper[ch].processSample (x, oneOverRin) * outputCalibration;
+                auto clipped = clipper[ch].processSample (x, gainResistance) * outputCalibration;
                 clipped = safetyCeiling * std::tanh (clipped / safetyCeiling);
-                osBlock.setSample ((int) ch, i, clipped);
+                osBlock.setSample ((int) ch, i, GuitarSignalLevel::fromVolts (clipped));
             }
         }
         oversampling->processSamplesDown (block);
@@ -226,9 +203,12 @@ private:
     {
         if (sampleRate <= 0.0)
             return;
-        // Dark<->bright treble-cut sweep, same convention/range family as
-        // TS9Module's own Tone control.
-        const auto cutoff = juce::jmap (lastFilter01, 800.0f, 12000.0f);
+        // Source network: the 100k Filter pot feeds 1.5k/3.3nF. Preserve
+        // Threadline's left=dark/right=bright convention while deriving
+        // the actual endpoints from that circuit.
+        const auto resistance = (1.0f - lastFilter01) * 100000.0f + 1500.0f;
+        const auto analogueCutoff = 1.0f / (juce::MathConstants<float>::twoPi * resistance * 3.3e-9f);
+        const auto cutoff = juce::jmin (analogueCutoff, static_cast<float> (sampleRate * 0.45));
         auto coeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, cutoff, 0.707f);
         for (auto& f : filterLowpass)
             *f.coefficients = *coeffs;
@@ -239,18 +219,12 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::AudioBuffer<float> wetBuffer;
     FangsClipper clipper[2];
-    // 47k input resistor -- a harness sweep across candidate Rin values
-    // confirmed this is what actually gives the Gain knob a meaningful
-    // clean<->saturated range (a much lower Rin, e.g. 1k, was found to
-    // already saturate the diode pair at *minimum* Gain for any
-    // realistic playing level, leaving the knob almost inert).
-    static constexpr float oneOverRin = 1.0f / 47000.0f;
     // Empirically-tuned, not physically derived (same role as Klon/TS9's own
     // calibration constants). 6.0 mapped the diode-pair clip point (~0.63V)
     // to ~2.5 peak at level=0.5 -- deep into hard clipping with the knob at
     // noon. Retuned (measured via PedalLevelProbe, same discipline as
     // AmpModule::perVoiceNormalise) to 1.48 so the clipped peak lands at ~0.9
-    // at level=0.5; the level knob (0-2x) still pushes into clip on demand.
+    // internally; the measured output-pot taper above sets the chain level.
     static constexpr float outputCalibration = 1.48f;
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;

@@ -7,23 +7,25 @@
 class FangsNode : public PedalNode
 {
 public:
-    explicit FangsNode (juce::AudioProcessorValueTreeState& state) : PedalNode (state) {}
+    FangsNode (juce::AudioProcessorValueTreeState& state, ProcessingQualityState& quality)
+        : PedalNode (state, &quality) {}
     juce::Identifier getId() const override { return "fangs"; }
 
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         for (int mode = 0; mode < (int) fangs.size(); ++mode)
             fangs[(size_t) mode].prepare (spec, mode);
-        prepareCrossfade (spec.sampleRate, pBool ("fangsOn"));
+        prepareCrossfade (spec, pBool ("fangsOn"));
     }
     void reset() override { for (auto& f : fangs) f.reset(); }
+    void oversamplingModeChanged() override { for (auto& f : fangs) f.reset(); }
 
     // See KlonNode's own comment -- reports the live-selected instance's
     // real latency now that PedalChainRunner watches for oversampling
     // changes and re-publishes accordingly.
     int getLatencySamples() const override
     {
-        return fangs[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))].getLatencySamples();
+        return fangs[(size_t) oversamplingMode()].getLatencySamples();
     }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
@@ -31,7 +33,7 @@ public:
         const auto active = inTargetOrder && pBool ("fangsOn");
         // Follows the global Amp Oversampling setting (Options panel),
         // same treatment as Bull/Breaker.
-        auto& selected = fangs[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))];
+        auto& selected = fangs[(size_t) oversamplingMode()];
         return crossfadeToggle (buffer, active, [this, &selected] (juce::AudioBuffer<float>& b)
         {
             selected.setEnabled (true);

@@ -3,7 +3,7 @@
 #include <JuceHeader.h>
 #include <BinaryData.h>
 
-// Speaker cab simulation via convolution. Ships with nine built-in IRs
+// Speaker cab simulation via convolution. Ships with 22 built-in IRs
 // (a different cab flavor each, several paired with this plugin's own amp
 // voices -- TWD/Tweed alongside the 5E3, DLX/Deluxe alongside the Fender
 // AB763, AC30 alongside the Vox Top Boost voice) selectable by index, plus

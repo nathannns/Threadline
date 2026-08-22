@@ -3,17 +3,16 @@
 // Feeds sines at several representative frequencies through each of the 7
 // voices (Output 0dB, flat EQ), lets sag/filters settle, then reports each
 // voice's settled RMS and the scale needed to hit a target RMS. This is the
-// measurement tool that produced AmpModule::perVoiceNormaliseByDrive's
-// constants -- the "measure, don't guess" provenance for the per-voice
-// loudness trim. The reference() spot-checks at Drive=0.3/0.5/0.9 show the
-// imbalance the single-scalar trim used to leave behind; the Drive sweep at
-// the bottom is the full 0.0-1.0 measurement the 11-knot table was fitted to
-// (each voice's RMS is divided into the group median to land it on the common
-// loudness curve).
+// measurement tool used to derive AmpModule's fixed Deluxe-referenced Output
+// trims -- the "measure, don't guess" provenance for per-voice loudness.
+// `--noon-level` is the quick nominal-DI/noon-Gain calibration check; the
+// longer default sweep remains useful for seeing each real circuit's natural
+// loudness-vs-Gain curve without inserting a Drive-dependent correction.
 #include <JuceHeader.h>
 #include "DSP/AmpModule.h"
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace
 {
@@ -71,12 +70,91 @@ namespace
         }
         std::printf ("\n");
     }
+
+    float measureThd (int voice, float drive, float diRmsVolts = 0.100f)
+    {
+        constexpr double sampleRate = 48000.0;
+        constexpr int blockSize = 256, diSettleBlocks = 160, diMeasureBlocks = 64;
+        constexpr double frequency = 187.5; // exact integer cycles in 16384 samples
+        // 100mV RMS guitar at Threadline's Focusrite +12.25dBu reference:
+        // 0.100V / 4.49073V-per-digital-unit, converted RMS -> peak.
+        const float nominalDiPeak = diRmsVolts * std::sqrt (2.0f)
+                                       * GuitarSignalLevel::digitalUnitsPerVolt;
+
+        AmpModule mod;
+        mod.prepare ({ sampleRate, blockSize, 2 }, 2);
+        mod.setEnabled (true);
+        mod.setParameters (drive, 0.5f, -18.0f, static_cast<AmpModule::Voice> (voice), 0.5f, 0.5f, 0.5f);
+
+        std::vector<float> captured;
+        captured.reserve ((size_t) blockSize * diMeasureBlocks);
+        for (int block = 0; block < diSettleBlocks + diMeasureBlocks; ++block)
+        {
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto n = block * blockSize + i;
+                const auto x = nominalDiPeak * (float) std::sin (2.0 * kPi * frequency * n / sampleRate);
+                buffer.setSample (0, i, x);
+                buffer.setSample (1, i, x);
+            }
+            mod.process (buffer);
+            if (block >= diSettleBlocks)
+                for (int i = 0; i < blockSize; ++i)
+                    captured.push_back (buffer.getSample (0, i));
+        }
+
+        double harmonicSq = 0.0, fundamental = 0.0;
+        for (int harmonic = 1; harmonic <= 10; ++harmonic)
+        {
+            double re = 0.0, im = 0.0;
+            for (size_t n = 0; n < captured.size(); ++n)
+            {
+                const auto phase = 2.0 * kPi * frequency * harmonic * (double) n / sampleRate;
+                re += captured[n] * std::cos (phase);
+                im -= captured[n] * std::sin (phase);
+            }
+            const auto magnitude = 2.0 * std::sqrt (re * re + im * im) / (double) captured.size();
+            if (harmonic == 1) fundamental = magnitude;
+            else harmonicSq += magnitude * magnitude;
+        }
+        return (float) (100.0 * std::sqrt (harmonicSq) / juce::jmax (1.0e-12, fundamental));
+    }
 }
 
-int main()
+int main (int argc, char** argv)
 {
     std::printf ("AmpModule per-voice output level probe\n");
     std::printf ("======================================\n\n");
+
+    if (argc > 1 && juce::String (argv[1]) == "--di-thd")
+    {
+        std::printf ("Focusrite-calibrated guitar DI (100mV RMS), THD %% by Gain:\n");
+        std::printf ("  voice             0%%       50%%      100%%\n");
+        for (int voice = 0; voice <= 6; ++voice)
+            std::printf ("  %-12s %8.3f  %8.3f  %8.3f\n", voiceNames[voice],
+                         measureThd (voice, 0.0f), measureThd (voice, 0.5f), measureThd (voice, 1.0f));
+        return 0;
+    }
+    if (argc > 1 && juce::String (argv[1]) == "--di-thd-levels")
+    {
+        std::printf ("THD %% by physical guitar level, Gain=0 / 50%%:\n");
+        std::printf ("  voice          25mV G0  50mV G0 100mV G0 200mV G0 | 25mV G5  50mV G5 100mV G5 200mV G5\n");
+        for (int voice = 0; voice <= 6; ++voice)
+        {
+            std::printf ("  %-12s", voiceNames[voice]);
+            for (float gain : { 0.0f, 0.5f })
+                for (float volts : { 0.025f, 0.050f, 0.100f, 0.200f })
+                    std::printf (" %8.3f", measureThd (voice, gain, volts));
+            std::printf ("\n");
+        }
+        return 0;
+    }
+    if (argc > 1 && juce::String (argv[1]) == "--noon-level")
+    {
+        reference (48000.0, 0.50f, 0.0314917f, 0.500f);
+        return 0;
+    }
     reference (48000.0, 0.30f, 0.30f, 0.500f);
     reference (48000.0, 0.50f, 0.30f, 0.500f);
     reference (48000.0, 0.90f, 0.30f, 0.500f);

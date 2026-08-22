@@ -12,7 +12,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         eq.prepare (spec);
-        prepareCrossfade (spec.sampleRate, pBool ("eqSectionOn") && pBool ("eqOn"));
+        prepareCrossfade (spec, pBool ("eqSectionOn") && pBool ("eqOn"));
     }
     void reset() override { eq.reset(); }
 

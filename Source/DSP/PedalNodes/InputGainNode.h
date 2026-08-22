@@ -15,7 +15,7 @@ public:
         : PedalNode (state), inputLevel (meter) {}
     juce::Identifier getId() const override { return "inputGain"; }
 
-    void prepare (const juce::dsp::ProcessSpec& spec) override { prepareCrossfade (spec.sampleRate, true); }
+    void prepare (const juce::dsp::ProcessSpec& spec) override { prepareCrossfade (spec, true); }
     void reset() override {}
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override

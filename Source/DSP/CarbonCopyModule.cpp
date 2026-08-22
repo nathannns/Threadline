@@ -18,6 +18,12 @@ void CarbonCopyModule::prepare (const juce::dsp::ProcessSpec& spec)
     for (int ch = 0; ch < 2; ++ch)
         *darkenFilter[ch].coefficients = *darkenCoeffs;
 
+    // The DM-2/DC-2 NE570 implementations use a fast rectifier attack and
+    // roughly 100ms recovery. Coefficients are stored in the "amount moved"
+    // form used by the envelope updates below.
+    envelopeAttack = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.003));
+    envelopeRelease = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.100));
+
     delaySamples.reset (sampleRate, 0.05);
     wetMix.reset (sampleRate, 0.02);
     feedbackValue.reset (sampleRate, 0.03);
@@ -33,6 +39,9 @@ void CarbonCopyModule::reset()
     {
         darkenFilter[ch].reset();
         writeRail[ch].reset();
+        readRail[ch].reset();
+        compressorEnvelope[ch] = 0.0f;
+        expanderEnvelope[ch] = 0.0f;
     }
     delaySamples.setCurrentAndTargetValue (static_cast<float> (sampleRate * 0.300));
     wetMix.setCurrentAndTargetValue (0.0f);
@@ -129,7 +138,20 @@ void CarbonCopyModule::process (juce::AudioBuffer<float>& buffer)
         for (int channel = 0; channel < channels; ++channel)
         {
             const auto input = buffer.getSample (channel, sample);
-            const auto delayed = readDelay (channel, distance);
+            const auto delayedCompressed = readDelay (channel, distance);
+
+            // NE570 1:2 expansion. At steady level this is the mathematical
+            // inverse of the sqrt compressor below: y=sqrt(x*ref), then
+            // y*(y/ref)=x. The clamps only
+            // bound silence/startup and self-oscillation transients.
+            constexpr float referenceLevel = 0.35f;
+            const auto delayedMagnitude = std::abs (delayedCompressed);
+            auto& expanderEnv = expanderEnvelope[channel];
+            expanderEnv += (delayedMagnitude > expanderEnv ? envelopeAttack : envelopeRelease)
+                         * (delayedMagnitude - expanderEnv);
+            const auto expandGain = juce::jlimit (0.1f, 3.0f,
+                juce::jmax (expanderEnv, 0.001f) / referenceLevel);
+            const auto delayed = readRail[channel].process (delayedCompressed * expandGain, 2.4f, 3.0f);
             // The darkening filter models the record head's own band-
             // limiting, which a real BBD-based delay applies to everything
             // being written to the bucket-brigade line -- fresh input and
@@ -142,7 +164,13 @@ void CarbonCopyModule::process (juce::AudioBuffer<float>& buffer)
             // too, matching real BBD hardware's own per-pass band-limiting
             // rather than reading as a clean first echo.
             const auto toRecord = input + delayed * feedback;
-            const auto darkened = darkenFilter[channel].processSample (toRecord);
+            const auto recordMagnitude = std::abs (toRecord);
+            auto& compressorEnv = compressorEnvelope[channel];
+            compressorEnv += (recordMagnitude > compressorEnv ? envelopeAttack : envelopeRelease)
+                           * (recordMagnitude - compressorEnv);
+            const auto compressGain = juce::jlimit (0.1f, 3.0f,
+                std::sqrt (referenceLevel / juce::jmax (compressorEnv, 0.001f)));
+            const auto darkened = darkenFilter[channel].processSample (toRecord * compressGain);
 
             delayBuffer.setSample (channel, writeIndex, writeRail[channel].process (darkened, 1.4f, 3.2f));
 

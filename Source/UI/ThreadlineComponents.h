@@ -36,7 +36,10 @@ private:
 class PhotoKnob : public juce::Slider
 {
 public:
-    enum class Style { Modern, Comp, Bull, Breaker, Fangs, Bison, Growl, Dynamix, Tape, Tremolo, July, Reverb };
+    enum class Style { Modern, Comp, Bull, Breaker, Fangs, Bison, Growl, Dynamix,
+                       Tape, Tremolo, July, Amp, Cab, ChannelEQ, Delay, Desk,
+                       Dimension, Ensemble, JC, ParallelA, ParallelB, Redface,
+                       Reverb, Satellite, Spring };
 
     PhotoKnob() : PhotoKnob (Style::Modern) {}
     explicit PhotoKnob (Style initialStyle) : style (initialStyle)
@@ -69,7 +72,9 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto& image = getImageForStyle (style);
+        const auto normalised = (float) getNormalisableRange().convertTo0to1 ((float) getValue());
+        auto& image = style == Style::ParallelA && normalised > 0.5f
+                    ? getParallelBImage() : getImageForStyle (style);
         if (! image.isValid())
             return;
 
@@ -87,7 +92,6 @@ public:
         g.fillEllipse (knobBounds.reduced (side * 0.08f));
 
         const auto rotary = getRotaryParameters();
-        const auto normalised = (float) getNormalisableRange().convertTo0to1 ((float) getValue());
         const auto angle = rotary.startAngleRadians + normalised * (rotary.endAngleRadians - rotary.startAngleRadians);
 
         const auto imgW = (float) image.getWidth();
@@ -118,10 +122,8 @@ public:
 
     static const juce::Image& getReverbImage()
     {
-        // Reverb currently has enclosure art but no dedicated knob file in
-        // the migrated asset set. Keep its photographed-control path alive
-        // with the shared effects knob until a reverb-specific crop lands.
-        return getModernImage();
+        static juce::Image image = juce::ImageCache::getFromMemory (BinaryData::knob_reverb_png, BinaryData::knob_reverb_pngSize);
+        return image;
     }
 
 #define THREADLINE_KNOB_IMAGE(METHOD, NAME) \
@@ -139,6 +141,19 @@ public:
     THREADLINE_KNOB_IMAGE (getTapeImage, knob_tape)
     THREADLINE_KNOB_IMAGE (getTremoloImage, knob_tremolo)
     THREADLINE_KNOB_IMAGE (getJulyImage, knob_july)
+    THREADLINE_KNOB_IMAGE (getAmpImage, knob_amp)
+    THREADLINE_KNOB_IMAGE (getCabImage, knob_cab)
+    THREADLINE_KNOB_IMAGE (getChannelEQImage, knob_channeleq)
+    THREADLINE_KNOB_IMAGE (getDelayImage, knob_delay)
+    THREADLINE_KNOB_IMAGE (getDeskImage, knob_desk)
+    THREADLINE_KNOB_IMAGE (getDimensionImage, knob_dimension)
+    THREADLINE_KNOB_IMAGE (getEnsembleImage, knob_ensemble)
+    THREADLINE_KNOB_IMAGE (getJCImage, knob_jc)
+    THREADLINE_KNOB_IMAGE (getParallelAImage, knob_parallel_a)
+    THREADLINE_KNOB_IMAGE (getParallelBImage, knob_parallel_b)
+    THREADLINE_KNOB_IMAGE (getRedfaceImage, knob_redface)
+    THREADLINE_KNOB_IMAGE (getSatelliteImage, knob_satelite)
+    THREADLINE_KNOB_IMAGE (getSpringImage, knob_spring)
 #undef THREADLINE_KNOB_IMAGE
 
     static const juce::Image& getImageForStyle (Style style)
@@ -155,7 +170,20 @@ public:
             case Style::Tape:     return getTapeImage();
             case Style::Tremolo:  return getTremoloImage();
             case Style::July:     return getJulyImage();
-            case Style::Reverb: return getReverbImage();
+            case Style::Amp:      return getAmpImage();
+            case Style::Cab:      return getCabImage();
+            case Style::ChannelEQ:return getChannelEQImage();
+            case Style::Delay:    return getDelayImage();
+            case Style::Desk:     return getDeskImage();
+            case Style::Dimension:return getDimensionImage();
+            case Style::Ensemble: return getEnsembleImage();
+            case Style::JC:       return getJCImage();
+            case Style::ParallelA:return getParallelAImage();
+            case Style::ParallelB:return getParallelBImage();
+            case Style::Redface:  return getRedfaceImage();
+            case Style::Reverb:   return getReverbImage();
+            case Style::Satellite:return getSatelliteImage();
+            case Style::Spring:   return getSpringImage();
             case Style::Modern:
             default:            return getModernImage();
         }

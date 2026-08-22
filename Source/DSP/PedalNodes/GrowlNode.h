@@ -7,29 +7,31 @@
 class GrowlNode : public PedalNode
 {
 public:
-    explicit GrowlNode (juce::AudioProcessorValueTreeState& state) : PedalNode (state) {}
+    GrowlNode (juce::AudioProcessorValueTreeState& state, ProcessingQualityState& quality)
+        : PedalNode (state, &quality) {}
     juce::Identifier getId() const override { return "growl"; }
 
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         for (int mode = 0; mode < (int) growls.size(); ++mode)
             growls[(size_t) mode].prepare (spec, mode);
-        prepareCrossfade (spec.sampleRate, pBool ("growlOn"));
+        prepareCrossfade (spec, pBool ("growlOn"));
     }
     void reset() override { for (auto& g : growls) g.reset(); }
+    void oversamplingModeChanged() override { for (auto& g : growls) g.reset(); }
 
     // See KlonNode's own comment -- reports the live-selected instance's
     // real latency now that PedalChainRunner watches for oversampling
     // changes and re-publishes accordingly.
     int getLatencySamples() const override
     {
-        return growls[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))].getLatencySamples();
+        return growls[(size_t) oversamplingMode()].getLatencySamples();
     }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
     {
         const auto active = inTargetOrder && pBool ("growlOn");
-        auto& selected = growls[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))];
+        auto& selected = growls[(size_t) oversamplingMode()];
         return crossfadeToggle (buffer, active, [this, &selected] (juce::AudioBuffer<float>& b)
         {
             selected.setEnabled (true);

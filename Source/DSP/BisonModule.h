@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "WDFCore.h"
 #include "ComplementaryToneStack.h"
+#include "GuitarSignalLevel.h"
 
 // "Bison" -- an original two-stage cascaded fuzz in the general archetype
 // of the Big Muff Pi (two RC-coupled clipping stages feeding a passive
@@ -72,6 +73,7 @@ public:
             (size_t) channelCount, stages,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
+        wetBuffer.setSize (channelCount, static_cast<int> (spec.maximumBlockSize), false, false, true);
         // couplingHighpass runs *inside* the oversampled sample loop below
         // (between stage1 and stage2, both of which process at the
         // oversampled rate) -- its own prepare()/coefficients must use that
@@ -121,7 +123,8 @@ public:
     {
         sustainAmount = juce::jlimit (0.0f, 1.0f, sustain01);
         toneBlend = juce::jlimit (0.0f, 1.0f, tone01);
-        outputLevel = juce::jlimit (0.0f, 2.0f, level01 * 2.0f);
+        const auto level = juce::jlimit (0.0f, 1.0f, level01);
+        outputLevel = std::pow (level, 1.93f);
         mix = juce::jlimit (0.0f, 1.0f, mix01);
     }
 
@@ -136,10 +139,13 @@ public:
 
         wetBuffer.makeCopyOf (buffer, true);
 
-        // Sustain drives both stages -- pushing the front end harder into
-        // the first clip, which (after the inter-stage coupling network
-        // strips its DC bias) also arrives hotter at the second.
-        const auto driveGain = 1.0f + sustainAmount * sustainAmount * 800.0f;
+        // Sustain drives both stages, but reserve the steep rise for the last
+        // third of the knob. The former x^2 * 800 curve was already at 201x
+        // at noon, so the cascaded diode stages reached nearly their full
+        // 1.23 peak there and left most of the upper half sounding identical.
+        // This measured taper reaches 16x at noon and 88x at 90%, retaining
+        // the dense maximum while exposing the useful transition into it.
+        const auto driveGain = 1.0f + std::pow (sustainAmount, 3.0f) * 120.0f;
 
         juce::dsp::AudioBlock<float> block (wetBuffer);
         auto osBlock = oversampling->processSamplesUp (block);
@@ -148,12 +154,12 @@ public:
         {
             for (int i = 0; i < osSamples; ++i)
             {
-                const auto x = osBlock.getSample ((int) ch, i) * driveGain;
+                const auto x = GuitarSignalLevel::toVolts (osBlock.getSample ((int) ch, i)) * driveGain;
                 const auto clipped1 = stage1[(size_t) ch].processSample (x, oneOverRin) * interStageGain;
                 const auto coupled = couplingHighpass[ch].processSample (clipped1);
                 auto clipped2 = stage2[(size_t) ch].processSample (coupled, oneOverRin) * outputCalibration;
                 clipped2 = safetyCeiling * std::tanh (clipped2 / safetyCeiling);
-                osBlock.setSample ((int) ch, i, clipped2);
+                osBlock.setSample ((int) ch, i, GuitarSignalLevel::fromVolts (clipped2));
             }
         }
         oversampling->processSamplesDown (block);

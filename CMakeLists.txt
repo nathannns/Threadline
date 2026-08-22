@@ -32,6 +32,20 @@ juce_add_binary_data(ThreadlineData SOURCES
     Resources/Images/KNOB/knob_tape.png
     Resources/Images/KNOB/knob_tremolo.png
     Resources/Images/KNOB/knob_july.png
+    Resources/Images/KNOB/knob_amp.png
+    Resources/Images/KNOB/knob_cab.png
+    Resources/Images/KNOB/knob_channeleq.png
+    Resources/Images/KNOB/knob_delay.png
+    Resources/Images/KNOB/knob_desk.png
+    Resources/Images/KNOB/knob_dimension.png
+    Resources/Images/KNOB/knob_ensemble.png
+    Resources/Images/KNOB/knob_jc.png
+    Resources/Images/KNOB/knob_parallel_a.png
+    Resources/Images/KNOB/knob_parallel_b.png
+    Resources/Images/KNOB/knob_redface.png
+    Resources/Images/KNOB/knob_reverb.png
+    Resources/Images/KNOB/knob_satelite.png
+    Resources/Images/KNOB/knob_spring.png
     Resources/Images/KNOB/eq_slider_cap.png
     Resources/Images/LED/led_effect_off.png
     Resources/Images/LED/led_effect_on.png
@@ -42,14 +56,14 @@ juce_add_binary_data(ThreadlineData SOURCES
     "Resources/Images/PEDAL ENCLOSURE/bison_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/breaker_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/cab_enclosure.png"
-    "Resources/Images/PEDAL ENCLOSURE/channel_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/redface.png"
     "Resources/Images/PEDAL ENCLOSURE/comp_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/delay_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/desk_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/dimension_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/dynamix_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/ensemble_enclosure.png"
-    "Resources/Images/PEDAL ENCLOSURE/eq_enclosure.png"
+    "Resources/Images/PEDAL ENCLOSURE/channeleq_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/fangs_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/growl_enclosure.png"
     "Resources/Images/PEDAL ENCLOSURE/jc_chorus_enclosure.png"
@@ -63,7 +77,7 @@ juce_add_binary_data(ThreadlineData SOURCES
     "Resources/Images/PEDAL ENCLOSURE/tremolo_enclosure.png"
     Resources/Images/Buttons/rocker_off.png
     Resources/Images/Buttons/rocker_on.png
-    Resources/Reference/threadline_logo.png
+    Resources/Reference/threadline_logo_transparent.png
     Resources/Fonts/IBMPlexSans-Regular.ttf
     Resources/Fonts/IBMPlexSans-Medium.ttf
     Resources/Fonts/IBMPlexSans-SemiBold.ttf
@@ -238,10 +252,98 @@ target_link_libraries(AmpLevelProbe
         juce::juce_recommended_warning_flags
 )
 
+# --- AmpModule guitar-character regression probe ---
+# A diagnostic console app, never linked into the plugin. It exercises the
+# production AmpModule with physically calibrated guitar-like transients,
+# two-tone IMD, level sweeps and a high-frequency alias sentinel. The probe
+# reports an objective baseline without imposing subjective tone thresholds.
+juce_add_console_app(AmpCharacterProbe PRODUCT_NAME "AmpCharacterProbe")
+juce_generate_juce_header(AmpCharacterProbe)
+target_sources(AmpCharacterProbe PRIVATE Source/AmpCharacterProbe.cpp)
+target_compile_features(AmpCharacterProbe PRIVATE cxx_std_17)
+target_link_libraries(AmpCharacterProbe
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Real guitar-DI amp analysis runner ---
+# Reads a user-supplied WAV/AIFF at its captured amplitude and compares every
+# AmpModule voice. Offline diagnostic only; never linked into the plugin.
+juce_add_console_app(AmpDIProbe PRODUCT_NAME "AmpDIProbe")
+juce_generate_juce_header(AmpDIProbe)
+target_sources(AmpDIProbe PRIVATE Source/AmpDIProbe.cpp)
+target_compile_features(AmpDIProbe PRIVATE cxx_std_17)
+target_link_libraries(AmpDIProbe
+    PRIVATE
+        juce::juce_audio_formats
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Amp low-frequency staging audit ---
+# Prints the existing pre-V1/interstage coupling inventory and measures each
+# voice's low-frequency response. Diagnostic only; no production code path.
+juce_add_console_app(AmpBassAudit PRODUCT_NAME "AmpBassAudit")
+juce_generate_juce_header(AmpBassAudit)
+target_sources(AmpBassAudit PRIVATE Source/AmpBassAudit.cpp)
+target_compile_features(AmpBassAudit PRIVATE cxx_std_17)
+target_link_libraries(AmpBassAudit
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Analysis-only amp stage taps ---
+# This target alone compiles AmpModule's V1/V2/PI/power callbacks. The macro is
+# absent from Threadline, so the shipping binaries contain no tap branches.
+juce_add_console_app(AmpStageProbe PRODUCT_NAME "AmpStageProbe")
+juce_generate_juce_header(AmpStageProbe)
+target_sources(AmpStageProbe PRIVATE Source/AmpStageProbe.cpp)
+target_compile_features(AmpStageProbe PRIVATE cxx_std_17)
+target_compile_definitions(AmpStageProbe PRIVATE THREADLINE_AMP_ANALYSIS_TAPS=1)
+target_link_libraries(AmpStageProbe
+    PRIVATE
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Integrated Options routing and master-bypass validation ---
+# Links the real processor shared code and verifies Stereo/Mono, input-selector
+# ramps, and master mute. Console test only; never part of a plugin binary.
+juce_add_console_app(ProcessorRoutingValidation PRODUCT_NAME "ProcessorRoutingValidation")
+juce_generate_juce_header(ProcessorRoutingValidation)
+target_sources(ProcessorRoutingValidation PRIVATE Source/ProcessorRoutingValidation.cpp)
+target_compile_features(ProcessorRoutingValidation PRIVATE cxx_std_17)
+target_link_libraries(ProcessorRoutingValidation
+    PRIVATE
+        Threadline
+        ThreadlineData
+        juce::juce_audio_utils
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- Pedal output-level calibration probe ---
 # A diagnostic console app, not part of the shipping plugin -- feeds a sine
-# through the 5 overdrive/fuzz pedals at a common reference and reports
-# settled RMS + peak. Produced TS9Module::outputCalibration=1.25 and
+# through the 5 overdrive/fuzz pedals at a physical 100mV RMS guitar reference,
+# then through each pedal -> Deluxe cascade, and reports settled RMS + peak.
+# Produced TS9Module::outputCalibration=1.25 and
 # FangsModule::outputCalibration=1.48; its Growl bias x fuzz grid doubles as
 # a regression check for the fuzz-collapse bug. See Source/PedalLevelProbe.cpp.
 juce_add_console_app(PedalLevelProbe PRODUCT_NAME "PedalLevelProbe")

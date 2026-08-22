@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "WDFCore.h"
+#include "GuitarSignalLevel.h"
 
 // Klon Centaur overdrive — a full, faithful Wave Digital Filter port of the
 // traced-and-measured gain stage from jatinchowdhury18/KlonCentaur
@@ -488,6 +489,8 @@ public:
             (size_t) channelCount, stages,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
+        ff1Buffer.setSize (channelCount, static_cast<int> (spec.maximumBlockSize), false, false, true);
+        ff2Buffer.setSize (channelCount, static_cast<int> (spec.maximumBlockSize), false, false, true);
 
         // Linear gain-stage blocks run at the base rate; only the clipper's
         // reactive elements run at the oversampled rate.
@@ -537,7 +540,11 @@ public:
     void setParameters (float gain01, float treble01, float level01)
     {
         gainAmount = juce::jlimit (0.0f, 1.0f, gain01);
-        outputLevel = juce::jlimit (0.0f, 2.0f, level01 * 2.0f);
+        // Measured output-pot taper: noon is near unity at minimum Gain;
+        // maximum passes the physical circuit voltage with no synthetic
+        // post-pedal +6dB stage.
+        const auto level = juce::jlimit (0.0f, 1.0f, level01);
+        outputLevel = std::pow (level, 1.32f);
         if (! juce::approximatelyEqual (treble01, lastTreble01))
         {
             lastTreble01 = treble01;
@@ -562,9 +569,11 @@ public:
             auto* x1 = ff1Buffer.getWritePointer (ch);
             auto* x2 = ff2Buffer.getWritePointer (ch);
 
-            // Reference input scaling (processInternalBuffer: x *= 0.5), and
-            // the dry copy the FeedForward2 side-chain is fed.
-            juce::FloatVectorOperations::multiply (x, 0.5f, numSamples);
+            // The reference circuit runs in volts. Convert the Focusrite-
+            // normalised host samples once here, then apply its own 0.5 input
+            // scaling. The final stage converts back to host units once.
+            juce::FloatVectorOperations::multiply (
+                x, 0.5f * GuitarSignalLevel::voltsPerDigitalUnit, numSamples);
             juce::FloatVectorOperations::copy (x2, x, numSamples);
 
             // PreAmpWDF -> main path + FF1 side output.
@@ -645,18 +654,10 @@ private:
     AmpStage amp[2];
     FeedForward2WDF ff2[2];
     SummingAmp sumAmp[2];
-    // Empirical scalar bringing the gain stage's raw circuit-volt output
-    // (clipped at -13.1/+11.7 V) down to audio float units. The gain stage
-    // itself has ~15 dB of fixed gain even with the Gain knob fully off, so a
-    // rails-only normalisation (1/12 -> +/-1.0) leaves the clean boost ~-11 dB
-    // -- the pedal would sound brokenly quiet in a chain. Calibrated instead
-    // via KlonValidation so that gain=0, level=0.5 passes ~unity (the Klon's
-    // documented "transparent clean boost"): 0.3 * 12 * (measured 0.28 at
-    // 1/12) ~= 1.0. This is a Threadline level-staging choice, not part of the
-    // faithful gain-stage port (the reference leaves raw circuit volts and
-    // hands final volume to its own level control + DAW gain staging); kept as
-    // a plain constant rather than pretending it is derived from the schematic.
-    static constexpr float outputNormalization = 0.3f;
+    // Exact inverse of the shared Focusrite voltage mapping. This is a unit
+    // conversion, not loudness normalisation: the physical pedal voltage is
+    // preserved for the next block (especially Amp) without a second boost.
+    static constexpr float outputNormalization = GuitarSignalLevel::digitalUnitsPerVolt;
     double sampleRate = 44100.0;
     int channelCount = 2;
     float gainAmount = 0.3f;

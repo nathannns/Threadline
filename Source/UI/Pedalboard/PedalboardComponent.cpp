@@ -11,6 +11,56 @@ namespace
     {
         return id == "inputGain" || id == "outputGain" || id == "noiseGate";
     }
+
+    enum class PedalMenuCategory { compressor, driveFuzz, ampCab, modulation, reverb, other };
+
+    PedalMenuCategory categoryFor (const juce::String& id)
+    {
+        if (id == "compressor" || id == "lowDynamic")
+            return PedalMenuCategory::compressor;
+        if (id == "klon" || id == "ts9" || id == "fangs" || id == "bison" || id == "growl")
+            return PedalMenuCategory::driveFuzz;
+        if (id == "amp" || id == "cab")
+            return PedalMenuCategory::ampCab;
+        if (id == "tremolo" || id == "chorus" || id == "dimChorus"
+            || id == "dimBbd" || id == "jcChorus")
+            return PedalMenuCategory::modulation;
+        if (id == "delay" || id == "spaceEcho" || id == "reverb" || id == "spring")
+            return PedalMenuCategory::reverb;
+        // Tape, Desk, Redface, EQ and the Parallel utility intentionally
+        // live here rather than being mixed into unrelated effect types.
+        return PedalMenuCategory::other;
+    }
+
+    void addCategorisedPedals (juce::PopupMenu& root,
+                               const juce::StringArray& availableIds,
+                               std::vector<juce::String>& menuIds)
+    {
+        struct Category { const char* name; PedalMenuCategory type; };
+        static constexpr Category categories[] {
+            { "Compressor",  PedalMenuCategory::compressor },
+            { "OD / Fuzz",   PedalMenuCategory::driveFuzz },
+            { "Amp / Cab",   PedalMenuCategory::ampCab },
+            { "Modulation",  PedalMenuCategory::modulation },
+            { "Reverb",      PedalMenuCategory::reverb },
+            { "Other",       PedalMenuCategory::other }
+        };
+
+        int itemId = 1;
+        for (const auto& category : categories)
+        {
+            juce::PopupMenu submenu;
+            for (const auto& id : availableIds)
+            {
+                if (categoryFor (id) != category.type)
+                    continue;
+                submenu.addItem (itemId++, PedalTileFactory::displayNameFor (id));
+                menuIds.push_back (id);
+            }
+            if (submenu.getNumItems() > 0)
+                root.addSubMenu (category.name, submenu);
+        }
+    }
 }
 
 PedalboardComponent::PedalboardComponent (ThreadlineAudioProcessor& processorIn)
@@ -119,7 +169,7 @@ void PedalboardComponent::rebuildTiles()
             continue;
         auto* tilePtr = tile.get();
         tile->onRemoveClicked = [this] (const juce::String& removedId) { removePedal (removedId); };
-        tile->onNameClicked = [this, tilePtr, id] { showSwapMenu (*tilePtr, id); };
+        tile->onNameClicked = [this, tilePtr, id] { showSwapMenu (tilePtr->getTitleMenuAnchor(), id); };
         tile->onDragStart = [this] (PedalTileComponent& t) { handleDragStart (t); };
         tile->onDragTo = [this] (PedalTileComponent& t, int x) { handleDragTo (t, x); };
         tile->onDragEnd = [this] (PedalTileComponent& t) { handleDragEnd (t); };
@@ -228,15 +278,14 @@ void PedalboardComponent::showAddMenu (juce::Component& anchor, int insertIndex)
     const auto& allIds = processor.getAllPedalIds();
     juce::PopupMenu menu;
     std::vector<juce::String> menuIds;
-    int itemId = 1;
+    juce::StringArray availableIds;
     for (auto& id : allIds)
     {
         if (isPinned (id) || middleOrder.contains (id) || id == slotA || id == slotB)
             continue;
-        menu.addItem (itemId, PedalTileFactory::displayNameFor (id));
-        menuIds.push_back (id);
-        ++itemId;
+        availableIds.add (id);
     }
+    addCategorisedPedals (menu, availableIds, menuIds);
     if (menuIds.empty())
     {
         menu.addItem (1, "All pedals already on board", false, false);
@@ -275,15 +324,14 @@ void PedalboardComponent::showSwapMenu (juce::Component& anchor, const juce::Str
     const auto& allIds = processor.getAllPedalIds();
     juce::PopupMenu menu;
     std::vector<juce::String> menuIds;
-    int itemId = 1;
+    juce::StringArray availableIds;
     for (auto& id : allIds)
     {
         if (id != pedalId && (isPinned (id) || middleOrder.contains (id) || id == slotA || id == slotB))
             continue;
-        menu.addItem (itemId, PedalTileFactory::displayNameFor (id));
-        menuIds.push_back (id);
-        ++itemId;
+        availableIds.add (id);
     }
+    addCategorisedPedals (menu, availableIds, menuIds);
     if (menuIds.empty())
     {
         menu.addItem (1, "No other pedals available", false, false);

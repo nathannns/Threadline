@@ -43,13 +43,14 @@ public:
         mixValue.setCurrentAndTargetValue (0.0f);
     }
 
-    void setParameters (float rateHz, float depthPercent, float mixPercent, bool enabled)
+    void setParameters (float rateHz, float depthPercent, float mixPercent, bool enabled, int modeIndex = 0)
     {
         // depthPercent 0..100 -> depthMs 0..8, so 50% reproduces the amp's
         // fixed 4ms depth. rate clamped to a sane LFO range; mix 0..1.
         rateValue.setTargetValue (juce::jlimit (0.1f, 5.0f, rateHz));
         depthValue.setTargetValue (juce::jlimit (0.0f, 1.0f, depthPercent * 0.01f));
         mixValue.setTargetValue (enabled ? juce::jlimit (0.0f, 1.0f, mixPercent * 0.01f) : 0.0f);
+        mode = juce::jlimit (0, 2, modeIndex);
     }
 
     void process (juce::AudioBuffer<float>& buffer)
@@ -75,18 +76,30 @@ public:
                 delayBuffer.setSample (channel, writeIndex, input);
 
                 const auto lfoOffset = channel == 0 ? 0.0f : juce::MathConstants<float>::pi;
-                const auto modulated = std::sin (lfoPhase + lfoOffset);
-                const auto delaySamples = (centreDelayMs + modulated * depthMs) * 0.001f * (float) sampleRate;
-                const auto clamped = juce::jlimit (1.0f, static_cast<float> (size) - 1.0f, delaySamples);
-                auto readPos = static_cast<float> (writeIndex) - clamped;
-                while (readPos < 0.0f)
-                    readPos += static_cast<float> (size);
+                const auto readTap = [&] (float phase, float centreMs, float swingMs)
+                {
+                    const auto delaySamples = (centreMs + std::sin (phase) * swingMs)
+                                            * 0.001f * static_cast<float> (sampleRate);
+                    const auto clamped = juce::jlimit (1.0f, static_cast<float> (size) - 1.0f, delaySamples);
+                    auto readPos = static_cast<float> (writeIndex) - clamped;
+                    while (readPos < 0.0f)
+                        readPos += static_cast<float> (size);
+                    const auto i0 = static_cast<int> (readPos);
+                    const auto frac = readPos - static_cast<float> (i0);
+                    const auto i1 = (i0 + 1) % size;
+                    return delayBuffer.getSample (channel, i0)
+                         + frac * (delayBuffer.getSample (channel, i1)
+                                 - delayBuffer.getSample (channel, i0));
+                };
 
-                const auto i0 = static_cast<int> (readPos);
-                const auto frac = readPos - static_cast<float> (i0);
-                const auto i1 = (i0 + 1) % size;
-                const auto delayed = delayBuffer.getSample (channel, i0)
-                                   + frac * (delayBuffer.getSample (channel, i1) - delayBuffer.getSample (channel, i0));
+                // JUNO-style latching modes applied to the JC's clean stereo
+                // BBD topology: I is the slower/wider tap, II is faster and
+                // shallower, and I+II runs both independent taps together.
+                const auto modeI = readTap (lfoPhase + lfoOffset, centreDelayMs, depthMs);
+                const auto modeII = readTap (lfoPhase * 1.73f + lfoOffset + 0.61f,
+                                             centreDelayMs * 0.72f, depthMs * 0.64f);
+                const auto delayed = mode == 0 ? modeI : (mode == 1 ? modeII
+                                                                    : (modeI + modeII) * 0.70710678f);
 
                 buffer.setSample (channel, sample, input * (1.0f - mix) + delayed * mix);
             }
@@ -110,4 +123,5 @@ private:
     int writeIndex = 0;
     float lfoPhase = 0.0f;
     float centreDelayMs = 12.0f;  // fixed, from the amp's JC-120 voice
+    int mode = 0;
 };

@@ -37,6 +37,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         juce::StringArray { "Guitar", "Line" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("input1On"), "Input 1 On", false));
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("input2On"), "Input 2 On", true));
+    // Output presentation only. Stereo preserves the normal dual-channel
+    // chain; Mono sums it to a centred dual-mono signal, never left-only.
+    // Added after all previously shipped input ids so their identity/order
+    // remains untouched. Old sessions restore the Stereo default.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("processingMode"), "Output Mode",
+        juce::StringArray { "Stereo", "Mono (Centred)" }, 0));
 
     // --- Pre-FX page bypass: gates Comp/Klon/TS9 together, independent of
     // each stage's own On toggle -- driven by double-pressing the Pre-FX
@@ -196,7 +202,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("ampOutput"), "Amp Volume",
         Range (-24.0f, 12.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("ampOversampling"), "Amp Oversampling",
-        juce::StringArray { "Off", "2x", "4x" }, 2));
+        juce::StringArray { "1x", "2x", "4x" }, 2));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("renderOversampling"), "Render Oversampling",
+        juce::StringArray { "1x", "2x", "4x" }, 2));
     // Vintage 5E3 keeps the single passive-feeling Tone knob above. Modern
     // 3-Band swaps that for an independent Bass/Mid/Treble stack (see
     // AmpModule::updateModernToneFilters) — same preamp/power-stage circuit
@@ -346,6 +354,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
         Range (0.0f, 100.0f, 0.1f), 50.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("jcChorusMix"), "JC Chorus Mix",
         Range (0.0f, 100.0f, 0.1f), 45.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (pid ("jcChorusMode"), "JC Chorus Mode",
+        juce::StringArray { "Mode I", "Mode II", "I + II" }, 0));
 
     // --- Delay --- two selectable engines sharing one on/off toggle and one
     // Delay section: Plexer (our name for an Echoplex-style tape echo —
@@ -556,10 +566,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ThreadlineAudioProcessor::cr
     params.push_back (std::make_unique<juce::AudioParameterFloat> (pid ("outputGain"), "Output Gain",
         Range (-24.0f, 24.0f, 0.1f), 0.0f));
 
-    // --- Master bypass (preset bar power button) ---
+    // --- Master power/mute (preset bar power button) ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("masterBypass"), "Bypass", false));
 
-    // --- Mute input (preset bar mute button) ---
+    // Legacy hidden state only: retained so old projects/presets containing
+    // the parameter still restore safely. The separate Mute control and its
+    // audio behavior were removed when master power became the mute switch.
     params.push_back (std::make_unique<juce::AudioParameterBool> (pid ("inputMute"), "Mute Input", false));
 
     return { params.begin(), params.end() };
@@ -569,16 +581,51 @@ void ThreadlineAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 {
     currentSampleRate = sampleRate;
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, 2 };
+    chainRunner.setOfflineRendering (isNonRealtime());
     chainRunner.prepare (spec);
+    masterOutput.reset (sampleRate, 0.02);
+    masterOutput.setCurrentAndTargetValue (pBool ("masterBypass") ? 0.0f : 1.0f);
+    input1Mix.reset (sampleRate, 0.015);
+    input2Mix.reset (sampleRate, 0.015);
+    monoOutputMix.reset (sampleRate, 0.015);
+    input1Mix.setCurrentAndTargetValue (pBool ("input1On") ? 1.0f : 0.0f);
+    input2Mix.setCurrentAndTargetValue (pBool ("input2On") ? 1.0f : 0.0f);
+    monoOutputMix.setCurrentAndTargetValue ((int) p ("processingMode") == 1 ? 1.0f : 0.0f);
 }
 
 void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // --- Master bypass: dry passthrough, skip the whole chain ---
-    if (pBool ("masterBypass"))
+    // Raw selected-interface level for the Options calibration display.
+    // This tap is before Input Gain and before every effect, and never
+    // modifies audio. When both connectors are selected it measures the
+    // same averaged mono signal that is about to feed the model.
+    float selectedInputPeak = 0.0f;
+    if (buffer.getNumChannels() >= 2)
     {
+        const auto useInput1 = pBool ("input1On");
+        const auto useInput2 = pBool ("input2On");
+        const auto* left = buffer.getReadPointer (0);
+        const auto* right = buffer.getReadPointer (1);
+        const auto gain = useInput1 && useInput2 ? 0.5f : 1.0f;
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+            selectedInputPeak = juce::jmax (selectedInputPeak,
+                std::abs (((useInput1 ? left[sample] : 0.0f)
+                          + (useInput2 ? right[sample] : 0.0f)) * gain));
+    }
+    else if (buffer.getNumChannels() == 1 && pBool ("input1On"))
+    {
+        selectedInputPeak = buffer.getMagnitude (0, 0, buffer.getNumSamples());
+    }
+    rawInputPeak.store (selectedInputPeak, std::memory_order_relaxed);
+
+    // Master power is also the master mute. Fade first to avoid a click; once
+    // fully off, skip every effect and produce silence rather than dry bypass.
+    masterOutput.setTargetValue (pBool ("masterBypass") ? 0.0f : 1.0f);
+    if (! masterOutput.isSmoothing() && masterOutput.getCurrentValue() <= 0.00001f)
+    {
+        buffer.clear();
         chainRunner.updateMetersOnBypass (buffer);
         return;
     }
@@ -587,35 +634,65 @@ void ThreadlineAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // left/right connectors, then the chosen connector(s) feed both channels.
     if (buffer.getNumChannels() >= 2)
     {
-        const auto useInput1 = pBool ("input1On");
-        const auto useInput2 = pBool ("input2On");
+        input1Mix.setTargetValue (pBool ("input1On") ? 1.0f : 0.0f);
+        input2Mix.setTargetValue (pBool ("input2On") ? 1.0f : 0.0f);
         auto* left = buffer.getWritePointer (0);
         auto* right = buffer.getWritePointer (1);
-        const auto gain = useInput1 && useInput2 ? 0.5f : 1.0f;
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
-            const auto mono = ((useInput1 ? left[sample] : 0.0f)
-                             + (useInput2 ? right[sample] : 0.0f)) * gain;
+            const auto weight1 = input1Mix.getNextValue();
+            const auto weight2 = input2Mix.getNextValue();
+            // max(1,sum) gives unity for either connector, a -6dB average
+            // when both are fully selected, and a genuine fade to silence
+            // when both are switched off. No routing toggle can hard-step.
+            const auto normaliser = juce::jmax (1.0f, weight1 + weight2);
+            const auto mono = (left[sample] * weight1 + right[sample] * weight2) / normaliser;
             left[sample] = mono;
             right[sample] = mono;
         }
     }
-    else if (buffer.getNumChannels() == 1 && ! pBool ("input1On"))
+    else if (buffer.getNumChannels() == 1)
     {
-        // A mono host exposes connector 1 only; connector 2 is unavailable.
-        buffer.clear();
+        // A mono host exposes connector 1 only; still fade its selection so
+        // the Options toggle cannot click or hard-cut.
+        input1Mix.setTargetValue (pBool ("input1On") ? 1.0f : 0.0f);
+        auto* mono = buffer.getWritePointer (0);
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+            mono[sample] *= input1Mix.getNextValue();
     }
-
-    // --- Mute Input: silence what feeds the chain from here on, without
-    // resetting any module's internal state -- a delay/reverb tail already
-    // in flight keeps decaying naturally instead of cutting off abruptly.
-    if (pBool ("inputMute"))
-        buffer.clear();
 
     // --- The whole pedalboard: Noise Gate through Output Gain, in whatever
     // order the user has chosen (default order matches the plugin's
     // original fixed chain) -- see PedalChainRunner.
+    chainRunner.setOfflineRendering (isNonRealtime());
     chainRunner.processChain (buffer);
+
+    // Mono is always centred dual-mono at a stereo output. Summing after the
+    // chain makes the choice explicit and predictable even when a stereo
+    // chorus, delay, reverb, or dual cab is active. Stereo is the default and
+    // does no extra audio work here.
+    monoOutputMix.setTargetValue ((int) p ("processingMode") == 1 ? 1.0f : 0.0f);
+    if ((monoOutputMix.isSmoothing() || monoOutputMix.getCurrentValue() > 0.00001f)
+        && buffer.getNumChannels() >= 2)
+    {
+        auto* left = buffer.getWritePointer (0);
+        auto* right = buffer.getWritePointer (1);
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            const auto centred = 0.5f * (left[sample] + right[sample]);
+            const auto mix = monoOutputMix.getNextValue();
+            left[sample] += (centred - left[sample]) * mix;
+            right[sample] += (centred - right[sample]) * mix;
+        }
+    }
+
+    if (masterOutput.isSmoothing() || masterOutput.getCurrentValue() < 0.99999f)
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            const auto gain = masterOutput.getNextValue();
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+                buffer.setSample (channel, sample, buffer.getSample (channel, sample) * gain);
+        }
 }
 
 bool ThreadlineAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const

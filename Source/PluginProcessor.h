@@ -35,6 +35,7 @@ public:
 
     // Meters — editor polls these on a timer.
     float getInputLevel() const noexcept { return chainRunner.getInputLevel(); }
+    float getRawInputLevel() const noexcept { return rawInputPeak.load (std::memory_order_relaxed); }
     float getOutputLevel() const noexcept { return chainRunner.getOutputLevel(); }
     float getCompressorGainReductionDb() const noexcept { return chainRunner.getCompressorGainReductionDb(); }
 
@@ -60,6 +61,9 @@ private:
     // Cab (IR) -> Tremolo -> Chorus (July) -> Delay (Plexer or Copier) ->
     // Reverb (Hall/Room) -> 9-Band EQ -> Output Gain.
     PedalChainRunner chainRunner { apvts };
+    juce::SmoothedValue<float> masterOutput;
+    juce::SmoothedValue<float> input1Mix, input2Mix, monoOutputMix;
+    std::atomic<float> rawInputPeak { 0.0f };
 
     double currentSampleRate = 44100.0;
 

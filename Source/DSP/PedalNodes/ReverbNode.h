@@ -12,7 +12,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         reverb.prepare (spec);
-        prepareCrossfade (spec.sampleRate, pBool ("wetFxSectionOn") && pBool ("reverbOn"));
+        prepareCrossfade (spec, pBool ("wetFxSectionOn") && pBool ("reverbOn"));
     }
     void reset() override { reverb.reset(); }
 

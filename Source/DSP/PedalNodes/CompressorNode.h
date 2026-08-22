@@ -12,7 +12,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         compressor.prepare (spec);
-        prepareCrossfade (spec.sampleRate, pBool ("preFxSectionOn") && pBool ("compOn"));
+        prepareCrossfade (spec, pBool ("preFxSectionOn") && pBool ("compOn"));
     }
     void reset() override { compressor.reset(); }
 

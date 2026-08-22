@@ -3,9 +3,91 @@
 Not a technical doc (see `README.md` for that). This is reference links and
 working preferences for continuing this project across sessions.
 
+## Permanent amp-input rules
+
+Treat these as non-negotiable project context for every future amp or
+level-matching change:
+
+1. The [Interface and Amp Sim Input Level Table](https://docs.google.com/spreadsheets/d/1bZHaapCiCg4RLIFqTS5KyUUVa4MwaqfxRCYk35Bvdrs/edit?gid=0#gid=0)
+   is the calibration reference. Threadline targets the Focusrite instrument
+   input at minimum hardware gain and uses `+12.25dBu = 0dBFS`.
+2. Never normalize individual guitar DI signals or add arbitrary peak/RMS
+   targeting, AGC, or automatic input compensation. Preserve pickup dynamics:
+   humbuckers remain louder and drive the models harder than single coils.
+3. Amp Gain operates inside the modeled circuit after its first input stage
+   (V1 or the topology-equivalent). It must never change the expected interface
+   sensitivity or act as a DI input calibration control.
+4. All nonlinear pedals and amps share `GuitarSignalLevel.h`'s physical-voltage
+   contract. Convert host sample to volts once on circuit entry and back once
+   on circuit exit; never reinterpret a pedal output as a new interface DI.
+5. Pedal Level is an output pot, not a hidden gain stage. Noon should measure
+   near bypass loudness at representative Drive and maximum must not add an
+   arbitrary post-circuit +6dB. Passive tone-stack insertion loss must not be
+   compensated before a nonlinear tube; match voices only at final Output.
+6. The Options input-calibration readout is informational only. It may show
+   raw dBFS/volts and clipping risk, but must never become a target follower or
+   alter audio. Tracking and offline Render oversampling remain separate
+   1x/2x/4x choices, both defaulting to 4x. Stereo is the default; Mono always
+   means centred dual-mono.
+7. Live oversampling changes must not directly overlap differently delayed
+   1x/2x/4x paths. Threadline fades the full chain to a 12ms silent switch
+   boundary, resets the already-prepared nonlinear engines, and fades back in.
+   Do not replace this with an unaligned crossfade.
+
+## 2026-08-22 amp-stage findings
+
+- Analysis-only taps (absent from production builds) locate the common
+  Boutique/Deluxe/JTM45/Mesa low-mid rise at the Bassman/AB763 tone-stack
+  output feeding V2. V1 and its 72Hz coupling path attenuate rather than add
+  bass. Verify physical pot taper/mapping against the chosen schematic before
+  changing the network; do not hide it with an arbitrary high-pass filter.
+- Boutique's 7.5kHz sentinel first develops severe fourth-harmonic energy at
+  the cathodyne phase-inverter output: -24.30dBc at 30kHz versus -78.05dBc at
+  V2 output. The downsampled 18kHz alias is -58.98dBc. If this is corrected,
+  refine that stage rather than increasing oversampling for every amp.
+- Compact measurements are stored in
+  `Tests/Baselines/AmpStageAudit-2026-08-22.txt`.
+
 ## Reference / source links
 
 ### Amps (schematics actually read this project)
+
+- [Interface and Amp Sim Input Level Table](https://docs.google.com/spreadsheets/d/1bZHaapCiCg4RLIFqTS5KyUUVa4MwaqfxRCYk35Bvdrs/edit?gid=0#gid=0)
+  - Focusrite 2i2 4th Gen maximum instrument input: +12dBu at minimum gain.
+  - Focusrite 2i2 3rd Gen maximum instrument input: +12.5dBu at minimum gain.
+  - Threadline uses their +12.25dBu midpoint and does not peak-normalize DI.
+
+- [Neural DSP: Tips for using your plugin](https://neuraldsp.com/getting-started/tips-for-using-your-plugin)
+  — official Hi-Z/minimum-interface-gain guidance and saturated-input warning.
+- [STL AmpHub manual](https://www.stltones.com/pages/manuals) — official
+  Input Level Listener guidance and GE.M.IN.I. multistage-interaction overview.
+- [Two Notes GENOME input calibration](https://helpdesk.two-notes.com/portal/en/kb/articles/calibrating-genome-s-input-your-audio-interface)
+  — interface maximum-input calibration is separate from presets and gain.
+- [Line 6 Helix manual](https://line6.com/data/6/0a06439cb91a5609df67966ca/application/pdf/Helix%20Owners%20Manual%20%28REV%20B%29%20-%20English%20%28%20Rev%20B%20%29.pdf)
+  — documents separate Drive/Master behavior, sag/bias controls and modeled
+  input-impedance choices.
+- [Yamaha THR manual](https://usa.yamaha.com/files/download/other_assets/4/331514/THR_ZV05630_R1_en_web.pdf)
+  — separates preamp Gain, power-stage Master and final Guitar Output.
+- [Native Instruments: making ICM](https://blog.native-instruments.com/the-making-of-icm/)
+  — explains why measured hardware behavior and component interaction are
+  required in addition to schematics.
+- [IK AmpliTube 5](https://www.ikmultimedia.com/products/amplitube5/) and
+  [TONEX AI Machine Modeling](https://www.ikmultimedia.com/products/tonexecosystem/index.php?p=aimm)
+  — official references for power-amp impedance matching, measured cabinet/mic
+  data and dry/wet guitar-reference capture.
+- [Two Notes GENOME manual](https://media.two-notes.com/product_manuals/en/software/genome/genome_user_guide.pdf)
+  — TSM amplifier/power-amp stages and DynIR cabinet/microphone architecture.
+
+The public material above supports architecture and validation practices, not
+the companies' proprietary algorithms. For Threadline the safe immediate use
+is offline measurement: `AmpCharacterProbe` records physical-level dynamics,
+two-tone IM products, guitar-pluck spectral balance and an alias sentinel. Do
+not use marketing claims as permission to add unmeasured saturation stages.
+- [Macak & Schimmel, DAFx-10: Real-Time Guitar Tube Amplifier Simulation](https://www.dafx.de/paper-archive/2010/DAFx10/MacakSchimmel_DAFx10_P12.pdf)
+  — nonlinear tube stages, phase splitter, frequency response, feedback, and
+  oversampling for alias reduction.
+- [Cohen & Helie, DAFx-10: Real-Time Simulation of a Guitar Power Amplifier](https://dafx.de/paper-archive/2010/DAFx10/CohenHelie_DAFx10_P45.pdf)
+  — nonlinear differential circuit formulation and stable real-time solution.
 
 - [el34world.com Mesa Boogie archive](https://el34world.com/charts/Schematics/files/Mesa_boogie/Mesa_boogie_Schematics.htm)
   — index page.
@@ -33,6 +115,14 @@ working preferences for continuing this project across sessions.
 - [`Hendrix_fuzzface.pdf`](https://el34world.com/charts/Schematics/files/Effects/Hendrix_fuzzface.pdf) — Fuzz Face (used, Growl).
 - Klon Centaur — [ElectroSmash's analysis](https://www.electrosmash.com/klon-centaur-analysis) named as a source by the user; not yet re-checked against `KlonModule` this pass (the module's own header already claims it was built from/verified against `jatinchowdhury18/KlonCentaur`'s traced schematic).
 - Roland SDD-320 (Dimension D, for `DimensionChorusModule`) — user named "Roland SDD-320 original Service Notes" as a real source but no verbatim URL was ever pasted/fetched; needs an actual search before use, don't guess a URL.
+
+The 2026-08-22 archive-wide audit also visually inspected Boss NF-1, TR-2,
+CE-1, CE-2, DC-2, DM-2 and GE-7; Ibanez GE9; DOD 280A; MXR Dyna Comp;
+EHX Soul Preacher and Deluxe Memory Man; and Danelectro 9100. The durable
+coverage/result table is `Tests/Baselines/EffectSchematicAudit-2026-08-22.md`.
+Do not treat the index as a universal source: seven-band EQ drawings do not
+define Threadline's nine-band EQ, and a TR-2/RV-3 circuit does not define the
+project's harmonic tremolo or algorithmic acoustic reverbs.
 
 ### Reference implementations (verified, MIT-licensed, ported/cross-checked, not guessed)
 
@@ -102,8 +192,15 @@ second source when exactness matters.
   variants (57/121/421) plus `ROCK.wav`.
 - Cab A and B are independent convolution paths. On stereo buses A feeds
   left and B feeds right; on mono buses they blend in parallel.
+- Cab IR popup choices retain their original parameter indices but are shown
+  in Deluxe/King/Modern/Rect/Rock/Tweed/Vox folders, with unmatched captures
+  under Other. Pedal title-click menus anchor to the title label, so they open
+  immediately below the title rather than below the enclosure.
 - New enclosure, knob, and LED art lives in the uppercase asset subfolders.
-  `channel_enclosure.png` is the current Redface/Channel EQ tile art.
+  `redface.png` is the Redface tile art and `channeleq_enclosure.png` is the
+  graphic-EQ tile art. The supplied effect-specific knob images are wired
+  into their matching tiles; Parallel's single Blend control changes between
+  its A and B knob artwork across the midpoint.
 
 - **After every code change**: build all 3 formats (Standalone/VST3/AU),
   relaunch Standalone to confirm it's stable, commit with a detailed

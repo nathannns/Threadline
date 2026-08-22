@@ -12,7 +12,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         lowDynamic.prepare (spec);
-        prepareCrossfade (spec.sampleRate, pBool ("lowDynamicOn"));
+        prepareCrossfade (spec, pBool ("lowDynamicOn"));
     }
     void reset() override { lowDynamic.reset(); }
 

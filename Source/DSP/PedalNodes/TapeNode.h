@@ -12,7 +12,8 @@
 class TapeNode : public PedalNode
 {
 public:
-    explicit TapeNode (juce::AudioProcessorValueTreeState& state) : PedalNode (state) {}
+    TapeNode (juce::AudioProcessorValueTreeState& state, ProcessingQualityState& quality)
+        : PedalNode (state, &quality) {}
     juce::Identifier getId() const override { return "tape"; }
 
     void prepare (const juce::dsp::ProcessSpec& spec) override
@@ -21,25 +22,26 @@ public:
         wasActive = false;
     }
     void reset() override { tape.reset(); wasActive = false; }
+    void oversamplingModeChanged() override { tape.reset(); wasActive = false; }
 
     int getLatencySamples() const override { return tape.getLatencySamples(); }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
     {
         const auto active = inTargetOrder && pBool ("tapeOn");
-        const auto oversamplingMode = (int) p ("ampOversampling");
+        const auto selectedOversamplingMode = oversamplingMode();
 
         if (active)
         {
             tape.setParameters (p ("tapeDrive"), p ("tapeCompression"), p ("tapeTone"), p ("tapeAge"),
-                p ("tapeMix"), p ("tapeVolume"), true, (int) p ("tapeType"), oversamplingMode);
+                p ("tapeMix"), p ("tapeVolume"), true, (int) p ("tapeType"), selectedOversamplingMode);
             tape.process (buffer);
             wasActive = true;
         }
         else if (wasActive)
         {
             tape.setParameters (p ("tapeDrive"), p ("tapeCompression"), p ("tapeTone"), p ("tapeAge"),
-                p ("tapeMix"), p ("tapeVolume"), false, (int) p ("tapeType"), oversamplingMode);
+                p ("tapeMix"), p ("tapeVolume"), false, (int) p ("tapeType"), selectedOversamplingMode);
             tape.process (buffer);
             if (! tape.isWetTransitionActive())
             {

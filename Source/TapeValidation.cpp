@@ -39,7 +39,7 @@ namespace
                                     juce::dsp::ProcessSpec spec { sampleRate, 256, 2 };
                                     mod.prepare (spec);
                                     mod.reset();
-                                    mod.setParameters (drive, comp, tone, age, 1.0f, 1.0f, true, type, 2); // 4x OS, volume unity
+                                    mod.setParameters (drive, comp, tone, age, 100.0f, 100.0f, true, type, 2); // full character, 4x OS, volume unity
                                     for (int block = 0; block < 16; ++block)
                                     {
                                         juce::AudioBuffer<float> buf (2, 256);

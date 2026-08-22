@@ -18,7 +18,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         module.prepare (spec);
-        prepareCrossfade (spec.sampleRate, pBool ("dimBbdOn"));
+        prepareCrossfade (spec, pBool ("dimBbdOn"));
     }
     void reset() override { module.reset(); }
 

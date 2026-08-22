@@ -27,13 +27,15 @@ public:
 
         if (active)
         {
-            chorus.setParameters (p ("jcChorusRate"), p ("jcChorusDepth"), p ("jcChorusMix"), true);
+            chorus.setParameters (p ("jcChorusRate"), p ("jcChorusDepth"), p ("jcChorusMix"),
+                                  true, static_cast<int> (p ("jcChorusMode")));
             chorus.process (buffer);
             wasActive = true;
         }
         else if (wasActive)
         {
-            chorus.setParameters (p ("jcChorusRate"), p ("jcChorusDepth"), p ("jcChorusMix"), false);
+            chorus.setParameters (p ("jcChorusRate"), p ("jcChorusDepth"), p ("jcChorusMix"),
+                                  false, static_cast<int> (p ("jcChorusMode")));
             chorus.process (buffer);
             if (! chorus.isWetTransitionActive())
             {

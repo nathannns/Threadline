@@ -12,7 +12,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         desk.prepare (spec);
-        prepareCrossfade (spec.sampleRate, pBool ("deskOn"));
+        prepareCrossfade (spec, pBool ("deskOn"));
     }
     void reset() override { desk.reset(); }
 

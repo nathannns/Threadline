@@ -10,6 +10,9 @@ void TapeModule::prepare (const juce::dsp::ProcessSpec& spec)
     envelope.assign (channelCount, 0.0f); toneState.assign (channelCount, 0.0f);
     detectorLowState.assign (channelCount, 0.0f); magnetisationState.assign (channelCount, 0.0f);
     bassState.assign (channelCount, 0.0f); midState.assign (channelCount, 0.0f);
+    recordEqLowState.assign (channelCount, 0.0f);
+    reproduceEqInputState.assign (channelCount, 0.0f);
+    reproduceEqOutputState.assign (channelCount, 0.0f);
     previousDrivenState.assign (channelCount, 0.0f);
     directionSmoothState.assign (channelCount, 0.0f);
     oversampling2x = std::make_unique<juce::dsp::Oversampling<float>> (
@@ -33,6 +36,9 @@ void TapeModule::reset()
     std::fill (toneState.begin(), toneState.end(), 0.0f);
     std::fill (bassState.begin(), bassState.end(), 0.0f);
     std::fill (midState.begin(), midState.end(), 0.0f);
+    std::fill (recordEqLowState.begin(), recordEqLowState.end(), 0.0f);
+    std::fill (reproduceEqInputState.begin(), reproduceEqInputState.end(), 0.0f);
+    std::fill (reproduceEqOutputState.begin(), reproduceEqOutputState.end(), 0.0f);
     std::fill (previousDrivenState.begin(), previousDrivenState.end(), 0.0f);
     std::fill (directionSmoothState.begin(), directionSmoothState.end(), 0.0f);
     wetMix.setCurrentAndTargetValue (0.0f);
@@ -139,6 +145,19 @@ void TapeModule::processCore (juce::AudioBuffer<float>& buffer, double processin
     const auto magnetisationCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi
                                                             * (cassetteMode ? 5200.0f : 7800.0f)
                                                             / static_cast<float> (processingRate));
+    // The A800 manual specifies NAB 3180/50 us at 15 ips: 3180 us defines
+    // the 50.05 Hz LF turnover and 50 us the 3183 Hz HF turnover. The Tascam
+    // 244 drawing confirms physically separate record amp/bias oscillator/
+    // playback amp sections; its cassette replay path uses the standard
+    // 120 us (1326 Hz) turnover. This reduced model puts a complementary
+    // record/reproduce shelf around the magnetic stage. At small signal the
+    // two filters cancel; under drive, pre-emphasised highs encounter the
+    // nonlinear tape first and therefore do not cancel -- the important
+    // machine behaviour a post-saturation Tone control cannot reproduce.
+    const auto recordEqTurnoverHz = cassetteMode ? 1326.3f : 3183.1f;
+    const auto recordEqCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi
+                                                       * recordEqTurnoverHz
+                                                       / static_cast<float> (processingRate));
     // Smooths the hysteresis direction sign below (see its own comment) --
     // 500Hz keeps essentially the full effect through most of the guitar's
     // played range (measured >99% of full swing up to ~330Hz, still ~90%
@@ -197,6 +216,15 @@ void TapeModule::processCore (juce::AudioBuffer<float>& buffer, double processin
                 x = readWow (channel, baseDelay + wow);
             }
 
+            // Machine-calibrated record EQ. Studio's 50 us NAB turnover is
+            // gentler than the 244 cassette path; strength follows the tape
+            // character so MIX zero remains an exact bypass.
+            const auto recordEqBoostDb = tapeAmount * (cassetteMode ? 6.5f : 3.5f);
+            const auto recordEqGain = juce::Decibels::decibelsToGain (recordEqBoostDb);
+            auto& recordLow = recordEqLowState[static_cast<size_t> (channel)];
+            recordLow += recordEqCoefficient * (x - recordLow);
+            x = recordLow + (x - recordLow) * recordEqGain;
+
             // Drive represents record flux above a unity-calibrated clean
             // baseline. Increasing it lowers available headroom; inverse gain
             // compensation keeps the nominal output stable like a calibrated
@@ -251,6 +279,20 @@ void TapeModule::processCore (juce::AudioBuffer<float>& buffer, double processin
             // headroom instead of acting like a volume knob; only peaks that
             // approach the magnetic ceiling are compressed and saturated.
             x *= inverseInputGain;
+
+            // Exact inverse of the one-pole record shelf in the linear case.
+            // Keeping it after magnetisation means saturation/hysteresis act
+            // on the pre-emphasised record signal before playback correction.
+            const auto pole = 1.0f - recordEqCoefficient;
+            const auto b0 = recordEqGain + (1.0f - recordEqGain) * recordEqCoefficient;
+            const auto b1 = -recordEqGain * pole;
+            auto& previousReproInput = reproduceEqInputState[static_cast<size_t> (channel)];
+            auto& previousReproOutput = reproduceEqOutputState[static_cast<size_t> (channel)];
+            const auto reproduced = (x - pole * previousReproInput - b1 * previousReproOutput)
+                                  / juce::jmax (0.001f, b0);
+            previousReproInput = x;
+            previousReproOutput = reproduced;
+            x = reproduced;
 
             // Above roughly 78% Drive, blend in a small, level-compensated
             // magnetic-overload edge. It adds the requested fuzzy hair only

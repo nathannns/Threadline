@@ -23,9 +23,51 @@ struct PhotoTileKnob
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
 };
 
+class TileComboBox : public juce::ComboBox
+{
+public:
+    void useCabinetFolders (const juce::StringArray& choices)
+    {
+        const auto selectedId = getSelectedId();
+        auto* menu = getRootMenu();
+        menu->clear();
+        juce::StringArray familyNames { "Deluxe", "King", "Modern", "Rect", "Rock", "Tweed", "Vox" };
+
+        for (const auto& family : familyNames)
+        {
+            juce::PopupMenu familyMenu;
+            for (int i = 0; i < choices.size(); ++i)
+                if (choices[i].startsWith (family + " "))
+                    familyMenu.addItem (i + 1, choices[i]);
+
+            if (familyMenu.getNumItems() > 0)
+                menu->addSubMenu (family, familyMenu);
+        }
+
+        juce::PopupMenu otherMenu;
+        for (int i = 0; i < choices.size(); ++i)
+        {
+            bool belongsToFamily = false;
+            for (const auto& family : familyNames)
+                belongsToFamily = belongsToFamily || choices[i].startsWith (family + " ");
+            if (! belongsToFamily)
+                otherMenu.addItem (i + 1, choices[i]);
+        }
+        if (otherMenu.getNumItems() > 0)
+            menu->addSubMenu ("Other", otherMenu);
+
+        // Re-assert the selected value after rebuilding the root menu. From
+        // here on JUCE's native ComboBox::showPopup() owns menuActive,
+        // selection, notification and dismissal. The previous custom async
+        // popup never cleared ComboBox::menuActive, so it worked once and
+        // then ignored every later click.
+        setSelectedId (selectedId, juce::dontSendNotification);
+    }
+};
+
 struct TileCombo
 {
-    juce::ComboBox box;
+    TileComboBox box;
     juce::Label label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
 };
@@ -189,6 +231,7 @@ public:
     ~PedalTileComponent() override = default;
 
     const juce::String& getPedalId() const noexcept { return pedalId; }
+    juce::Component& getTitleMenuAnchor() noexcept { return nameLabel; }
     virtual int getPreferredWidth() const { return 238; }
     // -1 (the default) means "use the strip's own standard row height"
     // (PedalboardComponent::tileHeight). Only ParallelTile overrides this --
@@ -211,11 +254,36 @@ public:
         const auto enclosure = getEnclosureImage();
         if (enclosure.isValid())
         {
+            // Cab's replacement artwork is a wide 3:2 image while the Cab
+            // tile itself intentionally remains 420 px wide. Fit that image
+            // inside the existing box so its left/right hardware is never
+            // cropped; centre it over a neutral card backing. Other pedals
+            // retain their full-bleed enclosure treatment.
+            if (pedalId == "cab")
+                paintCard (g, pedalBounds, 8.0f);
+
             juce::Graphics::ScopedSaveState state (g);
             juce::Path clip;
             clip.addRoundedRectangle (pedalBounds.toFloat(), 8.0f);
             g.reduceClipRegion (clip);
-            g.drawImage (enclosure, pedalBounds.toFloat(), juce::RectanglePlacement::fillDestination);
+            if (pedalId == "cab")
+            {
+                // A small proportional zoom makes the artwork feel less
+                // undersized while retaining nearly all of both side panels.
+                // This is deliberately far below full-bleed's ~23% zoom.
+                constexpr float cabZoom = 1.06f;
+                const auto fittedHeight = (float) pedalBounds.getWidth()
+                                        * (float) enclosure.getHeight()
+                                        / (float) enclosure.getWidth();
+                const auto imageBounds = juce::Rectangle<float> (
+                    (float) pedalBounds.getWidth() * cabZoom,
+                    fittedHeight * cabZoom).withCentre (pedalBounds.toFloat().getCentre());
+                g.drawImage (enclosure, imageBounds, juce::RectanglePlacement::stretchToFit);
+            }
+            else
+            {
+                g.drawImage (enclosure, pedalBounds.toFloat(), juce::RectanglePlacement::fillDestination);
+            }
         }
         else
         {
@@ -304,10 +372,10 @@ protected:
         THREADLINE_ENCLOSURE ("spaceEcho", satelite)
         THREADLINE_ENCLOSURE ("reverb", reverb)
         THREADLINE_ENCLOSURE ("spring", spring)
-        THREADLINE_ENCLOSURE ("channelEQ", channel)
+        if (pedalId == "channelEQ") { data = BinaryData::redface_png; size = BinaryData::redface_pngSize; }
         THREADLINE_ENCLOSURE ("desk", desk)
         THREADLINE_ENCLOSURE ("parallel", parallel)
-        THREADLINE_ENCLOSURE ("eq", eq)
+        THREADLINE_ENCLOSURE ("eq", channeleq)
 #undef THREADLINE_ENCLOSURE
         return data != nullptr ? juce::ImageCache::getFromMemory (data, size) : juce::Image();
     }

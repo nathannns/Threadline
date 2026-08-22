@@ -1,12 +1,14 @@
 #include "PluginEditor.h"
 #include <BinaryData.h>
+#include "DSP/GuitarSignalLevel.h"
 #include "UI/ThreadlineFonts.h"
 
 ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p), tapTempoButton (p.apvts), pedalboard (p)
 {
     setLookAndFeel (&buttonLookAndFeel);
-    logoImage = juce::ImageCache::getFromMemory (BinaryData::threadline_logo_png, BinaryData::threadline_logo_pngSize);
+    logoImage = juce::ImageCache::getFromMemory (BinaryData::threadline_logo_transparent_png,
+                                                 BinaryData::threadline_logo_transparent_pngSize);
     logoComponent.setImage (logoImage, juce::RectanglePlacement (juce::RectanglePlacement::centred
                                                                   | juce::RectanglePlacement::onlyReduceInSize));
     logoComponent.setInterceptsMouseClicks (false, false);
@@ -74,10 +76,6 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         processor.apvts, "masterBypass", powerButton);
 
-    addAndMakeVisible (muteButton);
-    muteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, "inputMute", muteButton);
-
     // --- Rockalizer-style Options panel and gear behavior ---
     optionsGroup.setColour (juce::GroupComponent::outlineColourId, ThreadlineColours::cardBorder);
     optionsGroup.setColour (juce::GroupComponent::textColourId, ThreadlineColours::textDim);
@@ -116,19 +114,54 @@ ThreadlineAudioProcessorEditor::ThreadlineAudioProcessorEditor (ThreadlineAudioP
     inputSourceAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "inputSource", inputSourceBox);
 
-    ampQualityLabel.setText ("AMP OVERSAMPLING", juce::dontSendNotification);
+    inputCalibrationLabel.setText ("FOCUSRITE +12.25 dBu  |  NO SIGNAL", juce::dontSendNotification);
+    inputCalibrationLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+    inputCalibrationLabel.setFont (juce::FontOptions (12.5f, juce::Font::bold));
+    inputCalibrationLabel.setJustificationType (juce::Justification::centredLeft);
+    inputCalibrationLabel.setTooltip ("Raw selected input before Threadline's Input knob; Instrument mode assumes Focusrite gain at minimum");
+    optionsGroup.addAndMakeVisible (inputCalibrationLabel);
+
+    ampQualityLabel.setText ("TRACKING OS", juce::dontSendNotification);
     ampQualityLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
     ampQualityLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold)); // matches TileKnob/TileCombo's own caption font
     ampQualityLabel.setJustificationType (juce::Justification::centredLeft);
     optionsGroup.addAndMakeVisible (ampQualityLabel);
-    ampOversamplingBox.addItemList ({ "OFF", "2X", "4X" }, 1);
-    ampOversamplingBox.setTooltip ("Amp oversampling quality");
+    ampOversamplingBox.addItemList ({ "1X", "2X", "4X" }, 1);
+    ampOversamplingBox.setTooltip ("Shared amp, drive, fuzz, and tape oversampling. 4X remains the default.");
     ampOversamplingBox.setColour (juce::ComboBox::backgroundColourId, ThreadlineColours::panelDark);
     ampOversamplingBox.setColour (juce::ComboBox::textColourId, ThreadlineColours::textCream);
     ampOversamplingBox.setColour (juce::ComboBox::outlineColourId, ThreadlineColours::cardBorder);
     optionsGroup.addAndMakeVisible (ampOversamplingBox);
     ampOversamplingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "ampOversampling", ampOversamplingBox);
+
+    renderQualityLabel.setText ("RENDER OS", juce::dontSendNotification);
+    renderQualityLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+    renderQualityLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    renderQualityLabel.setJustificationType (juce::Justification::centredLeft);
+    optionsGroup.addAndMakeVisible (renderQualityLabel);
+    renderOversamplingBox.addItemList ({ "1X", "2X", "4X" }, 1);
+    renderOversamplingBox.setTooltip ("Used automatically during a DAW offline bounce. 4X is the default.");
+    renderOversamplingBox.setColour (juce::ComboBox::backgroundColourId, ThreadlineColours::panelDark);
+    renderOversamplingBox.setColour (juce::ComboBox::textColourId, ThreadlineColours::textCream);
+    renderOversamplingBox.setColour (juce::ComboBox::outlineColourId, ThreadlineColours::cardBorder);
+    optionsGroup.addAndMakeVisible (renderOversamplingBox);
+    renderOversamplingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, "renderOversampling", renderOversamplingBox);
+
+    processingModeLabel.setText ("OUTPUT", juce::dontSendNotification);
+    processingModeLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+    processingModeLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    processingModeLabel.setJustificationType (juce::Justification::centredLeft);
+    optionsGroup.addAndMakeVisible (processingModeLabel);
+    processingModeBox.addItemList ({ "STEREO", "MONO (CENTRED)" }, 1);
+    processingModeBox.setTooltip ("Stereo is the default. Mono sums the processed signal and copies it to both left and right outputs.");
+    processingModeBox.setColour (juce::ComboBox::backgroundColourId, ThreadlineColours::panelDark);
+    processingModeBox.setColour (juce::ComboBox::textColourId, ThreadlineColours::textCream);
+    processingModeBox.setColour (juce::ComboBox::outlineColourId, ThreadlineColours::cardBorder);
+    optionsGroup.addAndMakeVisible (processingModeBox);
+    processingModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, "processingMode", processingModeBox);
 
     tapTempoButton.setColour (juce::TextButton::buttonColourId, ThreadlineColours::panelDark);
     tapTempoButton.setColour (juce::TextButton::textColourOffId, ThreadlineColours::textCream);
@@ -256,6 +289,41 @@ void ThreadlineAudioProcessorEditor::timerCallback()
     inputMeter.setLevel (processor.getInputLevel());
     outputMeter.setLevel (processor.getOutputLevel());
 
+    const auto latestRawPeak = processor.getRawInputLevel();
+    if (latestRawPeak >= heldRawInputPeak)
+    {
+        heldRawInputPeak = latestRawPeak;
+        rawInputPeakHoldFrames = 30; // one-second peak hold at the 30Hz UI timer
+    }
+    else if (rawInputPeakHoldFrames > 0)
+    {
+        --rawInputPeakHoldFrames;
+    }
+    else
+    {
+        heldRawInputPeak *= 0.90f;
+    }
+    const auto rawPeak = heldRawInputPeak;
+    if (rawPeak < 0.001f)
+    {
+        inputCalibrationLabel.setText ("FOCUSRITE +12.25 dBu  |  NO SIGNAL", juce::dontSendNotification);
+        inputCalibrationLabel.setColour (juce::Label::textColourId, ThreadlineColours::textDim);
+    }
+    else
+    {
+        const auto dbfs = juce::Decibels::gainToDecibels (rawPeak, -100.0f);
+        const auto peakVolts = rawPeak * GuitarSignalLevel::voltsPerDigitalUnit;
+        const auto status = dbfs > -1.0f ? "CLIP RISK" : (dbfs > -3.0f ? "HOT" : "SAFE");
+        const auto sourceIsInstrument = processor.apvts.getRawParameterValue ("inputSource")->load() < 0.5f;
+        inputCalibrationLabel.setText (
+            (sourceIsInstrument ? "FOCUSRITE +12.25 dBu" : "LINE")
+              + juce::String ("  |  ") + juce::String (peakVolts, 3) + " Vpk  |  "
+              + juce::String (dbfs, 1) + " dBFS  |  " + status,
+            juce::dontSendNotification);
+        inputCalibrationLabel.setColour (juce::Label::textColourId,
+            dbfs > -3.0f ? ThreadlineColours::accentBright : ThreadlineColours::textCream);
+    }
+
     // Keeps the readout correct even when tapTempoBpm changes some way
     // other than tapping the button (preset load, host automation).
     const auto bpm = processor.apvts.getRawParameterValue ("tapTempoBpm")->load();
@@ -275,9 +343,7 @@ void ThreadlineAudioProcessorEditor::resized()
 
     powerButton.setBounds (header.removeFromRight (85).reduced (8, 25));
     optionsMenuButton.setBounds (header.removeFromRight (68).reduced (8, 25));
-    muteButton.setBounds (header.removeFromRight (68).reduced (8, 25));
-
-    // Sits between the preset bar and the mute button -- a physical-pedal-
+    // Sits between the preset bar and the power button -- a physical-pedal-
     // style control worth reaching for often, not tucked away in Options.
     auto tapTempoArea = header.removeFromRight (110).reduced (8, 30);
     tapTempoButton.setBounds (tapTempoArea.removeFromLeft (58));
@@ -306,45 +372,53 @@ void ThreadlineAudioProcessorEditor::resized()
     deletePresetButton.setBounds (presetArea.removeFromLeft (45));
 
     // Floating options panel, anchored under the gear button.
-    optionsGroup.setBounds (optionsMenuButton.getRight() - 353, headerHeight, 353, 165);
+    optionsGroup.setBounds (optionsMenuButton.getRight() - 390, headerHeight, 390, 320);
     input1Button.setBounds (15, 38, 90, 40);
     input2Button.setBounds (110, 38, 90, 40);
-    inputSourceBox.setBounds (205, 38, 133, 40);
-    ampQualityLabel.setBounds (18, 93, 178, 35);
-    ampOversamplingBox.setBounds (205, 90, 133, 40);
+    inputSourceBox.setBounds (220, 38, 153, 40);
+    inputCalibrationLabel.setBounds (18, 80, 355, 30);
+    ampQualityLabel.setBounds (18, 122, 178, 35);
+    ampOversamplingBox.setBounds (220, 119, 153, 40);
+    renderQualityLabel.setBounds (18, 174, 178, 35);
+    renderOversamplingBox.setBounds (220, 171, 153, 40);
+    processingModeLabel.setBounds (18, 226, 178, 35);
+    processingModeBox.setBounds (220, 223, 153, 40);
 
-    constexpr int bottomBarHeight = 175;
-    // `bottomBarBounds` (the member) stays the FULL bar rect -- it's reused
-    // by paint() for the background card, so all the left/right carving
-    // below happens on a local copy instead of mutating it in place.
-    bottomBarBounds = getLocalBounds().removeFromBottom (bottomBarHeight).reduced (20, 15);
-    auto barContent = bottomBarBounds;
+    // Rockalizer's compact rack-footer geometry: a 108px faceplate with a
+    // 12px gap to the pedal cards. Only Threadline's own Gate/Input/Output
+    // controls are present -- Tremolo/Doubler and their DSP are not copied.
+    constexpr int bottomBarHeight = 126;
+    bottomBarBounds = { 20, getHeight() - 114, getWidth() - 40, 108 };
 
-    auto inputArea = barContent.removeFromLeft (138).reduced (8, 0);
-    auto inputLabelArea = inputArea.removeFromTop (20);
-    auto inputMeterArea = inputArea.removeFromBottom (13);
-    inputArea.removeFromBottom (5);
-    inputGainKnob->label.setBounds (inputLabelArea);
-    inputMeter.setBounds (inputMeterArea);
-    inputGainKnob->slider.setBounds (inputArea);
+    // Rockalizer lays its footer out against a 1144px usable reference area.
+    // Scaling the same offsets keeps the sparse rack composition intact at
+    // every resizable width instead of redistributing the controls evenly.
+    constexpr float referenceBarWidth = 1144.0f;
+    const auto scaleX = static_cast<float> (bottomBarBounds.getWidth()) / referenceBarWidth;
+    const auto scaleRect = [this, scaleX] (float x, float y, float w, float h)
+    {
+        return juce::Rectangle<int> (
+            bottomBarBounds.getX() + juce::roundToInt (x * scaleX),
+            bottomBarBounds.getY() + juce::roundToInt (y),
+            juce::roundToInt (w * scaleX), juce::roundToInt (h));
+    };
 
-    auto outputArea = barContent.removeFromRight (138).reduced (8, 0);
-    auto outputLabelArea = outputArea.removeFromTop (20);
-    auto outputMeterArea = outputArea.removeFromBottom (13);
-    outputArea.removeFromBottom (5);
-    outputGainKnob->label.setBounds (outputLabelArea);
-    outputMeter.setBounds (outputMeterArea);
-    outputGainKnob->slider.setBounds (outputArea);
+    // Gate occupies Rockalizer's left utility slot. Its compact header uses
+    // the same row as the On switch; the amount value remains in the knob's
+    // normal text box, so a second caption row is unnecessary.
+    auto gateHeader = scaleRect (22.0f, 2.0f, 110.0f, 20.0f);
+    gateBarLabel.setBounds (gateHeader.removeFromLeft (juce::roundToInt (56.0f * scaleX)));
+    gateToggle->button.setBounds (gateHeader.removeFromRight (juce::roundToInt (50.0f * scaleX)));
+    gateKnob->label.setBounds (0, 0, 0, 0);
+    gateKnob->slider.setBounds (scaleRect (22.0f, 24.0f, 110.0f, 82.0f));
 
-    // Gate: pinned right after Input in the chain, shown centred in
-    // whatever's left between the Input and Output widgets.
-    auto gateArea = barContent.withSizeKeepingCentre (138, barContent.getHeight()).reduced (8, 0);
-    auto gateHeader = gateArea.removeFromTop (23);
-    gateBarLabel.setBounds (gateHeader.removeFromLeft (55));
-    gateToggle->button.setBounds (gateHeader.removeFromRight (50));
-    gateArea.removeFromTop (3);
-    gateKnob->label.setBounds (gateArea.removeFromTop (captionHeight));
-    gateKnob->slider.setBounds (gateArea);
+    inputGainKnob->label.setBounds (scaleRect (277.0f, 2.0f, 110.0f, 20.0f));
+    inputGainKnob->slider.setBounds (scaleRect (277.0f, 24.0f, 110.0f, 82.0f));
+    inputMeter.setBounds (scaleRect (147.0f, 48.0f, 115.0f, 10.0f));
+
+    outputGainKnob->label.setBounds (scaleRect (1032.0f, 2.0f, 110.0f, 20.0f));
+    outputGainKnob->slider.setBounds (scaleRect (1032.0f, 24.0f, 110.0f, 82.0f));
+    outputMeter.setBounds (scaleRect (909.0f, 48.0f, 115.0f, 10.0f));
 
     pedalboard.setBounds (getLocalBounds().withTrimmedTop (headerHeight).withTrimmedBottom (bottomBarHeight));
 }

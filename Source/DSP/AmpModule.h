@@ -1,6 +1,14 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "GuitarSignalLevel.h"
+
+#if defined(THREADLINE_AMP_ANALYSIS_TAPS)
+ #define THREADLINE_AMP_ANALYSIS_TAP(channel, stage, sample) \
+    emitAnalysisTap ((channel), AnalysisStage::stage, (sample))
+#else
+ #define THREADLINE_AMP_ANALYSIS_TAP(channel, stage, sample) do { } while (false)
+#endif
 
 namespace
 {
@@ -223,6 +231,21 @@ public:
     //    spec) reflecting to 1.5k/tube.
     enum class Voice { vintage5E3 = 0, modern3Band = 1, voxAC30 = 2, fenderAB763 = 3, jtm45 = 4, mesaMarkI = 5, rolandJC120 = 6 };
 
+#if defined(THREADLINE_AMP_ANALYSIS_TAPS)
+    // Analysis-only stage taps. The entire API and every call site compile
+    // out of the shipping plugin; AmpStageProbe enables the macro in its own
+    // target and writes samples into preallocated capture buffers.
+    enum class AnalysisStage { v1Input, v1Output, v2Input, v2Output,
+                               phaseInverterInput, phaseInverterOutput,
+                               powerInput, powerOutput, count };
+    using AnalysisTapCallback = void (*) (void*, AnalysisStage, float);
+    void setAnalysisTapCallback (AnalysisTapCallback callback, void* context) noexcept
+    {
+        analysisTapCallback = callback;
+        analysisTapContext = context;
+    }
+#endif
+
     void prepare (const juce::dsp::ProcessSpec& spec, int oversamplingMode = 2)
     {
         baseSampleRate = spec.sampleRate;
@@ -358,12 +381,6 @@ public:
             triodeJTM45V2[ch].prepare (processingSampleRate);
             jtm45InterstageCoupling[ch].prepare (osSpec);
 
-            // JTM45's long-tail-pair PI, symmetric plate resistors (unlike
-            // Fender's deliberately asymmetric one) -- 82k/82k, 10k tail,
-            // both widely published JTM45/Plexi-era values (couldn't read
-            // the PI's exact resistor print reliably off the scan itself,
-            // this is the well-established community figure rather than a
-            // guess).
             jtm45PI[ch].Ra1 = 82000.0f; jtm45PI[ch].Ra2 = 82000.0f;
             jtm45PI[ch].Rtail = 10000.0f;
             jtm45PI[ch].Vb = 360.0f; // interpolated between the 380V/450V taps either side of it on the schematic
@@ -381,10 +398,11 @@ public:
                 tube->screenVoltage = 400.0f; // KT66 datasheet-adjacent max screen rating
                 tube->Vb = 455.0f;            // schematic's own circled 450V/460V rectifier-area taps
                 tube->Ra = 2000.0f;           // ~8k plate-to-plate OT (commonly published JTM45 figure) / 4, same halving rule as elsewhere
-                // Cathode-biased (self-biased), not fixed-bias -- the early
-                // JTM45 famously has no bias pot. Shared cathode resistor,
-                // commonly published value for this era.
-                tube->Rk = 130.0f;
+                // JTM45 is fixed-bias, not cathode-biased. The old 130-ohm
+                // cathode approximation biased this pair far too hot and was
+                // the source of its near-constant clipping at tiny inputs.
+                tube->Rk = 1.0f;
+                tube->gridBiasOffset = -45.0f;
                 tube->prepare (processingSampleRate);
             }
 
@@ -547,6 +565,12 @@ public:
                         float bass01, float mid01, float treble01)
     {
         driveAmount = juce::jlimit (0.0f, 1.0f, drive01);
+        gainPotLevel = getGainPotLevel (driveAmount);
+        powerDriveAmount = 1.15f + driveAmount * 2.7f;
+        standardGainStageLevel = getStandardGainPotLevel (driveAmount);
+        jcDistortionGain = 1.0f + 47.0f * driveAmount * driveAmount * driveAmount;
+        jcOutputDrive = 0.5f + driveAmount * 1.2f;
+        jcOutputNormalise = 1.0f / std::tanh (jcOutputDrive);
         targetOutputGain = juce::Decibels::decibelsToGain (outputDb);
         outputGain.setTargetValue (targetOutputGain);
         voice = voiceIn;
@@ -561,7 +585,7 @@ public:
         treble01 = juce::jlimit (0.0f, 1.0f, treble01);
         // Each voice reads its own, entirely separate tone-stack coefficients
         // (Vintage 5E3: toneFilter, gated on tone01 above; Boutique:
-        // bassmanStack; Vox: voxBassShelf/voxTrebleShelf via
+        // bassmanStack; Vox: its dedicated shelf pair via
         // updateVoxToneFilters(); Deluxe 63: fenderToneStack) -- ampBass/
         // ampMid/ampTreble are shared params across the 3 voices that use
         // them, so recomputing all three stacks on every change regardless
@@ -618,22 +642,11 @@ public:
         auto block = oversampling->processSamplesUp (inputBlock);
         const auto samples = static_cast<int> (block.getNumSamples());
         const auto channels = static_cast<int> (block.getNumChannels());
-        // Grid-signal scale reaching V1 -- the one driveAmount-controlled
-        // gain in the preamp now (V2A's own drive comes naturally from
-        // however hard V1's real current model already clipped, not a
-        // second independent multiplier -- see class comment). A harness
-        // sweep of raw (uncalibrated) output against this scale showed the
-        // triode's own current-limiting makes it a STEEP curve only across
-        // roughly scale=0.005-0.08 (raw output ~11 to ~98) and then a much
-        // flatter one beyond that (0.08-1.5 only reaches ~157) -- an earlier
-        // 0.035-0.285 taper sat almost entirely in that flat region, so the
-        // knob barely did anything (matching the "drive isn't behaving
-        // right" complaint) even though it wasn't the cause of the earlier
-        // loudness/mud complaint (that was the plate-load topology bug
-        // above). Retuned to actually span the steep part.
-        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
-        const auto powerDrive = 1.15f + driveAmount * 2.7f;
-
+        // Input samples are converted using the Focusrite +12.25dBu=0dBFS
+        // headroom reference below. The real amp volume pots sit after their
+        // first input stage, so V1 always receives the guitar; Gain controls
+        // the signal passed onward to V2 instead of redefining input
+        // sensitivity.
         for (int i = 0; i < samples; ++i)
         {
             if (voice == Voice::voxAC30)
@@ -667,8 +680,11 @@ public:
             for (int ch = 0; ch < channels; ++ch)
             {
                 auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-                auto triode1 = triodeV1[ch].processSample (x * inputVoltsScale) * v1GainCompensation;
+                const auto v1Input = GuitarSignalLevel::toVolts (x);
+                THREADLINE_AMP_ANALYSIS_TAP (ch, v1Input, v1Input);
+                auto triode1 = triodeV1[ch].processSample (v1Input) * v1GainCompensation;
                 triode1 = interstageCoupling[ch].processSample (triode1);
+                THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, triode1);
 
                 // The real 5E3's Tone control sits between the two preamp
                 // gain stages -- V1 (this plugin's stage 1) feeds the shared
@@ -689,21 +705,20 @@ public:
                     // by its own nature (verified analytically: ~-11 to
                     // -12dB around 440Hz-1kHz at flat/noon settings, a
                     // genuine property of this passive RC topology, not a
-                    // bug) -- a real 5E3-family amp's own gain-staging
-                    // budgets for exactly this loss with headroom to spare
-                    // in the stage after it; this makeup gain is that
-                    // same compensation, applied right where the loss
-                    // actually happens rather than as an end-of-chain
-                    // fudge factor.
-                    toned = bassmanStack.processSample (ch, triode1) * bassmanStackMakeupGain;
+                    // bug). That loss stays before the next nonlinear stage;
+                    // voice loudness is handled only by final Output trim.
+                    toned = bassmanStack.processSample (ch, triode1);
 
                 // triodeV2A returns real plate-swing volts (can run to tens
                 // of volts under drive); outputCalibration/safetyCeiling
                 // bring that back to sample scale, harness-verified end to
                 // end across driveAmount x input level (same role and same
                 // backstop pattern as Klon/TS9's own output calibration).
-                const auto triode2Raw = triodeV2A[ch].processSample (toned);
+                const auto v2Input = toned * gainPotLevel;
+                THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, v2Input);
+                const auto triode2Raw = triodeV2A[ch].processSample (v2Input);
                 const auto triode2 = safetyCeiling * std::tanh (triode2Raw * outputCalibration / safetyCeiling);
+                THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, triode2);
 
                 // Real cathodyne (split-load) phase inverter: a genuine
                 // TriodeStage instance with matched Ra=Rk (see prepare()),
@@ -711,8 +726,11 @@ public:
                 // drive signals -- verified in a standalone harness to come
                 // out ~0.97:1 in amplitude and genuinely antiphase (negative
                 // cross-correlation), not assumed.
-                const auto plateOut = cathodyneStage[ch].processSample (triode2 * cathodyneInputScale);
+                const auto piInput = triode2 * cathodyneInputScale;
+                THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterInput, piInput);
+                const auto plateOut = cathodyneStage[ch].processSample (piInput);
                 const auto cathOut = cathodyneStage[ch].getCathodeAc();
+                THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterOutput, plateOut);
                 phaseInverterPlate[(size_t) ch] = plateOut;
                 phaseInverterCathode[(size_t) ch] = cathOut;
 
@@ -747,11 +765,12 @@ public:
                 // than a mathematically perfect one -- "asymmetric
                 // push-pull", same idea as before, now acting on genuine
                 // per-tube grid signals instead of a single shared value.
-                const auto effectiveDrive = powerDrive * (1.0f - sag);
+                const auto effectiveDrive = powerDriveAmount * (1.0f - sag);
                 const auto driveScale = effectiveDrive * powerStageInputScale;
                 constexpr float tubeMismatch = 0.035f;
-                const auto tubeA = powerTubeA[ch].processSample (
-                    phaseInverterPlate[(size_t) ch] * driveScale + tubeMismatch);
+                const auto powerInput = phaseInverterPlate[(size_t) ch] * driveScale + tubeMismatch;
+                THREADLINE_AMP_ANALYSIS_TAP (ch, powerInput, powerInput);
+                const auto tubeA = powerTubeA[ch].processSample (powerInput);
                 const auto tubeB = powerTubeB[ch].processSample (
                     phaseInverterCathode[(size_t) ch] * driveScale + tubeMismatch);
                 auto power = (tubeA - tubeB) * powerStageOutputScale;
@@ -776,6 +795,7 @@ public:
                 // rather than letting it clip hard, unclamped, past full
                 // scale downstream.
                 power *= vintageOutputBoost;
+                THREADLINE_AMP_ANALYSIS_TAP (ch, powerOutput, power);
 
                 constexpr float otKnee = 0.65f;
                 const auto otMagnitude = std::abs (power);
@@ -792,25 +812,19 @@ public:
         }
 
         oversampling->processSamplesDown (inputBlock);
-        // Per-voice output normalisation is a function of Drive, not a single
-        // scalar: the seven circuits' loudness-vs-Drive curves have different
-        // SHAPES (see perVoiceNormaliseByDrive's comment), so a value tuned at
-        // one Drive point only matches at that point -- measured up to ~12dB
-        // spread at Drive=0 (jtm45 loudest, vintage5E3/rolandJC120 quietest),
-        // which is exactly the "Jazz Chorus / Vintage / Boutique too quiet when
-        // clean" report. Linearly interpolate the measured 11-knot table so
-        // every voice lands on the group-median loudness curve at every Drive.
-        const auto driveIndex = juce::jlimit (0.0f, 1.0f, driveAmount) * 10.0f;
-        const auto knot = juce::jmin (9, static_cast<int> (driveIndex));
-        const auto frac = driveIndex - static_cast<float> (knot);
-        const auto& normRow = perVoiceNormaliseByDrive[static_cast<size_t> (voice)];
-        const auto voiceScale = normRow[knot] + frac * (normRow[knot + 1] - normRow[knot]);
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {
-            const auto gain = outputGain.getNextValue();
+            // Per-voice calibration of the user-facing Output control only.
+            // This fixed multiplier is after the complete amp model, so it
+            // cannot change Gain, tone-stack drive, distortion character,
+            // sag, power-stage behaviour, or latency. Deluxe is the 0dB
+            // reference; the other offsets are its measured output ratios at
+            // normal clean-pickup level with Gain/Tone at noon.
+            const auto gain = outputGain.getNextValue()
+                            * deluxeReferencedOutput[(size_t) voice];
             for (int ch = 0; ch < channelCount; ++ch)
             {
-                auto v = buffer.getSample (ch, i) * gain * voiceScale;
+                auto v = buffer.getSample (ch, i) * gain;
                 const auto mag = std::abs (v);
                 if (mag > outputLimiterKnee)
                 {
@@ -825,6 +839,14 @@ public:
     }
 
 private:
+#if defined(THREADLINE_AMP_ANALYSIS_TAPS)
+    void emitAnalysisTap (int channel, AnalysisStage stage, float sample) noexcept
+    {
+        if (channel == 0 && analysisTapCallback != nullptr)
+            analysisTapCallback (analysisTapContext, stage, sample);
+    }
+#endif
+
     // Vox AC30 voice's per-sample signal path: two 12AX7 preamp stages
     // (triodeVoxV1/V2) around a Bass/Treble shelf pair, a real long-tailed-
     // pair phase inverter (voxPI), and a genuine EL84 push-pull power stage
@@ -843,25 +865,30 @@ private:
     // more than it would save.
     void processVoxSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
     {
-        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
-        const auto powerDrive = 1.15f + driveAmount * 2.7f;
-
         float detector = 0.0f;
         std::array<float, 2> plate1 {}, plate2 {};
         for (int ch = 0; ch < channels; ++ch)
         {
             auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-            auto t1 = triodeVoxV1[ch].processSample (x * inputVoltsScale);
-            t1 = voxInterstageCoupling[ch].processSample (t1);
+            const auto v1Input = GuitarSignalLevel::toVolts (x);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Input, v1Input);
+            auto t1 = triodeVoxV1[ch].processSample (v1Input);
+            t1 = voxInterstageCoupling[ch].processSample (t1) * standardGainStageLevel;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, t1);
 
             auto toned = voxBassShelf[ch].processSample (t1);
             toned = voxTrebleShelf[ch].processSample (toned);
 
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, toned);
             const auto t2Raw = triodeVoxV2[ch].processSample (toned);
             const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, t2);
 
             float p1, p2;
-            voxPI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            const auto piInput = t2 * cathodyneInputScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterInput, piInput);
+            voxPI[ch].processSample (piInput, p1, p2);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterOutput, p1);
             plate1[(size_t) ch] = p1;
             plate2[(size_t) ch] = p2;
 
@@ -877,12 +904,15 @@ private:
 
         for (int ch = 0; ch < channels; ++ch)
         {
-            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto effectiveDrive = powerDriveAmount * (1.0f - sag);
             const auto driveScale = effectiveDrive * powerStageInputScale;
-            const auto tubeA = powerTubeVoxA[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto powerInput = plate1[(size_t) ch] * driveScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerInput, powerInput);
+            const auto tubeA = powerTubeVoxA[ch].processSample (powerInput);
             const auto tubeB = powerTubeVoxB[ch].processSample (plate2[(size_t) ch] * driveScale);
             auto power = (tubeA - tubeB) * powerStageOutputScale;
             power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerOutput, power);
 
             constexpr float otKnee = 0.65f;
             const auto otMagnitude = std::abs (power);
@@ -911,28 +941,33 @@ private:
     // instead of a Bass/Treble shelf pair.
     void processFenderSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
     {
-        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
-        const auto powerDrive = 1.15f + driveAmount * 2.7f;
-
         float detector = 0.0f;
         std::array<float, 2> plate1 {}, plate2 {};
         for (int ch = 0; ch < channels; ++ch)
         {
             auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-            auto t1 = triodeFenderV1[ch].processSample (x * inputVoltsScale);
-            t1 = fenderInterstageCoupling[ch].processSample (t1);
+            const auto v1Input = GuitarSignalLevel::toVolts (x);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Input, v1Input);
+            auto t1 = triodeFenderV1[ch].processSample (v1Input);
+            t1 = fenderInterstageCoupling[ch].processSample (t1) * standardGainStageLevel;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, t1);
 
             // Deluxe 63's own real component values give this network even
             // more loss than Boutique's (~-15 to -20dB around 440Hz-1kHz,
-            // analytically verified) -- same makeup-gain treatment, sized
-            // to this network's own loss rather than reusing Boutique's.
-            const auto toned = fenderToneStack.processSample (ch, t1) * fenderToneStackMakeupGain;
+            // analytically verified). It deliberately remains before V2 so
+            // the passive stack does not become a hidden V2 drive boost.
+            const auto toned = fenderToneStack.processSample (ch, t1);
 
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, toned);
             const auto t2Raw = triodeFenderV2[ch].processSample (toned);
             const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, t2);
 
             float p1, p2;
-            fenderPI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            const auto piInput = t2 * cathodyneInputScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterInput, piInput);
+            fenderPI[ch].processSample (piInput, p1, p2);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterOutput, p1);
             plate1[(size_t) ch] = p1;
             plate2[(size_t) ch] = p2;
 
@@ -948,12 +983,15 @@ private:
 
         for (int ch = 0; ch < channels; ++ch)
         {
-            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto effectiveDrive = powerDriveAmount * (1.0f - sag);
             const auto driveScale = effectiveDrive * powerStageInputScale;
-            const auto tubeA = powerTubeFenderA[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto powerInput = plate1[(size_t) ch] * driveScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerInput, powerInput);
+            const auto tubeA = powerTubeFenderA[ch].processSample (powerInput);
             const auto tubeB = powerTubeFenderB[ch].processSample (plate2[(size_t) ch] * driveScale);
             auto power = (tubeA - tubeB) * powerStageOutputScale;
             power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerOutput, power);
 
             constexpr float otKnee = 0.65f;
             const auto otMagnitude = std::abs (power);
@@ -971,33 +1009,37 @@ private:
 
     // Marshall JTM45 -- same overall topology shape as Deluxe 63's path
     // above (V1 -> interstage coupling -> shared tone-stack family -> V2 ->
-    // long-tail-pair PI -> cathode-biased power pair -> OT saturation), just
+    // long-tail-pair PI -> fixed-bias power pair -> OT saturation), just
     // with this voice's own dedicated stage instances/values (see the
     // Voice::jtm45 prepare() block for full sourcing). jtm45ToneStack reuses
     // BassmanToneStack's own default component values (JTM45's tone stack is
-    // a near-verbatim copy of the 5F6-A Bassman's), so it shares
-    // bassmanStackMakeupGain with the modern3Band path rather than needing
-    // its own makeup-gain constant.
+    // a near-verbatim copy of the 5F6-A Bassman's), including its passive
+    // insertion loss before V2.
     void processJTM45Sample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
     {
-        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
-        const auto powerDrive = 1.15f + driveAmount * 2.7f;
-
         float detector = 0.0f;
         std::array<float, 2> plate1 {}, plate2 {};
         for (int ch = 0; ch < channels; ++ch)
         {
             auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-            auto t1 = triodeJTM45V1[ch].processSample (x * inputVoltsScale);
-            t1 = jtm45InterstageCoupling[ch].processSample (t1);
+            const auto v1Input = GuitarSignalLevel::toVolts (x);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Input, v1Input);
+            auto t1 = triodeJTM45V1[ch].processSample (v1Input);
+            t1 = jtm45InterstageCoupling[ch].processSample (t1) * standardGainStageLevel;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, t1);
 
-            const auto toned = jtm45ToneStack.processSample (ch, t1) * bassmanStackMakeupGain;
+            const auto toned = jtm45ToneStack.processSample (ch, t1);
 
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, toned);
             const auto t2Raw = triodeJTM45V2[ch].processSample (toned);
             const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, t2);
 
             float p1, p2;
-            jtm45PI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            const auto piInput = t2 * cathodyneInputScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterInput, piInput);
+            jtm45PI[ch].processSample (piInput, p1, p2);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterOutput, p1);
             plate1[(size_t) ch] = p1;
             plate2[(size_t) ch] = p2;
 
@@ -1013,12 +1055,15 @@ private:
 
         for (int ch = 0; ch < channels; ++ch)
         {
-            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto effectiveDrive = powerDriveAmount * (1.0f - sag);
             const auto driveScale = effectiveDrive * powerStageInputScale;
-            const auto tubeA = powerTubeJTM45A[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto powerInput = plate1[(size_t) ch] * driveScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerInput, powerInput);
+            const auto tubeA = powerTubeJTM45A[ch].processSample (powerInput);
             const auto tubeB = powerTubeJTM45B[ch].processSample (plate2[(size_t) ch] * driveScale);
             auto power = (tubeA - tubeB) * powerStageOutputScale;
             power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerOutput, power);
 
             constexpr float otKnee = 0.65f;
             const auto otMagnitude = std::abs (power);
@@ -1045,24 +1090,28 @@ private:
     // -- so it shares bassmanStackMakeupGain too, same reasoning as JTM45.
     void processMarkOneSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
     {
-        const auto inputVoltsScale = 0.008f + driveAmount * 0.09f;
-        const auto powerDrive = 1.15f + driveAmount * 2.7f;
-
         float detector = 0.0f;
         std::array<float, 2> plate1 {}, plate2 {};
         for (int ch = 0; ch < channels; ++ch)
         {
             auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-            auto t1 = triodeMarkOneV1[ch].processSample (x * inputVoltsScale);
-            t1 = markOneInterstageCoupling[ch].processSample (t1);
+            const auto v1Input = GuitarSignalLevel::toVolts (x);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Input, v1Input);
+            auto t1 = triodeMarkOneV1[ch].processSample (v1Input);
+            t1 = markOneInterstageCoupling[ch].processSample (t1) * standardGainStageLevel;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, t1);
 
-            const auto toned = markOneToneStack.processSample (ch, t1) * bassmanStackMakeupGain;
-
+            const auto toned = markOneToneStack.processSample (ch, t1);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, toned);
             const auto t2Raw = triodeMarkOneV2[ch].processSample (toned);
             const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, t2);
 
             float p1, p2;
-            markOnePI[ch].processSample (t2 * cathodyneInputScale, p1, p2);
+            const auto piInput = t2 * cathodyneInputScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterInput, piInput);
+            markOnePI[ch].processSample (piInput, p1, p2);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterOutput, p1);
             plate1[(size_t) ch] = p1;
             plate2[(size_t) ch] = p2;
 
@@ -1078,12 +1127,15 @@ private:
 
         for (int ch = 0; ch < channels; ++ch)
         {
-            const auto effectiveDrive = powerDrive * (1.0f - sag);
+            const auto effectiveDrive = powerDriveAmount * (1.0f - sag);
             const auto driveScale = effectiveDrive * powerStageInputScale;
-            const auto tubeA = powerTubeMarkOneA[ch].processSample (plate1[(size_t) ch] * driveScale);
+            const auto powerInput = plate1[(size_t) ch] * driveScale;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerInput, powerInput);
+            const auto tubeA = powerTubeMarkOneA[ch].processSample (powerInput);
             const auto tubeB = powerTubeMarkOneB[ch].processSample (plate2[(size_t) ch] * driveScale);
             auto power = (tubeA - tubeB) * powerStageOutputScale;
             power /= juce::jmax (0.8f, 0.72f + effectiveDrive * 0.28f);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerOutput, power);
 
             constexpr float otKnee = 0.65f;
             const auto otMagnitude = std::abs (power);
@@ -1109,38 +1161,45 @@ private:
     // a solid-state push-pull output stage. Deliberately skips the shared
     // sagEnvelope/sagDetectorLP machinery every tube voice above uses -- a
     // transistor power supply genuinely doesn't sag under load the way a
-    // tube rectifier/transformer does. This models the amp's dry "Normal"
-    // channel: the real unit's BBD (MN3007/MN3101) chorus line, its
-    // separate diode-clipping Distortion channel, and its spring reverb
-    // are intentionally NOT modeled -- chorus is its own dedicated pedal
-    // elsewhere on this board (DimensionChorus/DimensionDBBD), so the amp
-    // stays dry here and chorus is patched in upstream when wanted.
+    // tube rectifier/transformer does. The Dec-1984 schematic's IC2a
+    // distortion stage (47k feedback path, VR1 50kC and antiparallel
+    // two-diode strings D7-D10) is included below; chorus and spring remain
+    // separate pedals elsewhere on the board.
     void processJCSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
     {
-        // Solid-state headroom is genuinely much higher than a triode's,
-        // and clips more abruptly once exceeded (a harder symmetric knee)
-        // rather than a tube's gradual, asymmetric compression -- both
-        // scales picked empirically to keep the low end of Drive clean and
-        // glassy (the JC-120's whole reputation) and only start clipping
-        // meaningfully in the upper range.
-        const auto inputGain = 0.6f + driveAmount * 4.4f;
-        const auto outputDrive = 0.5f + driveAmount * 1.2f;
-        const auto outputNormalise = 1.0f / std::tanh (outputDrive);
+        // IC2a's closed-loop maximum is approximately 1 + 47k/1k = 48.
+        // VR1 is C-taper, represented by the cubic sweep, and the two series
+        // silicon diodes in each direction place the feedback knee around
+        // +/-1.2V. Convert the raw Focusrite DI to circuit volts, process it,
+        // then return to digital scale.
+        constexpr float diodeKneeVolts = 1.2f;
 
         std::array<float, 2> eqOut {};
         for (int ch = 0; ch < channels; ++ch)
         {
             auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
-            auto driven = std::tanh (x * inputGain);
+            const auto v1Input = GuitarSignalLevel::toVolts (x);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Input, v1Input);
+            const auto amplifiedVolts = v1Input * jcDistortionGain;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, amplifiedVolts);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, amplifiedVolts);
+            auto driven = diodeKneeVolts * std::tanh (amplifiedVolts / diodeKneeVolts)
+                        * GuitarSignalLevel::digitalUnitsPerVolt;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, driven);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterInput, driven);
             driven = jcBassShelf[ch].processSample (driven);
             driven = jcMidPeak[ch].processSample (driven);
             driven = jcTrebleShelf[ch].processSample (driven);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterOutput, driven);
             eqOut[(size_t) ch] = driven;
         }
 
         for (int ch = 0; ch < channels; ++ch)
         {
-            const auto power = std::tanh (eqOut[(size_t) ch] * outputDrive) * outputNormalise;
+            const auto powerInput = eqOut[(size_t) ch] * jcOutputDrive;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerInput, powerInput);
+            const auto power = std::tanh (powerInput) * jcOutputNormalise;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, powerOutput, power);
             block.setSample (ch, i, transformerLowPass[ch].processSample (power));
         }
     }
@@ -1182,8 +1241,7 @@ private:
             *filter.coefficients = *coefficients;
     }
 
-    // Vox voice's simplified Bass/Treble shelf pair -- see Voice::voxAC30's
-    // own comment for why this stands in for the real Top Boost network.
+    // Vox voice's simplified Bass/Treble shelf pair.
     void updateVoxToneFilters()
     {
         if (processingSampleRate <= 0.0)
@@ -1522,7 +1580,14 @@ private:
         float Ra1 = 100000.0f, Ra2 = 100000.0f;
         float Rtail = 47000.0f; // real AC30 LTP tail resistor (ampbooks.com)
         float Vb = 275.0f;
-        float grid2Bias = 0.0f;
+        // Both grids in a real capacitor-coupled LTP sit on an elevated DC
+        // bias network; only their AC difference drives the pair. The old
+        // model fixed both at 0V while returning the tail to ground, which
+        // left both plates almost at B+ (near cutoff) and made even a 25mV
+        // guitar signal produce double-digit THD. gridCommonBias is solved
+        // at prepare() to centre the plates, standing in for that omitted DC
+        // divider without touching the AC signal path.
+        float gridCommonBias = 0.0f;
         float Cout = 220.0e-12f; // same numerical-stabiliser role as TriodeStage's own Cout
 
         float vk = 0.0f, vk0 = 0.0f;
@@ -1558,26 +1623,56 @@ private:
         // that Vk0 trial -- same nested structure TriodeStage's cathode-
         // unbypassed solve already uses, just summing two tubes' currents
         // for the tail-resistor balance instead of one.
-        void solveBiasPoint() noexcept
+        void solveBiasPointAtCurrentGridBias() noexcept
         {
             float vkLo = 0.0f, vkHi = Vb;
             for (int outer = 0; outer < 40; ++outer)
             {
                 const auto vkMid = 0.5f * (vkLo + vkHi);
-                const auto vgk1 = -vkMid;
-                const auto vgk2 = grid2Bias - vkMid;
+                const auto vgk1 = gridCommonBias - vkMid;
+                const auto vgk2 = gridCommonBias - vkMid;
                 const auto va1 = solvePlate (vgk1, Ra1);
                 const auto va2 = solvePlate (vgk2, Ra2);
                 const auto total = anodeCurrentStatic (vgk1, va1) + anodeCurrentStatic (vgk2, va2);
                 if (total * Rtail > vkMid) vkLo = vkMid; else vkHi = vkMid;
             }
             vk0 = 0.5f * (vkLo + vkHi);
-            const auto vgk1_0 = -vk0, vgk2_0 = grid2Bias - vk0;
+            const auto vgk1_0 = gridCommonBias - vk0, vgk2_0 = gridCommonBias - vk0;
             Va10 = solvePlate (vgk1_0, Ra1); Ia10 = anodeCurrentStatic (vgk1_0, Va10);
             Va20 = solvePlate (vgk2_0, Ra2); Ia20 = anodeCurrentStatic (vgk2_0, Va20);
         }
 
-        void prepare (double newSampleRate) noexcept { sampleRate = newSampleRate; solveBiasPoint(); reset(); }
+        void prepare (double newSampleRate) noexcept
+        {
+            sampleRate = newSampleRate;
+
+            // Reconstruct the omitted bias divider from a centred target
+            // plate current, then run the normal coupled operating-point
+            // solve once. 60% of B+ leaves useful headroom in both swing
+            // directions. This direct current calculation replaces an older
+            // nested bias-search that was correct but needlessly expensive
+            // during repeated plugin/validator preparation.
+            constexpr float targetPlateFraction = 0.60f;
+            const auto targetPlate = Vb * targetPlateFraction;
+            const auto targetIa1 = (Vb - targetPlate) / Ra1;
+            const auto targetIa2 = (Vb - targetPlate) / Ra2;
+            const auto targetIaMean = 0.5f * (targetIa1 + targetIa2);
+
+            float vgkLo = -20.0f, vgkHi = 5.0f;
+            for (int iter = 0; iter < 40; ++iter)
+            {
+                const auto vgk = 0.5f * (vgkLo + vgkHi);
+                if (anodeCurrentStatic (vgk, targetPlate) < targetIaMean)
+                    vgkLo = vgk;
+                else
+                    vgkHi = vgk;
+            }
+            const auto targetVgk = 0.5f * (vgkLo + vgkHi);
+            const auto targetCathode = (targetIa1 + targetIa2) * Rtail;
+            gridCommonBias = targetCathode + targetVgk;
+            solveBiasPointAtCurrentGridBias();
+            reset();
+        }
         void reset() noexcept
         {
             vk = vk0;
@@ -1590,8 +1685,8 @@ private:
         // described in the class comment above.
         void processSample (float vin, float& plate1Out, float& plate2Out) noexcept
         {
-            const auto vgActual1 = vin;
-            const auto vgActual2 = grid2Bias;
+            const auto vgActual1 = gridCommonBias + vin;
+            const auto vgActual2 = gridCommonBias;
             const auto va1 = Va10 + va1AcPrev;
             const auto va2 = Va20 + va2AcPrev;
             constexpr float G = 1.371e-3f, mu = 96.2f, gamma = 1.349f, C = 3.917f;
@@ -1944,6 +2039,10 @@ private:
     };
 
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
+#if defined(THREADLINE_AMP_ANALYSIS_TAPS)
+    AnalysisTapCallback analysisTapCallback = nullptr;
+    void* analysisTapContext = nullptr;
+#endif
     juce::dsp::IIR::Filter<float> inputCoupling[2], interstageCoupling[2];
     juce::dsp::IIR::Filter<float> toneFilter[2], transformerLowPass[2];
     TriodeStage triodeV1[2], triodeV2A[2], cathodyneStage[2];
@@ -2012,6 +2111,36 @@ private:
     // range rather than the knob just being uniformly hotter everywhere.
     static constexpr float outputCalibration = 0.10f;
     static constexpr float safetyCeiling = 3.0f;
+    // Focusrite 2i2 instrument-input calibration from the supplied interface
+    // headroom table: 4th Gen clips at +12dBu, 3rd Gen at +12.5dBu with the
+    // hardware gain at minimum. Use their +12.25dBu midpoint as 0dBFS:
+    // 0.775 * 10^(12.25/20) = 3.175V RMS, or 4.49073V peak per digital unit.
+    // This preserves real pickup differences; there is deliberately no AGC
+    // or "make every guitar peak at -18dBFS" normalization.
+
+    // Audio-taper interstage Volume/Gain pot. The floor preserves the
+    // plugin's useful low-Gain range; fifth-power taper keeps the first half clean
+    // and gives the upper half enough V2/power-stage drive for breakup.
+    static float getGainPotLevel (float amount) noexcept
+    {
+        const auto x = juce::jlimit (0.0f, 1.0f, amount);
+        const auto x2 = x * x;
+        return 0.02f + 0.98f * x2 * x2 * x;
+    }
+    // The separate Volume pots used by the Vox/Deluxe/JTM/Mesa paths need a
+    // deeper audio taper than the tweed-derived interstage control above.
+    // The former shared 2% floor plus x^5 curve still delivered 5.1% at noon,
+    // enough to drive several downstream stages into dense clipping. This
+    // seventh-power law gives 0.2% at minimum, 0.98% at noon, and remains 100%
+    // at maximum: clean settings gain real headroom without weakening the
+    // top of the knob or changing what reaches V1.
+    static float getStandardGainPotLevel (float amount) noexcept
+    {
+        const auto x = juce::jlimit (0.0f, 1.0f, amount);
+        const auto x2 = x * x;
+        const auto x3 = x2 * x;
+        return 0.002f + 0.998f * x3 * x3 * x;
+    }
     // Direct output-level boost for the Vintage 5E3/Boutique path only
     // (~+6dB) -- see its own use in process() for why this exists. Applies
     // to Vintage too, which doesn't go through either lossy tone-stack
@@ -2019,15 +2148,6 @@ private:
     // loss), so this is the piece of the fix that isn't explained by tone-
     // stack insertion loss alone.
     static constexpr float vintageOutputBoost = 2.0f;
-    // Makeup gain for the real passive tone-stack networks' own analytically-
-    // measured insertion loss (see each's own use in process()) -- ~11.75dB
-    // for Boutique's Bassman-derived network, ~15.67dB for Deluxe 63's own
-    // component values, both at ~1kHz, a representative guitar-relevant
-    // frequency for a single broadband compensation constant (matching how
-    // a real amp's own fixed-gain makeup stage isn't frequency-selective
-    // either).
-    static constexpr float bassmanStackMakeupGain = 3.87f;   // +11.75dB
-    static constexpr float fenderToneStackMakeupGain = 6.07f; // +15.67dB
     // Compensates the gain V1 lost by switching to a genuinely unbypassed
     // (self-biased) cathode -- that local negative feedback is real and
     // intentional (see TriodeStage's cathodeUnbypassed mode), but it also
@@ -2064,36 +2184,16 @@ private:
     static constexpr float cathodyneInputScale = 4.0f;
     static constexpr float powerStageInputScale = 0.02f;
     static constexpr float powerStageOutputScale = 0.20f;
-    // Per-voice output normalisation (final loudness trim), indexed by both
-    // voice and Drive. Each voice's circuit has genuinely different gain
-    // (long-tail-pair vs cathodyne phase inverter, EL84 vs 6V6 power tubes,
-    // different B+/plate loads), but the calibration constants above are
-    // SHARED across all six tube voices, so the same knob settings land each
-    // voice at a very different loudness -- and that difference is not a fixed
-    // offset: each voice's loudness-vs-Drive curve has a different SHAPE, so a
-    // single scalar tuned at one Drive point only matches at that one point.
-    // Measured in Source/AmpLevelProbe.cpp (110/440/1760Hz sines at input 0.3,
-    // flat EQ, Output 0dB): at Drive=0.5 all seven sit within ~0.2dB of
-    // -6dBFS, but at Drive=0 the spread is ~12dB (jtm45 loudest, vintage5E3
-    // quietest) and it inverts by Drive=0.9 (jtm45/mesaMarkI compress hardest,
-    // ~2.4dB quieter). Each row below is the final-trim multiplier for one
-    // voice at Drive = 0.0, 0.1, ..., 1.0 (11 knots, linearly interpolated in
-    // process()); it is the old single perVoiceNormalise value (the Drive=0.5
-    // knot) times the ratio of the group-median RMS to that voice's own RMS at
-    // that Drive, so every voice lands on the same loudness-vs-Drive curve
-    // (the group median) rather than only matching at 0.5. Applied at the
-    // final output trim (with outputGain), AFTER each voice's own OT knee, so
-    // it's a pure level change that does not alter how hard each voice
-    // saturates its power stage at a given Drive. (5E3 + modern3Band values
-    // already include the pre-knee vintageOutputBoost.)
-    static constexpr float perVoiceNormaliseByDrive[7][11] {
-        { 2.5970f, 2.1448f, 1.9880f, 1.8624f, 1.7632f, 1.6792f, 1.6030f, 1.5864f, 1.6133f, 1.6543f, 1.6792f }, // vintage5E3
-        { 1.7728f, 1.5323f, 1.4324f, 1.3897f, 1.3648f, 1.3373f, 1.2973f, 1.2792f, 1.2884f, 1.3116f, 1.3241f }, // modern3Band
-        { 2.5899f, 2.5899f, 2.5899f, 2.5899f, 2.5899f, 2.5828f, 2.5493f, 2.5334f, 2.5524f, 2.5823f, 2.5892f }, // voxAC30
-        { 1.1086f, 1.1289f, 1.2092f, 1.2703f, 1.3046f, 1.3221f, 1.3237f, 1.3237f, 1.3237f, 1.3237f, 1.3141f }, // fenderAB763
-        { 0.2154f, 0.2849f, 0.3706f, 0.4495f, 0.5180f, 0.5767f, 0.6219f, 0.6611f, 0.6962f, 0.7280f, 0.7493f }, // jtm45
-        { 0.4092f, 0.4300f, 0.4901f, 0.5655f, 0.6386f, 0.7020f, 0.7523f, 0.7953f, 0.8315f, 0.8617f, 0.8783f }, // mesaMarkI
-        { 1.0056f, 0.8942f, 0.8592f, 0.8417f, 0.8328f, 0.8292f, 0.8242f, 0.8250f, 0.8307f, 0.8395f, 0.8419f }  // rolandJC120
+    // Fixed Output-knob offsets relative to Deluxe. These are deliberately
+    // outside every amp circuit and are not a gain-stage/model calibration.
+    static constexpr float deluxeReferencedOutput[7] {
+        1.4637f, // Vintage  +3.31 dB
+        2.6717f, // Boutique +8.53 dB
+        0.3547f, // Vox      -9.00 dB
+        1.0000f, // Deluxe    0.00 dB reference
+        0.5403f, // JTM45    -5.35 dB
+        0.9801f, // Mesa     -0.17 dB
+        1.4881f  // JC-120   +3.45 dB
     };
     // Soft-knee threshold for the final output trim -- linear below it, soft-
     // clips toward 1.0 above, so the +8dB normalisation boost on the quiet
@@ -2107,9 +2207,14 @@ private:
     // for -- see setParameters()'s own comment.
     Voice lastToneStackVoice = Voice::vintage5E3;
     float driveAmount = 0.4f, lastTone01 = 0.6f;
+    float gainPotLevel = 0.030035f, powerDriveAmount = 2.23f;
+    float standardGainStageLevel = 1.0f;
+    float jcDistortionGain = 4.008f, jcOutputDrive = 0.98f, jcOutputNormalise = 1.329f;
     float lastBass01 = 0.5f, lastMid01 = 0.5f, lastTreble01 = 0.5f;
     float targetOutputGain = 1.0f, sagEnvelope = 0.0f;
     float sagAttack = 0.999f, sagRelease = 0.999f;
     float sagDetectorLPCoefficient = 0.01f;
     bool enabled = true;
 };
+
+#undef THREADLINE_AMP_ANALYSIS_TAP

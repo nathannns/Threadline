@@ -79,19 +79,22 @@ public:
 
         // Hardware/session choices are global, not tone-preset parameters.
         // Preserve them across every preset load, including prev/next and
-        // the automatic load following deletion. inputMute belongs in this
-        // list for the same reason masterBypass does -- muting to switch
-        // presets quietly shouldn't itself un-mute the instant the new
-        // preset loads.
+        // the automatic load following deletion.
         const auto masterBypass = apvts.getRawParameterValue ("masterBypass")->load();
         const auto oversampling = apvts.getRawParameterValue ("ampOversampling")->load();
+        const auto renderOversampling = apvts.getRawParameterValue ("renderOversampling")->load();
         const auto inputSource = apvts.getRawParameterValue ("inputSource")->load();
-        const auto inputMute = apvts.getRawParameterValue ("inputMute")->load();
+        const auto input1On = apvts.getRawParameterValue ("input1On")->load();
+        const auto input2On = apvts.getRawParameterValue ("input2On")->load();
+        const auto processingMode = apvts.getRawParameterValue ("processingMode")->load();
         apvts.replaceState (tree);
         restoreGlobalParameter ("masterBypass", masterBypass);
         restoreGlobalParameter ("ampOversampling", oversampling);
+        restoreGlobalParameter ("renderOversampling", renderOversampling);
         restoreGlobalParameter ("inputSource", inputSource);
-        restoreGlobalParameter ("inputMute", inputMute);
+        restoreGlobalParameter ("input1On", input1On);
+        restoreGlobalParameter ("input2On", input2On);
+        restoreGlobalParameter ("processingMode", processingMode);
         // Pedalboard order is NOT in the preserved-globals list above --
         // each preset's own saved order loads normally, since the order
         // genuinely is part of what defines a preset/tone, not a global

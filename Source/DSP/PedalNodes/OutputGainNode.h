@@ -12,14 +12,18 @@ public:
         : PedalNode (state), outputLevel (meter) {}
     juce::Identifier getId() const override { return "outputGain"; }
 
-    void prepare (const juce::dsp::ProcessSpec& spec) override { prepareCrossfade (spec.sampleRate, true); }
+    void prepare (const juce::dsp::ProcessSpec& spec) override { prepareCrossfade (spec, true); }
     void reset() override {}
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
     {
         const auto result = crossfadeToggle (buffer, inTargetOrder, [this] (juce::AudioBuffer<float>& b)
         {
-            b.applyGain (juce::Decibels::decibelsToGain (p ("outputGain")));
+            // Match Rockalizer's calibrated nominal output so the same shared
+            // effects at the same settings do not become 1.8 dB quieter merely
+            // because they are hosted by Threadline.
+            constexpr float outputCalibrationDb = 1.8f;
+            b.applyGain (juce::Decibels::decibelsToGain (p ("outputGain") + outputCalibrationDb));
         });
         outputLevel.updateFrom (buffer);
         return result;

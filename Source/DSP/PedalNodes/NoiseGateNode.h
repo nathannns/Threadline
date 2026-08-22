@@ -12,7 +12,7 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         gate.prepare (spec);
-        prepareCrossfade (spec.sampleRate, pBool ("gateOn"));
+        prepareCrossfade (spec, pBool ("gateOn"));
     }
     void reset() override { gate.reset(); }
 

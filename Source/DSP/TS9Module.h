@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "WDFCore.h"
+#include "GuitarSignalLevel.h"
 
 // "Breaker" overdrive — one faithful Tube Screamer circuit, offered with
 // three selectable "voicings" named after the TS9 / TS808 / TS10 family.
@@ -175,7 +176,12 @@ public:
     void setParameters (float drive01, float tone01, float level01)
     {
         driveAmount = juce::jlimit (0.0f, 1.0f, drive01);
-        outputLevel = juce::jlimit (0.0f, 2.0f, level01 * 2.0f);
+        // Physical output pot: maximum passes the modeled circuit; it does
+        // not invent another +6dB after it. Exponent measured so noon Level
+        // is approximately bypass loudness for a 100mV RMS guitar at low/
+        // medium Drive instead of feeding the amp about 4.5x too hot.
+        const auto level = juce::jlimit (0.0f, 1.0f, level01);
+        outputLevel = std::pow (level, 2.15f);
         if (! juce::approximatelyEqual (tone01, lastTone01))
         {
             lastTone01 = tone01;
@@ -219,14 +225,14 @@ public:
         {
             for (int i = 0; i < osSamples; ++i)
             {
-                const auto x = osBlock.getSample ((int) ch, i);
+                const auto x = GuitarSignalLevel::toVolts (osBlock.getSample ((int) ch, i));
                 // Real op-amp clipper output (volts) -- outputCalibration
                 // brings that to a sensible audio range. A wide tanh safety
                 // rail backstops the diode pair (which already self-limits,
                 // same as real hardware -- this is only a numeric safety net).
                 auto clipped = clipper[ch].processSample (x) * outputCalibration;
                 clipped = safetyCeiling * std::tanh (clipped / safetyCeiling);
-                osBlock.setSample ((int) ch, i, clipped);
+                osBlock.setSample ((int) ch, i, GuitarSignalLevel::fromVolts (clipped));
             }
         }
         oversampling->processSamplesDown (block);
@@ -284,8 +290,8 @@ private:
     // 2.25 mapped that ~1V raw clip to ~1.45 peak at level=0.5 -- hot enough
     // to hard-clip the chain with the knob at noon. Retuned (measured via
     // PedalLevelProbe, same discipline as AmpModule::perVoiceNormalise) to
-    // 1.25 so the clip-limited peak lands at ~0.9 at level=0.5, leaving the
-    // level knob (0-2x) to push into clip only if the user asks for it.
+    // 1.25 keeps the internal circuit-voltage range useful; the measured
+    // output-pot taper above controls how much reaches the next block.
     static constexpr float outputCalibration = 1.25f;
     static constexpr float safetyCeiling = 3.0f;
     double sampleRate = 44100.0;

@@ -8,16 +8,18 @@
 class AmpNode : public PedalNode
 {
 public:
-    explicit AmpNode (juce::AudioProcessorValueTreeState& state) : PedalNode (state) {}
+    AmpNode (juce::AudioProcessorValueTreeState& state, ProcessingQualityState& quality)
+        : PedalNode (state, &quality) {}
     juce::Identifier getId() const override { return "amp"; }
 
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         for (int mode = 0; mode < (int) amps.size(); ++mode)
             amps[(size_t) mode].prepare (spec, mode);
-        prepareCrossfade (spec.sampleRate, pBool ("ampSectionOn") && pBool ("ampOn"));
+        prepareCrossfade (spec, pBool ("ampSectionOn") && pBool ("ampOn"));
     }
     void reset() override { for (auto& a : amps) a.reset(); }
+    void oversamplingModeChanged() override { for (auto& a : amps) a.reset(); }
 
     // Pinned to the 4x instance regardless of the live oversampling setting,
     // so the reported total stays constant across a live quality switch.
@@ -26,13 +28,13 @@ public:
     // changes and re-publishes accordingly.
     int getLatencySamples() const override
     {
-        return amps[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))].getLatencySamples();
+        return amps[(size_t) oversamplingMode()].getLatencySamples();
     }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
     {
         const auto active = inTargetOrder && pBool ("ampSectionOn") && pBool ("ampOn");
-        auto& selected = amps[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))];
+        auto& selected = amps[(size_t) oversamplingMode()];
         return crossfadeToggle (buffer, active, [this, &selected] (juce::AudioBuffer<float>& b)
         {
             selected.setEnabled (true);

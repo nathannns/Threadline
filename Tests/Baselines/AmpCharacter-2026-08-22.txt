@@ -1,0 +1,43 @@
+AmpModule guitar-character regression baseline
+Captured 2026-08-22 at 48kHz with Focusrite-calibrated physical DI,
+Gain noon, EQ noon and diagnostic final Output -18dB.
+
+This file is observational. It is not a set of subjective pass/fail targets.
+
+Dynamic response
+voice       25mV RMS  100mV RMS  200mV RMS  compression dB
+Vintage      0.01134    0.03473    0.05342       4.60
+Boutique     0.01240    0.03892    0.06583       3.56
+Vox          0.00974    0.03397    0.04018       5.75
+Deluxe       0.00851    0.03400    0.06768       0.05
+JTM45        0.01067    0.04194    0.05809       3.34
+Mesa         0.01036    0.04130    0.07979       0.33
+JC-120       0.00970    0.03369    0.05010       3.80
+
+Two-tone IM products at 100mV RMS total
+Vintage      -15.30 dBc
+Boutique     -34.02 dBc
+Vox          -47.22 dBc
+Deluxe       -46.96 dBc
+JTM45        -50.93 dBc
+Mesa         -48.79 dBc
+JC-120       -90.77 dBc
+
+Synthetic guitar pluck, energy relative to the 250-2500Hz mid band
+voice       low dB   high dB   crest dB   peak
+Vintage       3.04    -32.25      13.25   0.14
+Boutique      7.83    -26.94      15.34   0.18
+Vox           3.26    -28.64       5.27   0.04
+Deluxe       10.62    -20.11      12.78   0.12
+JTM45         7.97    -26.42       7.63   0.07
+Mesa          7.83    -26.69      12.21   0.12
+JC-120        3.63    -29.66       8.49   0.07
+
+7.5kHz alias sentinel at 18kHz
+Vintage     -143.35 dBc
+Boutique     -58.98 dBc
+Vox         -117.98 dBc
+Deluxe      -153.22 dBc
+JTM45       -131.10 dBc
+Mesa        -158.68 dBc
+JC-120      -163.26 dBc

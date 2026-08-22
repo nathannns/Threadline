@@ -24,7 +24,7 @@ public:
         loadSelectionIfNeeded (cabA, "cabAIRSelect", lastASelection);
         loadSelectionIfNeeded (cabB, "cabBIRSelect", lastBSelection);
         const auto active = pBool ("ampSectionOn") && (pBool ("cabAOn") || pBool ("cabBOn"));
-        prepareCrossfade (spec.sampleRate, active);
+        prepareCrossfade (spec, active);
     }
 
     void reset() override { cabA.reset(); cabB.reset(); }

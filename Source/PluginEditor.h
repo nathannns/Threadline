@@ -5,8 +5,8 @@
 #include "UI/Pedalboard/PedalboardComponent.h"
 #include <JuceHeader.h>
 
-// Top-right power/bypass ring — lit amber when the plugin is active, dims
-// to grey when masterBypass is engaged.
+// Top-right master power/mute ring — lit amber when audio is active, dims
+// to grey when every effect and the output are switched off.
 class PowerButton : public juce::ToggleButton
 {
 public:
@@ -14,8 +14,8 @@ public:
     {
         setClickingTogglesState (true);
         setWantsKeyboardFocus (true);
-        setTitle ("Global bypass");
-        setHelpText ("Bypass or enable all Threadline processing");
+        setTitle ("Master power and mute");
+        setHelpText ("Turn all Threadline effects and audio output on or off");
     }
 
     void paint (juce::Graphics& g) override
@@ -36,52 +36,6 @@ public:
         g.strokePath (glyph, juce::PathStrokeType (3.1f));
         g.drawLine (glyphBounds.getCentreX(), glyphBounds.getY() - 2.5f,
                     glyphBounds.getCentreX(), glyphBounds.getCentreY(), 3.1f);
-        if (hasKeyboardFocus (true))
-            g.drawEllipse (bounds.expanded (2.5f), 1.75f);
-    }
-};
-
-// Sits between the preset bar and the options/power cluster. Silences the
-// input before it reaches any module -- for silent patch changes or
-// checking dry level without the whole plugin's bypass state changing.
-// Lights red when engaged (muted), matching the usual mixing-console
-// convention, rather than the amber "active" colour every other toggle
-// here uses -- muted should read as an alarm, not as "on".
-class MuteButton : public juce::ToggleButton
-{
-public:
-    MuteButton()
-    {
-        setClickingTogglesState (true);
-        setWantsKeyboardFocus (true);
-        setTitle ("Mute input");
-        setHelpText ("Silence the input before it reaches any effect");
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        auto bounds = getLocalBounds().toFloat().reduced (5.0f);
-        if (isDown()) bounds.translate (0.0f, 1.0f);
-        const auto muted = getToggleState();
-        const auto colour = muted ? juce::Colour (0xffd8503f) : juce::Colour (0xff6a5a4e);
-        g.setColour (colour);
-        g.drawEllipse (bounds, 3.1f);
-
-        auto glyph = bounds.reduced (bounds.getWidth() * 0.24f);
-        juce::Path speaker;
-        const auto boxW = glyph.getWidth() * 0.42f;
-        speaker.addRectangle (glyph.getX(), glyph.getCentreY() - glyph.getHeight() * 0.18f,
-                              boxW, glyph.getHeight() * 0.36f);
-        speaker.startNewSubPath (glyph.getX() + boxW, glyph.getCentreY() - glyph.getHeight() * 0.18f);
-        speaker.lineTo (glyph.getRight(), glyph.getY());
-        speaker.lineTo (glyph.getRight(), glyph.getBottom());
-        speaker.lineTo (glyph.getX() + boxW, glyph.getCentreY() + glyph.getHeight() * 0.18f);
-        speaker.closeSubPath();
-        g.strokePath (speaker, juce::PathStrokeType (2.5f));
-        if (muted)
-            g.drawLine (glyph.getX() - 2.5f, glyph.getBottom() + 2.5f,
-                        glyph.getRight() + 2.5f, glyph.getY() - 2.5f, 3.0f);
-
         if (hasKeyboardFocus (true))
             g.drawEllipse (bounds.expanded (2.5f), 1.75f);
     }
@@ -299,12 +253,11 @@ private:
     PresetIconButton addPresetButton { "New preset", PresetIconButton::Icon::add };
     PresetIconButton savePresetButton { "Save preset", PresetIconButton::Icon::save };
     PresetIconButton deletePresetButton { "Delete preset", PresetIconButton::Icon::remove };
-    MuteButton muteButton;
     PowerButton powerButton;
     GearButton optionsMenuButton;
     OptionsPanel optionsGroup;
     bool optionsVisible = false;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment, muteAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
 
     // Guitar/Line input calibration and amp oversampling quality -- global
     // engine settings, not per-pedal, so they live in the Options panel
@@ -313,13 +266,20 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> inputSourceAttachment;
     juce::ToggleButton input1Button { "INPUT 1" }, input2Button { "INPUT 2" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> input1Attachment, input2Attachment;
+    juce::Label inputCalibrationLabel;
     juce::Label ampQualityLabel;
     juce::ComboBox ampOversamplingBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ampOversamplingAttachment;
+    juce::Label renderQualityLabel;
+    juce::ComboBox renderOversamplingBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> renderOversamplingAttachment;
+    juce::Label processingModeLabel;
+    juce::ComboBox processingModeBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> processingModeAttachment;
 
     // Global tap tempo -- feeds Plexer/Copier's own Sync toggle (see
     // TapTempo.h). Lives in the header row between the preset bar and the
-    // mute button, not the Options panel -- it's a physical-pedal-style
+    // power button, not the Options panel -- it's a physical-pedal-style
     // control a player reaches for often, not a set-once engine setting.
     juce::Label tapTempoBpmLabel;
     TapTempoButton tapTempoButton;
@@ -337,6 +297,8 @@ private:
     std::unique_ptr<TileToggle> gateToggle;
     juce::Label gateBarLabel;
     LevelMeterBar inputMeter, outputMeter;
+    float heldRawInputPeak = 0.0f;
+    int rawInputPeakHoldFrames = 0;
     juce::Rectangle<int> bottomBarBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ThreadlineAudioProcessorEditor)

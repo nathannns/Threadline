@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "WDFCore.h"
+#include "GuitarSignalLevel.h"
 
 // "Growl" -- an original germanium two-transistor fuzz in the general
 // archetype of circuits like the Arbiter/Dallas Fuzz Face (an NPN/PNP
@@ -52,6 +53,7 @@ public:
             (size_t) channelCount, stages,
             juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true);
         oversampling->initProcessing (spec.maximumBlockSize);
+        wetBuffer.setSize (channelCount, static_cast<int> (spec.maximumBlockSize), false, false, true);
         for (auto& f : dcBlock)
             f.prepare (spec);
 
@@ -91,7 +93,8 @@ public:
     {
         bias01 = juce::jlimit (0.0f, 1.0f, bias01);
         fuzzAmount = juce::jlimit (0.0f, 1.0f, fuzz01);
-        outputLevel = juce::jlimit (0.0f, 2.0f, level01 * 2.0f);
+        const auto level = juce::jlimit (0.0f, 1.0f, level01);
+        outputLevel = std::pow (level, 3.93f);
         mix = juce::jlimit (0.0f, 1.0f, mix01);
         // Audit-caught inefficiency: the quiescent-point solve below only
         // needs to re-run when Bias/Fuzz actually change (it doesn't
@@ -122,7 +125,15 @@ public:
         // real transistor solve) now scales with Fuzz too, so the knob's
         // effect is felt through the whole chain the way the real shared
         // loop behaves, not confined to Q1's DC bias alone.
-        stage2DriveScale = 15.0f + fuzzAmount * 40.0f;
+        // The former 15..55 range gave a matched 100mV guitar note a sane
+        // output level only because the diode stage was already pinned, but
+        // its local small-signal slope amplified a 100uV interface/pickup
+        // noise-floor signal by +30.9dB -- 13.5dB above TS9 and 18.9dB above
+        // Bison at the same controls. Reduce gain before the clipper, not
+        // final Level and not with a gate: 2.5..8.5 retains nearly the same
+        // Fuzz-control ratio and lets guitar peaks reach the germanium knee,
+        // while materially lowering noise before saturation.
+        stage2DriveScale = 2.5f + fuzzAmount * 6.0f;
 
         // Quiescent (silent-input) collector current -- subtracted from the
         // running ic1 in process() so stage1Out carries only the AC
@@ -162,7 +173,7 @@ public:
         {
             for (int i = 0; i < osSamples; ++i)
             {
-                const auto vin = osBlock.getSample ((int) ch, i) * inputScale;
+                const auto vin = GuitarSignalLevel::toVolts (osBlock.getSample ((int) ch, i));
                 const auto ib1 = solveBaseCurrent (vin, baseVoltage[ch]);
                 // Transistor current gain, soft-saturating at high drive
                 // (real germanium AF transistors' beta falls off well
@@ -197,7 +208,7 @@ public:
                 const auto stage1Out = -(ic1 - ic1Quiescent) * collectorLoadOhms;
                 auto clipped = stage2[ch].processSample (stage1Out * stage2DriveScale) * outputCalibration;
                 clipped = safetyCeiling * std::tanh (clipped / safetyCeiling);
-                osBlock.setSample ((int) ch, i, clipped);
+                osBlock.setSample ((int) ch, i, GuitarSignalLevel::fromVolts (clipped));
             }
         }
         oversampling->processSamplesDown (block);
@@ -282,11 +293,10 @@ private:
     juce::AudioBuffer<float> wetBuffer;
     Stage2Clipper stage2[2];
     float baseVoltage[2] { 0.0f, 0.0f };
-    static constexpr float inputScale = 0.02f; // line-level audio -> representative small-signal base-junction volts
     static constexpr float beta = 110.0f, ibKnee = 150.0e-6f;
     float ic1Quiescent = 0.0f; // see setParameters()'s own comment
     static constexpr float collectorLoadOhms = 8200.0f;
-    float stage2DriveScale = 40.0f; // see setParameters()'s own comment on why this now tracks fuzzAmount
+    float stage2DriveScale = 5.5f; // see setParameters()'s own comment on why this tracks fuzzAmount
     // Empirically-tuned via a standalone harness (same discipline as
     // Klon/TS9's own calibration constants) -- stage2's raw output peak
     // plateaus around 0.23-0.26 across the full Bias x Fuzz grid (the

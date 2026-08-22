@@ -9,16 +9,18 @@
 class KlonNode : public PedalNode
 {
 public:
-    explicit KlonNode (juce::AudioProcessorValueTreeState& state) : PedalNode (state) {}
+    KlonNode (juce::AudioProcessorValueTreeState& state, ProcessingQualityState& quality)
+        : PedalNode (state, &quality) {}
     juce::Identifier getId() const override { return "klon"; }
 
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         for (int mode = 0; mode < (int) klons.size(); ++mode)
             klons[(size_t) mode].prepare (spec, mode);
-        prepareCrossfade (spec.sampleRate, pBool ("preFxSectionOn") && pBool ("klonOn"));
+        prepareCrossfade (spec, pBool ("preFxSectionOn") && pBool ("klonOn"));
     }
     void reset() override { for (auto& k : klons) k.reset(); }
+    void oversamplingModeChanged() override { for (auto& k : klons) k.reset(); }
 
     // Pinned to the 4x instance regardless of the live oversampling setting,
     // matching the plugin's existing latency-reporting convention.
@@ -28,7 +30,7 @@ public:
     // value here would just be wrong instead of avoiding anything.
     int getLatencySamples() const override
     {
-        return klons[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))].getLatencySamples();
+        return klons[(size_t) oversamplingMode()].getLatencySamples();
     }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
@@ -37,7 +39,7 @@ public:
         // Follows the global Amp Oversampling setting (Options panel) --
         // klonOversampling stays registered but deprecated in place, same
         // treatment as odOrder, so old sessions/hosts don't break.
-        auto& selected = klons[(size_t) juce::jlimit (0, 2, (int) p ("ampOversampling"))];
+        auto& selected = klons[(size_t) oversamplingMode()];
         return crossfadeToggle (buffer, active, [this, &selected] (juce::AudioBuffer<float>& b)
         {
             selected.setEnabled (true);

@@ -29,14 +29,10 @@
 // see ParallelTile's own comment for the (intentionally accepted) brief
 // race window during a manual reassignment.
 //
-// Known limitation: getLatencySamples() reports the correct PDC figure
-// (max of whichever two pedals are assigned) so the host stays sample-
-// aligned overall, but the two parallel paths are *not* delay-compensated
-// against each other internally -- pairing a 0-latency slot with an
-// oversampled one (Klon/TS9/Amp/Fangs/Bison/Growl) will blend them
-// slightly out of phase/comb-filtered at that pedal's own oversampling
-// latency. Fine for the common case (neither slot oversampled, or only
-// one slot in use); a real fix needs a per-slot compensation delay line.
+// Each branch is delay-compensated to the slower assigned node before the
+// blend. Without this, pairing a zero-latency effect with an oversampled one
+// produced phase/comb filtering even though host PDC correctly saw the
+// container's maximum branch latency.
 class ParallelNode : public PedalNode
 {
 public:
@@ -48,14 +44,18 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec) override
     {
         lastSpec = spec;
-        prepareCrossfade (spec.sampleRate, pBool ("parallelOn"));
+        bufferA.setSize (static_cast<int> (spec.numChannels), static_cast<int> (spec.maximumBlockSize), false, false, true);
+        bufferB.setSize (static_cast<int> (spec.numChannels), static_cast<int> (spec.maximumBlockSize), false, false, true);
+        compensationA.prepare (spec);
+        compensationB.prepare (spec);
+        prepareCrossfade (spec, pBool ("parallelOn"));
     }
 
     void reset() override
     {
-        // Slot pedals are reset by PedalChainRunner itself the moment
-        // *they* transition into active use (whether run serially or
-        // picked into a slot here) -- nothing box-local to reset.
+        compensationA.reset();
+        compensationB.reset();
+        lastCompensationA = lastCompensationB = -1;
     }
 
     int getLatencySamples() const override
@@ -65,6 +65,14 @@ public:
         const auto latA = nodeA != nullptr ? nodeA->getLatencySamples() : 0;
         const auto latB = nodeB != nullptr ? nodeB->getLatencySamples() : 0;
         return juce::jmax (latA, latB);
+    }
+
+    bool routesNode (const PedalNode* node) const
+    {
+        if (! pBool ("parallelOn") || node == nullptr)
+            return false;
+        return resolveSlot (static_cast<int> (p ("parallelSlotA"))) == node
+            || resolveSlot (dedupedSlotB()) == node;
     }
 
     bool updateAndProcess (juce::AudioBuffer<float>& buffer, bool inTargetOrder) override
@@ -87,6 +95,11 @@ public:
             nodeA->updateAndProcess (bufferA, true);
             nodeB->updateAndProcess (bufferB, true);
 
+            const auto latencyA = nodeA->getLatencySamples();
+            const auto latencyB = nodeB->getLatencySamples();
+            compensate (bufferA, compensationA, latencyB - latencyA, lastCompensationA);
+            compensate (bufferB, compensationB, latencyA - latencyB, lastCompensationB);
+
             const auto blend = juce::jlimit (0.0f, 1.0f, p ("parallelBlend") / 100.0f);
             const auto channels = juce::jmin (b.getNumChannels(),
                                                juce::jmin (bufferA.getNumChannels(), bufferB.getNumChannels()));
@@ -102,6 +115,26 @@ public:
     }
 
 private:
+    static void compensate (juce::AudioBuffer<float>& buffer,
+                            juce::dsp::DelayLine<float>& delay,
+                            int delaySamples,
+                            int& previousDelaySamples)
+    {
+        delaySamples = juce::jmax (0, delaySamples);
+        if (delaySamples != previousDelaySamples)
+        {
+            delay.reset();
+            previousDelaySamples = delaySamples;
+        }
+        delay.setDelay (static_cast<float> (delaySamples));
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            {
+                delay.pushSample (channel, buffer.getSample (channel, sample));
+                buffer.setSample (channel, sample, delay.popSample (channel));
+            }
+    }
+
     PedalNode* resolveSlot (int choiceIndex) const
     {
         if (choiceIndex <= 0)
@@ -126,5 +159,7 @@ private:
 
     std::function<PedalNode* (const juce::String&)> resolver;
     juce::AudioBuffer<float> bufferA, bufferB;
+    juce::dsp::DelayLine<float> compensationA { 512 }, compensationB { 512 };
+    int lastCompensationA = -1, lastCompensationB = -1;
     juce::dsp::ProcessSpec lastSpec {};
 };

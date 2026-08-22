@@ -178,25 +178,117 @@ different starting point:
 links" section and `git log` for anything more recent than this file's
 last edit.)
 
+## Permanent amp-input invariants
+
+These rules override later optimization, level-matching, and amp-modeling
+experiments unless the user explicitly changes them:
+
+- Use the [Interface and Amp Sim Input Level Table](https://docs.google.com/spreadsheets/d/1bZHaapCiCg4RLIFqTS5KyUUVa4MwaqfxRCYk35Bvdrs/edit?gid=0#gid=0)
+  as the input-headroom authority. Optimize for a Focusrite instrument input at
+  minimum hardware gain, using Threadline's fixed `+12.25dBu = 0dBFS`
+  reference (the midpoint of Scarlett 2i2 4th Gen +12dBu and 3rd Gen +12.5dBu).
+- Do not introduce arbitrary DI peak targets, input normalization, AGC, or
+  signal-following gain compensation. Preserve the actual pickup level:
+  humbuckers remain louder and hit the model harder than single coils.
+- Keep the amp Gain knob within the modeled amp circuit after its initial input
+  stage (V1 or its topology-equivalent). It must not alter the plugin's expected
+  interface sensitivity or become a pre-model DI trim.
+
 **Done and shipped:**
+- **Professional nonlinear staging (2026-08-22):** all five drive/fuzz
+  circuits and every amp now share the Focusrite voltage-domain contract in
+  `GuitarSignalLevel.h`; a pedal output is no longer converted to physical
+  volts a second time at the amp. Pedal Level uses a measured audio taper,
+  with noon near bypass loudness and maximum passing the circuit rather than
+  adding an artificial +6dB. Removed the +11.75/+15.67dB passive-tone-stack
+  compensation that formerly sat before nonlinear V2, solved the LTP's
+  missing elevated DC grid bias at prepare time, corrected JTM45 to fixed
+  bias, and deepened only the post-V1 standard amp Gain taper. No AGC,
+  lookahead, added latency, per-guitar normalization, or audio-thread solver
+  setup was introduced.
+- **Amp signal-level parity (2026-08-21, superseded):** both blind JTM/JC dB
+  trims and a proposed live RMS/AGC matcher were rejected. A measured 7x11
+  drive-dependent correction table was briefly used, then removed. Shipping
+  behavior uses one fixed final-Output trim per voice relative to Deluxe; it
+  does not normalize the DI, follow the signal, or alter Gain and circuit
+  behavior.
+- **Unified global power/mute (2026-08-21):** both plug-ins' header power
+  control now fades the master output to silence and stops running the whole
+  effect chain at the off endpoint; it no longer passes dry audio. Threadline's
+  redundant Mute button and live `inputMute` behavior were removed. The legacy
+  parameter remains hidden solely for old project/preset compatibility.
+- **Backlog implementation audit (2026-08-21):** several old queue entries
+  described work that already exists in the shipping source. TS9 has BYOD's
+  finite-gain R-type WDF including 51pF and 4.7k+47nF branches; Klon has the
+  traced five-block gain-stage port; Dimension BBD has four independent mode
+  buttons and circuit-derived behavior; Redface has the BA283/BA284/B205/
+  B211/B182-derived path; Rockalizer Doubler has independent drifting ADT
+  voices. Those are no longer treated as unimplemented work.
+- **Output parity + JC modes (2026-08-21):** Threadline's final Output node
+  now uses the same +1.8dB nominal calibration as Rockalizer. JC Chorus adds
+  Mode I, Mode II and combined I+II; the combined setting runs both BBD taps
+  with power normalization rather than merely relabeling one LFO.
+- **Resource cleanup audit (2026-08-21):** the previously cited "threadline
+  layout" image is no longer tracked. Every remaining tracked image, IR,
+  font, and application icon is either embedded by CMake or retained with
+  its required license; no material user asset was deleted.
+- **Machine-grounded Tape record/reproduce EQ (2026-08-21):** both repos'
+  shared Tape engine now places a complementary EQ pair around the magnetic
+  stage instead of approximating the whole machine with post-saturation Tone
+  and body filters. Studio uses the A800 15 ips NAB 3180/50 us landmarks;
+  Cassette uses a 120 us turnover and the Tascam 244's separate record/bias/
+  playback architecture. The pair cancels in the linear case but changes
+  which frequencies saturate first. TapeValidation's Volume argument was also
+  corrected from 1% to its intended 100%; the full 48/96/192k sweep remains
+  finite and bounded.
 - **Local UI/cab asset migration (2026-08-21):** Threadline now embeds the
   replacement enclosure/knob/LED asset directories and the replacement
   22-IR cabinet library. Cab A/B are active again as independent convolution
   instances: A feeds left, B feeds right when both are enabled, Balance
   controls their relative level, and mono hosts retain a parallel blend.
-  Available pedal-specific knobs are wired for Comp, Bull, Breaker, Fangs,
-  Bison, Growl, Dynamix, Tape, Tremolo, and July; other controls use the
-  shared effects knob. Pedal title chrome now sits above rather than over
-  the enclosure image. `channel_enclosure.png` is the Redface tile art.
+  All supplied pedal-specific knobs are wired into their matching effects:
+  Comp, Bull, Breaker, Fangs, Bison, Growl, Dynamix, Tape, Tremolo, July,
+  Amp, Cab, Channel EQ, Delay, Desk, Dimension, Ensemble, JC, Redface,
+  Reverb, Satellite, and Spring. Parallel's single Blend control uses the A
+  artwork on its lower half and B artwork on its upper half. Pedal title
+  chrome sits above rather than over the enclosure image. `redface.png` is
+  the Redface tile art and `channeleq_enclosure.png` is the graphic-EQ art.
 - **Low-risk verification pass (2026-08-21):** `CabValidation` now exercises
   the production dual-cab router (A-only, B-only, stereo A-left/B-right,
   both Balance endpoints, and mono fallback) in addition to the existing
-  finite/bounded convolution sweep at 48/96/192k. The unchanged
-  `AmpLevelProbe` reports near-identical synthetic RMS for all seven voices
-  across Drive 0..1, despite the real-listening report that JC is quiet and
-  JTM45 loud. That is a negative result: the present sine/RMS probe does not
-  reproduce the perceptual imbalance and must not be used to dismiss it or
-  justify a blind normalization change.
+  finite/bounded convolution sweep at 48/96/192k. Amp voice loudness now uses
+  only one fixed final-Output offset per voice relative to Deluxe. The latest
+  Focusrite/nonlinear-staging pass recalibrated these at 100mV guitar input
+  and noon Gain: Vintage +3.31dB, Boutique +8.53dB, Vox -9.00dB, JTM45
+  -5.35dB, Mesa -0.17dB, and JC-120 +3.45dB. Deluxe remains 0dB. These multipliers sit after the complete
+  amp models and do not alter Gain, distortion, tone, sag, or latency.
+- **Guitar-DI gain staging (2026-08-21):** factory schematics were rechecked
+  against the amp hot paths. Vintage/Boutique feed V1 directly and place the
+  audio-taper Gain between V1 and V2. JC-120 now includes its IC2a/VR1
+  distortion path with the D7-D10 antiparallel two-diode knee. Vox, Deluxe,
+  JTM45 and Mesa now use a fixed normal-DI input calibration with Gain applied
+  after V1 rather than changing the expected input sensitivity. Gain-derived
+  values are cached outside the sample loop; no allocations, lookahead, new
+  oversampling, or latency were added.
+- **Focusrite input-headroom calibration (2026-08-22):** followed the supplied
+  interface/amp-sim table's method: Scarlett instrument gain at minimum and
+  no peak normalization. Threadline's input reference is +12.25dBu=0dBFS,
+  midway between 2i2 4th Gen (+12dBu) and 3rd Gen (+12.5dBu), a maximum
+  mismatch of only 0.25dB. Full scale converts to 4.49073V peak internally;
+  Gain operates after V1 and therefore never changes interface sensitivity.
+  Single coils remain quieter and humbuckers naturally hit the model harder.
+- **Schematic fidelity experiment (2026-08-21, rolled back):** extra Mark I
+  stages, the replacement Vox network, JTM45 PI/power changes, and JC output
+  changes produced fizzy high-order distortion in guitar auditioning. Those
+  amp-path changes were removed; the known earlier amp engines are restored.
+  The independent UI work remains: Cab IR family submenus and title-anchored
+  pedal swap menus.
+- **Amp breakup/cab selector correction (2026-08-21):** the hierarchical Cab
+  popup now uses ComboBox's native root menu and dismissal callback; the old
+  custom popup left JUCE's private active-menu state latched after one choice.
+  The experimental amp-path changes were then completely removed rather than
+  further EQing or limiting their unwanted fizz. Fixed Output trims were
+  remeasured against Deluxe after the rollback.
 - All 6 originally-requested amp items: Marshall JTM45, Mesa/Boogie Mark I,
   Roland JC-120 (new voices); Deluxe 63, RE-201/Satellite, Tweed 5E3
   (accuracy upgrades). RE-201's embedded reverb was added, then removed
@@ -220,10 +312,31 @@ last edit.)
   real-time budget at 4× oversampling while *keeping* 4×. Direct side-by-side
   A/B (steady + blocking-distortion + impulse) came out bit-exact on all 7
   voices; `AmpValidation` still clean at 48/96/192k. See README "Amp CPU".
-- Amp voice loudness normalization across the Drive range (drive-dependent
-  `perVoiceNormaliseByDrive[7][11]` table replacing the scalar per-voice
-  gain), 583b1e0. The user has since re-flagged residual imbalance (Jazz
-  Chorus still quiet, JTM45 still loud) — see README "Issues / next work" #1.
+- **Amp-stage diagnosis and live quality switching (2026-08-22):** an
+  analysis-only build traced excessive low-mid energy to the
+  Bassman/AB763-style tone-stack output feeding V2, and Boutique's dominant
+  new high-order content to its cathodyne phase inverter. No blind bass cut or
+  global oversampling increase was applied. Live Tracking-quality changes now
+  fade 12ms to silence, reset/switch the prepared nonlinear engines, and fade
+  back in so latency-mismatched modes are never crossfaded. The integrated
+  routing test verifies the silent boundary and recovery.
+- **Growl noise-floor gain and effect folders (2026-08-22):** Growl's
+  second-stage pre-clip drive was amplifying a physical 100uV input by
+  +30.89dB at noon. It is now +14.63dB (Bison: +12.02dB), achieved before
+  clipping without a gate, denoiser, DI normalization, or final-Level hack.
+  Add/swap menus now group pedals as Compressor, OD / Fuzz, Amp / Cab,
+  Modulation, Reverb, and Other; Tape, Desk, Redface, and EQ live in Other.
+- **EL34World effects audit (2026-08-22):** every applicable Threadline
+  effect was mapped against visually inspected archive scans. Fangs now uses
+  the RAT source's two frequency-selective feedback legs and component-derived
+  Filter endpoints; Copier now has the missing NE570-style compressor/expander
+  around its BBD memory; Noise Gate now preserves tails up to the NF-1's 1.5s
+  range. `Tests/Baselines/EffectSchematicAudit-2026-08-22.md` records exact
+  coverage and prevents unrelated circuits from being forced onto original
+  Threadline effects.
+- Historical: amp loudness once used a Drive-dependent
+  `perVoiceNormaliseByDrive[7][11]` table. It was removed after it conflicted
+  with the approved fixed Output-knob-only matching behavior.
 - Tape Volume knob added to both repos (Threadline c46c1ee, Rockalizer
   2e6b03f): `tapeVolume` 0–100%, default 100% unity, final linear scale in
   `TapeModule::processCore` after the drive trim.
@@ -277,27 +390,8 @@ last edit.)
     currently in sync, not a visible bug, so left as a latent-risk note
     rather than a refactor.
 
-**Not done — queued, in this order (user chose "tractable first, defer
-the biggest"):**
-1. **TS9's deeper fix** (explicitly deferred): feedback network still
-   missing a real 51pF cap and 4.7k+47nF branch (the documented "mid-hump"
-   source). Needs general N-port R-type-adaptor support added to
-   `WDFCore.h` (only has 2-port Series/Parallel today) plus porting
-   BYOD's own scattering matrix (already pulled verbatim via `curl`, not
-   yet wired in).
-2. **Klon** — not re-investigated this pass. `KlonModule`'s own header
-   comment already claims it was verified against
-   `jatinchowdhury18/KlonCentaur`'s traced schematic, so there may be
-   little gap here — needs an actual re-check, not an assumption either
-   way.
-3. **`DimensionChorusModule`** (Roland SDD-320 Dimension D) — source named
-   by the user but not yet actually fetched/verified.
-4. **`ChannelEQModule`** ("Redface", Neve 1073-style) — deliberately
-   deferred as the largest single item. Real schematics for the top-level
-   channel amp (EH10023) and the BA283 card's discrete-transistor circuit
-   (EX/10283) are already in hand; still need BA284/BA182/BA205/BA211's
-   own diagrams (5 of 11 pages of the archive.org "fullpak" unread), then
-   real transfer functions for 4 switched active-filter networks. Open
-   question not yet settled: does the "archetype only, no exact BOM"
-   policy set for Fangs/Bison/Growl apply here too, or is a studio-EQ
-   clone a different case?
+The former circuit-accuracy queue below this point was superseded by later
+implementation work and removed after a source audit on 2026-08-21. The live
+remaining work is always the numbered list in `README.md`; do not resurrect
+TS9/Klon/Dimension/Redface tasks from an older checkpoint without first
+checking their current module headers and validation targets.

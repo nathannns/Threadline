@@ -34,13 +34,13 @@ PedalChainRunner::PedalChainRunner (juce::AudioProcessorValueTreeState& apvtsToU
     compressorNode = compressor.get();
     registry.push_back (std::move (compressor));
     registry.push_back (std::make_unique<LowDynamicNode> (apvts));
-    registry.push_back (std::make_unique<KlonNode> (apvts));
-    registry.push_back (std::make_unique<TS9Node> (apvts));
-    registry.push_back (std::make_unique<FangsNode> (apvts));
-    registry.push_back (std::make_unique<BisonNode> (apvts));
-    registry.push_back (std::make_unique<GrowlNode> (apvts));
-    registry.push_back (std::make_unique<TapeNode> (apvts));
-    registry.push_back (std::make_unique<AmpNode> (apvts));
+    registry.push_back (std::make_unique<KlonNode> (apvts, qualityState));
+    registry.push_back (std::make_unique<TS9Node> (apvts, qualityState));
+    registry.push_back (std::make_unique<FangsNode> (apvts, qualityState));
+    registry.push_back (std::make_unique<BisonNode> (apvts, qualityState));
+    registry.push_back (std::make_unique<GrowlNode> (apvts, qualityState));
+    registry.push_back (std::make_unique<TapeNode> (apvts, qualityState));
+    registry.push_back (std::make_unique<AmpNode> (apvts, qualityState));
     registry.push_back (std::make_unique<CabUnitNode> (apvts));
     registry.push_back (std::make_unique<TremoloNode> (apvts));
     registry.push_back (std::make_unique<ChorusNode> (apvts));
@@ -59,7 +59,9 @@ PedalChainRunner::PedalChainRunner (juce::AudioProcessorValueTreeState& apvtsToU
     // `registry` by id at call time -- findById() searches the whole vector
     // regardless of a node's own position within it, so this ordering only
     // matters for readability, not correctness.
-    registry.push_back (std::make_unique<ParallelNode> (apvts, [this] (const juce::String& id) { return findById (id); }));
+    auto parallel = std::make_unique<ParallelNode> (apvts, [this] (const juce::String& id) { return findById (id); });
+    parallelNode = parallel.get();
+    registry.push_back (std::move (parallel));
 }
 
 PedalNode* PedalChainRunner::findById (const juce::String& id) const
@@ -79,17 +81,37 @@ int PedalChainRunner::computeLatencyFor (const juce::StringArray& orderedIds) co
     return total;
 }
 
+void PedalChainRunner::handleAsyncUpdate()
+{
+    const auto latency = requestedLatency.load (std::memory_order_acquire);
+    if (latency >= 0 && owningProcessor != nullptr)
+        owningProcessor->setLatencySamples (latency);
+}
+
 void PedalChainRunner::prepare (const juce::dsp::ProcessSpec& spec)
 {
     lastSpec = spec;
+    const auto trackingMode = (int) apvts.getRawParameterValue ("ampOversampling")->load();
+    const auto renderMode = (int) apvts.getRawParameterValue ("renderOversampling")->load();
+    const auto initialMode = offlineRendering.load (std::memory_order_relaxed) ? renderMode : trackingMode;
+    qualityState.setEffectiveOversamplingMode (initialMode);
+    pendingOversamplingMode = initialMode;
+    qualitySwitchPending = false;
+    qualityTransitionGain.reset (spec.sampleRate, 0.012);
+    qualityTransitionGain.setCurrentAndTargetValue (1.0f);
     for (auto& node : registry)
         node->prepare (spec);
 
     PedalboardOrder::ensureExists (apvts);
     runtimeOrder.clear();
     targetOrderNodes.clear();
+    runtimeOrder.reserve (maxPedals);
+    targetOrderNodes.reserve (maxPedals);
+    rebuildScratch.reserve (maxPedals);
+    stillNeededScratch.reserve (maxPedals);
+    targetOrderScratch.ensureStorageAllocated (maxPedals);
     appliedGeneration = pendingGeneration.load() - 1; // force resync below to actually run
-    lastReportedLatency = -1;
+    lastReportedLatency.store (-1, std::memory_order_relaxed);
     resyncFromPersistedOrder();
 }
 
@@ -104,10 +126,10 @@ void PedalChainRunner::publishOrder (const juce::StringArray& orderedIds)
     pendingGeneration.fetch_add (1);
 
     const auto newLatency = computeLatencyFor (orderedIds);
-    if (newLatency != lastReportedLatency && owningProcessor != nullptr)
+    if (newLatency != lastReportedLatency.load (std::memory_order_acquire) && owningProcessor != nullptr)
     {
         owningProcessor->setLatencySamples (newLatency);
-        lastReportedLatency = newLatency;
+        lastReportedLatency.store (newLatency, std::memory_order_release);
     }
 }
 
@@ -130,7 +152,7 @@ void PedalChainRunner::setActivePedalOrder (const juce::StringArray& orderedIds)
 void PedalChainRunner::rebuildRuntimeOrder (const juce::StringArray& targetOrder)
 {
     targetOrderNodes.clear();
-    std::vector<PedalNode*> newRuntimeOrder;
+    rebuildScratch.clear();
 
     // Target-order nodes first, in the new order -- reusing the existing
     // instance (and its state) if it's already in runtimeOrder, otherwise a
@@ -146,7 +168,7 @@ void PedalChainRunner::rebuildRuntimeOrder (const juce::StringArray& targetOrder
         const auto alreadyRunning = std::find (runtimeOrder.begin(), runtimeOrder.end(), node) != runtimeOrder.end();
         if (! alreadyRunning)
             node->reset();
-        newRuntimeOrder.push_back (node);
+        rebuildScratch.push_back (node);
     }
 
     // Anything still running that's no longer in the target order is
@@ -157,25 +179,51 @@ void PedalChainRunner::rebuildRuntimeOrder (const juce::StringArray& targetOrder
     // contribution to the signal is vanishing by construction during that
     // same window, so the brief positional difference is inaudible.
     for (auto* node : runtimeOrder)
-        if (std::find (newRuntimeOrder.begin(), newRuntimeOrder.end(), node) == newRuntimeOrder.end())
-            newRuntimeOrder.push_back (node);
+        if (std::find (rebuildScratch.begin(), rebuildScratch.end(), node) == rebuildScratch.end())
+            rebuildScratch.push_back (node);
 
-    runtimeOrder = std::move (newRuntimeOrder);
+    runtimeOrder.swap (rebuildScratch);
 }
 
 void PedalChainRunner::processChain (juce::AudioBuffer<float>& buffer)
 {
+    const auto trackingMode = (int) apvts.getRawParameterValue ("ampOversampling")->load();
+    const auto renderMode = (int) apvts.getRawParameterValue ("renderOversampling")->load();
+    const auto requestedMode = juce::jlimit (0, 2,
+        offlineRendering.load (std::memory_order_relaxed) ? renderMode : trackingMode);
+    if (requestedMode != qualityState.getEffectiveOversamplingMode())
+    {
+        pendingOversamplingMode = requestedMode;
+        qualitySwitchPending = true;
+        qualityTransitionGain.setTargetValue (0.0f);
+    }
+    else if (qualitySwitchPending)
+    {
+        // The user returned to the currently-running mode before the fade
+        // reached silence. Cancel the pending switch and come back up.
+        qualitySwitchPending = false;
+        qualityTransitionGain.setTargetValue (1.0f);
+    }
+
     const auto generation = pendingGeneration.load();
     if (generation != appliedGeneration)
     {
-        juce::StringArray targetOrder;
+        auto copiedPendingOrder = false;
         {
-            const juce::SpinLock::ScopedLockType lock (orderLock);
-            for (int i = 0; i < pending.count; ++i)
-                targetOrder.add (pending.ids[i]);
+            const juce::SpinLock::ScopedTryLockType lock (orderLock);
+            if (lock.isLocked())
+            {
+                targetOrderScratch.clearQuick();
+                for (int i = 0; i < pending.count; ++i)
+                    targetOrderScratch.add (pending.ids[i]);
+                copiedPendingOrder = true;
+            }
         }
-        rebuildRuntimeOrder (targetOrder);
-        appliedGeneration = generation;
+        if (copiedPendingOrder)
+        {
+            rebuildRuntimeOrder (targetOrderScratch);
+            appliedGeneration = generation;
+        }
     }
 
     // Several nodes' own getLatencySamples() now reports whichever
@@ -191,17 +239,25 @@ void PedalChainRunner::processChain (juce::AudioBuffer<float>& buffer)
     // audio-thread-safe (the same atomic load every PedalNode's p()/pBool()
     // helper already does); only touching apvts.state's ValueTree itself
     // would need to stay message-thread-only, which this doesn't do.
-    const auto currentOversamplingMode = (int) apvts.getRawParameterValue ("ampOversampling")->load();
-    if (currentOversamplingMode != lastOversamplingMode)
+    const auto currentOversamplingMode = qualityState.getEffectiveOversamplingMode();
+    const auto currentParallelSlotA = static_cast<int> (apvts.getRawParameterValue ("parallelSlotA")->load());
+    const auto currentParallelSlotB = static_cast<int> (apvts.getRawParameterValue ("parallelSlotB")->load());
+    if (currentOversamplingMode != lastOversamplingMode
+        || currentParallelSlotA != lastParallelSlotA
+        || currentParallelSlotB != lastParallelSlotB)
     {
         lastOversamplingMode = currentOversamplingMode;
+        lastParallelSlotA = currentParallelSlotA;
+        lastParallelSlotB = currentParallelSlotB;
         int total = 0;
         for (auto* node : targetOrderNodes)
-            total += node->getLatencySamples();
-        if (total != lastReportedLatency && owningProcessor != nullptr)
+            if (node == parallelNode || parallelNode == nullptr || ! parallelNode->routesNode (node))
+                total += node->getLatencySamples();
+        if (total != lastReportedLatency.load (std::memory_order_acquire) && owningProcessor != nullptr)
         {
-            owningProcessor->setLatencySamples (total);
-            lastReportedLatency = total;
+            requestedLatency.store (total, std::memory_order_release);
+            lastReportedLatency.store (total, std::memory_order_release);
+            triggerAsyncUpdate();
         }
     }
 
@@ -209,15 +265,47 @@ void PedalChainRunner::processChain (juce::AudioBuffer<float>& buffer)
     // decides whether it's still needed next block -- true removal drops it
     // from runtimeOrder the block after it reports settled, so it costs
     // zero CPU from there on, not called again until genuinely re-added.
-    std::vector<PedalNode*> stillNeeded;
-    stillNeeded.reserve (runtimeOrder.size());
+    stillNeededScratch.clear();
+    const auto parallelInTarget = parallelNode != nullptr
+        && std::find (targetOrderNodes.begin(), targetOrderNodes.end(), parallelNode) != targetOrderNodes.end();
     for (auto* node : runtimeOrder)
     {
         const auto inTargetOrder = std::find (targetOrderNodes.begin(), targetOrderNodes.end(), node)
                                  != targetOrderNodes.end();
+        if (parallelInTarget && node != parallelNode && parallelNode->routesNode (node))
+        {
+            stillNeededScratch.push_back (node);
+            continue;
+        }
         const auto keep = node->updateAndProcess (buffer, inTargetOrder);
         if (keep || inTargetOrder)
-            stillNeeded.push_back (node);
+            stillNeededScratch.push_back (node);
     }
-    runtimeOrder = std::move (stillNeeded);
+    runtimeOrder.swap (stillNeededScratch);
+
+    // Different oversampling modes have different latency, so directly
+    // overlapping their outputs would comb-filter. Fade the complete chain
+    // to silence, reset/switch every affected prepared engine at the silent
+    // boundary, then fade back up. No allocation, lock, or module prepare()
+    // occurs on the audio thread.
+    if (qualityTransitionGain.isSmoothing()
+        || qualityTransitionGain.getCurrentValue() < 0.99999f)
+    {
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            const auto gain = qualityTransitionGain.getNextValue();
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+                buffer.setSample (channel, sample, buffer.getSample (channel, sample) * gain);
+        }
+    }
+
+    if (qualitySwitchPending && ! qualityTransitionGain.isSmoothing()
+        && qualityTransitionGain.getCurrentValue() <= 0.00001f)
+    {
+        qualityState.setEffectiveOversamplingMode (pendingOversamplingMode);
+        for (auto& node : registry)
+            node->oversamplingModeChanged();
+        qualitySwitchPending = false;
+        qualityTransitionGain.setTargetValue (1.0f);
+    }
 }

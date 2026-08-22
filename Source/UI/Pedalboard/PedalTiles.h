@@ -32,7 +32,7 @@ public:
                        const juce::String& displayName, const juce::String& toggleParamId,
                        std::vector<std::pair<juce::String, juce::String>> knobParams,
                        std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> comboParams = {})
-        : PedalTileComponent (apvtsIn, id, displayName, toggleParamId)
+        : PedalTileComponent (apvtsIn, id, displayName, toggleParamId), isJuly (id == "chorus")
     {
         const auto style = knobStyleFor (id);
         for (auto& [paramId, label] : knobParams)
@@ -45,7 +45,10 @@ public:
     // into a 2-column grid (1 column only when there's just a single knob)
     // within that fixed width rather than the tile sizing itself to its
     // own knob count.
-    int getPreferredWidth() const override { return stompTileWidth; }
+    // July's replacement enclosure is 1080x1456. At the board's fixed
+    // 345 px enclosure height its undistorted width is 256 px; the other
+    // generic pedals retain the shared stompbox footprint.
+    int getPreferredWidth() const override { return isJuly ? 256 : stompTileWidth; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
@@ -75,11 +78,17 @@ private:
         if (id == "tape")       return PhotoKnob::Style::Tape;
         if (id == "tremolo")    return PhotoKnob::Style::Tremolo;
         if (id == "chorus")     return PhotoKnob::Style::July;
+        if (id == "dimChorus")  return PhotoKnob::Style::Ensemble;
+        if (id == "jcChorus")   return PhotoKnob::Style::JC;
+        if (id == "spaceEcho")  return PhotoKnob::Style::Satellite;
+        if (id == "spring")     return PhotoKnob::Style::Spring;
+        if (id == "desk")       return PhotoKnob::Style::Desk;
         return PhotoKnob::Style::Modern;
     }
 
     std::vector<std::unique_ptr<PhotoTileKnob>> knobs;
     std::vector<std::unique_ptr<TileCombo>> combos;
+    const bool isJuly;
 };
 
 // Reverb gets a real photographed enclosure + knob skin (see
@@ -162,8 +171,8 @@ public:
     explicit DimensionBBDTile (juce::AudioProcessorValueTreeState& apvtsIn)
         : PedalTileComponent (apvtsIn, "dimBbd", "Dimension", "dimBbdOn")
     {
-        inputKnob = makeTileKnob (*this, apvtsIn, "dimBbdInput", "Input");
-        outputKnob = makeTileKnob (*this, apvtsIn, "dimBbdOutput", "Output");
+        inputKnob = makePhotoTileKnob (*this, apvtsIn, "dimBbdInput", "Input", PhotoKnob::Style::Dimension);
+        outputKnob = makePhotoTileKnob (*this, apvtsIn, "dimBbdOutput", "Output", PhotoKnob::Style::Dimension);
 
         modeCaption.setText ("Mode", juce::dontSendNotification);
         modeCaption.setJustificationType (juce::Justification::centred);
@@ -199,7 +208,7 @@ protected:
         for (int i = 0; i < 4; ++i)
             modeButtons[i].setBounds (btnArea.removeFromLeft (bw).reduced (3, 4));
 
-        std::vector<std::unique_ptr<TileKnob>*> knobs { &inputKnob, &outputKnob };
+        std::vector<std::unique_ptr<PhotoTileKnob>*> knobs { &inputKnob, &outputKnob };
         const auto columns = 2;
         const auto cw = body.getWidth() / columns;
         for (size_t i = 0; i < knobs.size(); ++i)
@@ -211,7 +220,7 @@ protected:
     }
 
 private:
-    std::unique_ptr<TileKnob> inputKnob, outputKnob;
+    std::unique_ptr<PhotoTileKnob> inputKnob, outputKnob;
     juce::Label modeCaption;
     juce::TextButton modeButtons[4];
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> modeAttachments[4];
@@ -226,12 +235,12 @@ public:
     explicit AmpTile (juce::AudioProcessorValueTreeState& apvtsIn)
         : PedalTileComponent (apvtsIn, "amp", "Amp", "ampOn")
     {
-        driveKnob = makeTileKnob (*this, apvtsIn, "ampDrive", "Drive");
-        outputKnob = makeTileKnob (*this, apvtsIn, "ampOutput", "Volume");
-        toneKnob = makeTileKnob (*this, apvtsIn, "ampTone", "Tone");
-        bassKnob = makeTileKnob (*this, apvtsIn, "ampBass", "Bass");
-        midKnob = makeTileKnob (*this, apvtsIn, "ampMid", "Mid");
-        trebleKnob = makeTileKnob (*this, apvtsIn, "ampTreble", "Treble");
+        driveKnob = makePhotoTileKnob (*this, apvtsIn, "ampDrive", "Drive", PhotoKnob::Style::Amp);
+        outputKnob = makePhotoTileKnob (*this, apvtsIn, "ampOutput", "Volume", PhotoKnob::Style::Amp);
+        toneKnob = makePhotoTileKnob (*this, apvtsIn, "ampTone", "Tone", PhotoKnob::Style::Amp);
+        bassKnob = makePhotoTileKnob (*this, apvtsIn, "ampBass", "Bass", PhotoKnob::Style::Amp);
+        midKnob = makePhotoTileKnob (*this, apvtsIn, "ampMid", "Mid", PhotoKnob::Style::Amp);
+        trebleKnob = makePhotoTileKnob (*this, apvtsIn, "ampTreble", "Treble", PhotoKnob::Style::Amp);
         voiceCombo = makeTileCombo (*this, apvtsIn, "ampVoice", "", { "Vintage 5E3", "Boutique", "Vox Top Boost", "Deluxe 63", "JTM45", "Mark I", "Jazz Chorus" });
         updateVoiceVisibility (true);
         startTimerHz (15);
@@ -250,8 +259,8 @@ protected:
         // Always-on Drive/Volume on the top row, then the voice-specific EQ
         // band(s) on their own row beneath -- so Bass/Mid/Treble sit together
         // on one line instead of Bass wrapping up beside Drive/Volume.
-        std::vector<TileKnob*> fixed { driveKnob.get(), outputKnob.get() };
-        std::vector<TileKnob*> eq;
+        std::vector<PhotoTileKnob*> fixed { driveKnob.get(), outputKnob.get() };
+        std::vector<PhotoTileKnob*> eq;
         if (voiceIndex == 1 || voiceIndex == 3 || voiceIndex == 4 || voiceIndex == 5 || voiceIndex == 6)
             eq = { bassKnob.get(), midKnob.get(), trebleKnob.get() };
         else if (voiceIndex == 2)
@@ -259,7 +268,7 @@ protected:
         else
             fixed.push_back (toneKnob.get());  // 5E3: Drive/Volume/Tone on one line
 
-        const auto layRow = [&] (const std::vector<TileKnob*>& knobs, juce::Rectangle<int> area)
+        const auto layRow = [&] (const std::vector<PhotoTileKnob*>& knobs, juce::Rectangle<int> area)
         {
             const auto cellW = area.getWidth() / juce::jmax (1, (int) knobs.size());
             for (int i = 0; i < (int) knobs.size(); ++i)
@@ -304,7 +313,7 @@ private:
         resized();
     }
 
-    std::unique_ptr<TileKnob> driveKnob, outputKnob, toneKnob, bassKnob, midKnob, trebleKnob;
+    std::unique_ptr<PhotoTileKnob> driveKnob, outputKnob, toneKnob, bassKnob, midKnob, trebleKnob;
     std::unique_ptr<TileCombo> voiceCombo;
     int voiceIndex = 0;
 };
@@ -324,12 +333,14 @@ public:
         aOn = makeTileToggle (*this, apvtsIn, "cabAOn", "A");
         aPhase = makeTileToggle (*this, apvtsIn, "cabAPhase", juce::CharPointer_UTF8 ("\xc3\x98"));
         aIR = makeTileCombo (*this, apvtsIn, "cabAIRSelect", "Left / A", irNames);
-        aMix = makeTileKnob (*this, apvtsIn, "cabAMix", "Mix");
+        aIR->box.useCabinetFolders (irNames);
+        aMix = makePhotoTileKnob (*this, apvtsIn, "cabAMix", "Mix", PhotoKnob::Style::Cab);
         bOn = makeTileToggle (*this, apvtsIn, "cabBOn", "B");
         bPhase = makeTileToggle (*this, apvtsIn, "cabBPhase", juce::CharPointer_UTF8 ("\xc3\x98"));
         bIR = makeTileCombo (*this, apvtsIn, "cabBIRSelect", "Right / B", irNames);
-        bMix = makeTileKnob (*this, apvtsIn, "cabBMix", "Mix");
-        balance = makeTileKnob (*this, apvtsIn, "cabBlend", "Balance");
+        bIR->box.useCabinetFolders (irNames);
+        bMix = makePhotoTileKnob (*this, apvtsIn, "cabBMix", "Mix", PhotoKnob::Style::Cab);
+        balance = makePhotoTileKnob (*this, apvtsIn, "cabBlend", "Balance", PhotoKnob::Style::Cab);
     }
 
     int getPreferredWidth() const override { return 420; }
@@ -348,7 +359,7 @@ protected:
 
 private:
     static void layoutSide (juce::Rectangle<int> area, TileToggle& on, TileToggle& phase,
-                            TileCombo& ir, TileKnob& mix)
+                            TileCombo& ir, PhotoTileKnob& mix)
     {
         auto selector = area.removeFromTop (55).reduced (cellPadX, cellPadY);
         ir.label.setBounds (selector.removeFromTop (captionHeight));
@@ -362,7 +373,7 @@ private:
 
     std::unique_ptr<TileToggle> aOn, aPhase, bOn, bPhase;
     std::unique_ptr<TileCombo> aIR, bIR;
-    std::unique_ptr<TileKnob> aMix, bMix, balance;
+    std::unique_ptr<PhotoTileKnob> aMix, bMix, balance;
 };
 
 // Delay: one card shared between two engines (Plexer / Copier), matching
@@ -375,15 +386,15 @@ public:
         : PedalTileComponent (apvtsIn, "delay", "Delay", "echoOn")
     {
         modelCombo = makeTileCombo (*this, apvtsIn, "delayModel", "", { "Plexer", "Copier" });
-        echoTime = makeTileKnob (*this, apvtsIn, "echoTime", "Time");
-        echoSustain = makeTileKnob (*this, apvtsIn, "echoSustain", "Sustain");
-        echoVolume = makeTileKnob (*this, apvtsIn, "echoVolume", "Volume");
+        echoTime = makePhotoTileKnob (*this, apvtsIn, "echoTime", "Time", PhotoKnob::Style::Delay);
+        echoSustain = makePhotoTileKnob (*this, apvtsIn, "echoSustain", "Sustain", PhotoKnob::Style::Delay);
+        echoVolume = makePhotoTileKnob (*this, apvtsIn, "echoVolume", "Volume", PhotoKnob::Style::Delay);
         echoMode = makeTileCombo (*this, apvtsIn, "echoMode", "", { "Echo", "Sound-on-Sound" });
         echoSync = makeTileToggle (*this, apvtsIn, "echoSync", "Sync");
         echoDivision = makeTileCombo (*this, apvtsIn, "echoDivision", "Div", TapTempo::getDivisionNames());
-        carbonTime = makeTileKnob (*this, apvtsIn, "carbonTime", "Time");
-        carbonRegen = makeTileKnob (*this, apvtsIn, "carbonRegen", "Regen");
-        carbonMix = makeTileKnob (*this, apvtsIn, "carbonMix", "Mix");
+        carbonTime = makePhotoTileKnob (*this, apvtsIn, "carbonTime", "Time", PhotoKnob::Style::Delay);
+        carbonRegen = makePhotoTileKnob (*this, apvtsIn, "carbonRegen", "Regen", PhotoKnob::Style::Delay);
+        carbonMix = makePhotoTileKnob (*this, apvtsIn, "carbonMix", "Mix", PhotoKnob::Style::Delay);
         carbonMod = makeTileToggle (*this, apvtsIn, "carbonMod", "Mod");
         carbonSync = makeTileToggle (*this, apvtsIn, "carbonSync", "Sync");
         carbonDivision = makeTileCombo (*this, apvtsIn, "carbonDivision", "Div", TapTempo::getDivisionNames());
@@ -391,7 +402,8 @@ public:
         startTimerHz (15);
     }
 
-    int getPreferredWidth() const override { return 325; }
+    // 1132x1390 artwork at the board's fixed 345 px enclosure height.
+    int getPreferredWidth() const override { return 281; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
@@ -412,20 +424,20 @@ protected:
         {
             auto modeArea = body.removeFromBottom (38);
             echoMode->box.setBounds (modeArea.reduced (43, 0));
-            std::vector<TileKnob*> ks { echoTime.get(), echoSustain.get(), echoVolume.get() };
+            std::vector<PhotoTileKnob*> ks { echoTime.get(), echoSustain.get(), echoVolume.get() };
             layoutRow (ks, body);
         }
         else
         {
             auto modArea = body.removeFromBottom (38);
             carbonMod->button.setBounds (modArea.withSizeKeepingCentre (75, 28));
-            std::vector<TileKnob*> ks { carbonTime.get(), carbonRegen.get(), carbonMix.get() };
+            std::vector<PhotoTileKnob*> ks { carbonTime.get(), carbonRegen.get(), carbonMix.get() };
             layoutRow (ks, body);
         }
     }
 
 private:
-    static void layoutRow (std::vector<TileKnob*>& ks, juce::Rectangle<int> area)
+    static void layoutRow (std::vector<PhotoTileKnob*>& ks, juce::Rectangle<int> area)
     {
         auto row = area.removeFromTop (juce::jmin (188, area.getHeight()));
         const auto cw = row.getWidth() / juce::jmax (1, (int) ks.size());
@@ -461,7 +473,7 @@ private:
     }
 
     std::unique_ptr<TileCombo> modelCombo, echoMode, echoDivision, carbonDivision;
-    std::unique_ptr<TileKnob> echoTime, echoSustain, echoVolume, carbonTime, carbonRegen, carbonMix;
+    std::unique_ptr<PhotoTileKnob> echoTime, echoSustain, echoVolume, carbonTime, carbonRegen, carbonMix;
     std::unique_ptr<TileToggle> carbonMod, echoSync, carbonSync;
     bool plexer = true;
 };
@@ -493,9 +505,9 @@ public:
             bands.push_back (std::move (band));
         }
         hpfToggle = makeTileToggle (*this, apvtsIn, "eqHpfOn", "HPF");
-        hpfKnob = makeTileKnob (*this, apvtsIn, "eqHpfFreq", "Hz");
+        hpfKnob = makePhotoTileKnob (*this, apvtsIn, "eqHpfFreq", "Hz", PhotoKnob::Style::ChannelEQ);
         lpfToggle = makeTileToggle (*this, apvtsIn, "eqLpfOn", "LPF");
-        lpfKnob = makeTileKnob (*this, apvtsIn, "eqLpfFreq", "Hz");
+        lpfKnob = makePhotoTileKnob (*this, apvtsIn, "eqLpfFreq", "Hz", PhotoKnob::Style::ChannelEQ);
     }
 
     int getPreferredWidth() const override { return 538; }
@@ -531,7 +543,7 @@ private:
 
     std::vector<std::unique_ptr<TileKnob>> bands;
     std::unique_ptr<TileToggle> hpfToggle, lpfToggle;
-    std::unique_ptr<TileKnob> hpfKnob, lpfKnob;
+    std::unique_ptr<PhotoTileKnob> hpfKnob, lpfKnob;
 };
 
 // Redface: shelving Low + swept-mid peaking + shelving High, plus an
@@ -546,20 +558,21 @@ public:
     explicit ChannelEQTile (juce::AudioProcessorValueTreeState& apvtsIn)
         : PedalTileComponent (apvtsIn, "channelEQ", "Redface", "channelEQOn")
     {
-        gain = makeTileKnob (*this, apvtsIn, "channelEQGain", "Gain");
+        gain = makePhotoTileKnob (*this, apvtsIn, "channelEQGain", "Gain", PhotoKnob::Style::Redface);
         lowFreq = makeTileCombo (*this, apvtsIn, "channelEQLowFreq", "Low Freq",
             juce::StringArray { "35 Hz", "60 Hz", "110 Hz", "220 Hz" });
-        lowGain = makeTileKnob (*this, apvtsIn, "channelEQLowGain", "Low");
+        lowGain = makePhotoTileKnob (*this, apvtsIn, "channelEQLowGain", "Low", PhotoKnob::Style::Redface);
         midFreq = makeTileCombo (*this, apvtsIn, "channelEQMidFreq", "Mid Freq",
             juce::StringArray { "360 Hz", "700 Hz", "1.6k", "3.2k", "4.8k", "7.2k" });
-        midGain = makeTileKnob (*this, apvtsIn, "channelEQMidGain", "Mid");
-        highGain = makeTileKnob (*this, apvtsIn, "channelEQHighGain", "High (12k)");
+        midGain = makePhotoTileKnob (*this, apvtsIn, "channelEQMidGain", "Mid", PhotoKnob::Style::Redface);
+        highGain = makePhotoTileKnob (*this, apvtsIn, "channelEQHighGain", "High (12k)", PhotoKnob::Style::Redface);
         hpfToggle = makeTileToggle (*this, apvtsIn, "channelEQHpfOn", "HPF");
         hpfFreq = makeTileCombo (*this, apvtsIn, "channelEQHpfFreq", "HPF Freq",
             juce::StringArray { "50 Hz", "80 Hz", "160 Hz", "300 Hz" });
     }
 
-    int getPreferredWidth() const override { return 375; }
+    // 1551x1014 artwork at the board's fixed 345 px enclosure height.
+    int getPreferredWidth() const override { return 528; }
 
 protected:
     void resizedBody (juce::Rectangle<int> body) override
@@ -586,7 +599,7 @@ protected:
         midFreq->label.setBounds (midFreqArea.removeFromTop (captionHeight));
         midFreq->box.setBounds (midFreqArea);
 
-        std::vector<std::unique_ptr<TileKnob>*> knobs { &lowGain, &midGain, &highGain };
+        std::vector<std::unique_ptr<PhotoTileKnob>*> knobs { &lowGain, &midGain, &highGain };
         const auto cw = body.getWidth() / (int) knobs.size();
         for (size_t i = 0; i < knobs.size(); ++i)
         {
@@ -598,7 +611,7 @@ protected:
 
 private:
     std::unique_ptr<TileCombo> lowFreq, midFreq, hpfFreq;
-    std::unique_ptr<TileKnob> gain, lowGain, midGain, highGain;
+    std::unique_ptr<PhotoTileKnob> gain, lowGain, midGain, highGain;
     std::unique_ptr<TileToggle> hpfToggle;
 };
 
@@ -687,7 +700,7 @@ public:
         addSlotAButton.onClick = [this] { showSlotMenu (addSlotAButton, "parallelSlotA", "parallelSlotB"); };
         addSlotBButton.onClick = [this] { showSlotMenu (addSlotBButton, "parallelSlotB", "parallelSlotA"); };
 
-        blend = makeTileKnob (*this, processor.apvts, "parallelBlend", "Blend");
+        blend = makePhotoTileKnob (*this, processor.apvts, "parallelBlend", "Blend", PhotoKnob::Style::ParallelA);
 
         rebuildChildIfNeeded (lastSlotA, childTileA, "parallelSlotA");
         rebuildChildIfNeeded (lastSlotB, childTileB, "parallelSlotB");
@@ -872,5 +885,5 @@ private:
     juce::TextButton addSlotAButton, addSlotBButton;
     std::unique_ptr<PedalTileComponent> childTileA, childTileB;
     juce::String lastSlotA, lastSlotB;
-    std::unique_ptr<TileKnob> blend;
+    std::unique_ptr<PhotoTileKnob> blend;
 };

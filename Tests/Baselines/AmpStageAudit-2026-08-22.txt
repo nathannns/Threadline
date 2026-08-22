@@ -1,0 +1,52 @@
+AmpModule analysis-only stage probe
+===================================
+Conditions: 100mV RMS DI, Gain/EQ noon. Values are dB relative to 1kHz.
+
+voice/stage       40Hz    60Hz    80Hz   120Hz   250Hz
+Vintage V1 out   -15.41   -6.41   -2.74   -0.66   -0.04
+Vintage V2 in    -15.21   -6.21   -2.55   -0.46    0.15
+Vintage power out-12.51   -4.89   -1.73   -0.29    0.10
+
+Boutique V1 out  -15.41   -6.41   -2.74   -0.66   -0.04
+Boutique V2 in    -5.27    3.56    6.77    7.68    4.44
+Boutique power out-5.19    2.02    5.04    5.84    2.88
+
+Vox V1 out       -15.41   -6.41   -2.75   -0.66   -0.04
+Vox V2 in        -15.41   -6.41   -2.75   -0.66   -0.04
+Vox power out    -15.29   -6.31   -2.68   -0.64   -0.04
+
+Deluxe V1 out    -15.42   -6.41   -2.75   -0.67   -0.05
+Deluxe V2 in      -2.15    5.49    7.73    7.18    1.21
+Deluxe power out  -2.14    5.48    7.71    7.17    1.21
+
+JTM45 V1 out     -15.42   -6.41   -2.75   -0.67   -0.04
+JTM45 V2 in       -5.28    3.55    6.77    7.67    4.44
+JTM45 power out   -5.27    3.55    6.75    7.64    4.43
+
+Mesa V1 out      -15.42   -6.41   -2.75   -0.66   -0.04
+Mesa V2 in        -5.28    3.56    6.77    7.68    4.44
+Mesa power out    -5.27    3.56    6.76    7.65    4.43
+
+JC-120 V1 out     -4.86   -1.54   -0.60   -0.14   -0.02
+JC-120 V2 in      -4.86   -1.54   -0.60   -0.14   -0.02
+JC-120 power out  -4.01   -1.18   -0.45   -0.10   -0.02
+
+Boutique 7.5kHz alias-source audit (30kHz fourth harmonic):
+V1 in          -171.77 dBc
+V1 out         -147.23 dBc
+V2 in          -147.33 dBc
+V2 out          -78.05 dBc
+PI/EQ in        -78.05 dBc
+PI/EQ out       -24.30 dBc
+Power in       -24.30 dBc
+Power out      -28.18 dBc
+Downsampled output alias at 18kHz: -58.98 dBc
+
+Interpretation:
+- The common V1/coupling path attenuates bass; it is not the source of the
+  Boutique/Deluxe/JTM45/Mesa low-mid rise.
+- The rise first appears at the Bassman/AB763 tone-stack output feeding V2.
+- Boutique's dominant high-order growth first becomes large at the cathodyne
+  phase-inverter output, not at the input or V1.
+- This target is compiled with THREADLINE_AMP_ANALYSIS_TAPS. The taps and
+  callback do not exist in the production plugin build.

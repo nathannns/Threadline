@@ -6,6 +6,9 @@
 // of PluginProcessor into a standalone reusable module. Frequency-trimmed low/
 // mid/high detector bands mean pick attack and upper harmonics can open the
 // gate as readily as low fundamentals, with hold + hysteresis to stop chatter.
+// The closing envelope follows the Boss NF-1 drawing's 2M Decay control and
+// calibration note (roughly 1.5-2 seconds at its long end), instead of the
+// former fixed 180ms release that audibly chopped sustained guitar notes.
 class NoiseGateModule
 {
 public:
@@ -41,7 +44,8 @@ public:
         const auto detectorAttack = std::exp (-1.0f / static_cast<float> (sampleRate * 0.0012));
         const auto detectorRelease = std::exp (-1.0f / static_cast<float> (sampleRate * 0.085));
         const auto gateAttack = std::exp (-1.0f / static_cast<float> (sampleRate * 0.0008));
-        const auto gateRelease = std::exp (-1.0f / static_cast<float> (sampleRate * 0.180));
+        const auto gateReleaseSeconds = juce::jmap (amount, 0.240f, 1.500f);
+        const auto gateRelease = std::exp (-1.0f / static_cast<float> (sampleRate * gateReleaseSeconds));
         const auto lowCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * 180.0f
                                                      / static_cast<float> (sampleRate));
         const auto midCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * 2600.0f

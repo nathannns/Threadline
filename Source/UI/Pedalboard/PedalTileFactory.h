@@ -129,7 +129,9 @@ namespace PedalTileFactory
         if (id == "jcChorus")
             return std::make_unique<GenericKnobsTile> (apvts, id, "JC Chorus", "jcChorusOn",
                 std::vector<std::pair<juce::String, juce::String>> {
-                    { "jcChorusRate", "Rate" }, { "jcChorusDepth", "Depth" }, { "jcChorusMix", "Mix" } });
+                    { "jcChorusRate", "Rate" }, { "jcChorusDepth", "Depth" }, { "jcChorusMix", "Mix" } },
+                std::vector<std::tuple<juce::String, juce::String, juce::StringArray>> {
+                    { "jcChorusMode", "Mode", juce::StringArray { "I", "II", "I + II" } } });
 
         // Sync (tap-tempo) toggles + note-division reuse the global
         // "tapTempoBpm" set by the header bar's Tap button -- see

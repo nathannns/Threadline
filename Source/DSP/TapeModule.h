@@ -46,6 +46,11 @@ private:
     juce::SmoothedValue<float> wetMix;
     std::vector<float> envelope, detectorLowState, magnetisationState;
     std::vector<float> toneState, bassState, midState;
+    // Calibrated record/reproduce EQ pair. Record pre-emphasis changes which
+    // frequencies reach magnetic saturation; the inverse reproduce filter
+    // restores the small-signal response afterwards. The pair is deliberately
+    // stateful rather than a cosmetic post-EQ shelf.
+    std::vector<float> recordEqLowState, reproduceEqInputState, reproduceEqOutputState;
     // Previous sample's driven (post-record-gain) value per channel, so the
     // saturation curve can tell whether the field is currently rising or
     // falling -- the actual defining signature of magnetic hysteresis.

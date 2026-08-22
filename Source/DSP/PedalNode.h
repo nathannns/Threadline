@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "ProcessingQuality.h"
 
 // One entry in the user-reorderable pedalboard. Each concrete subclass wraps
 // exactly one of the plugin's processing stages (or, for Cab, the whole A+B-
@@ -48,11 +49,23 @@ public:
     // PedalChainRunner sums for the host.
     virtual int getLatencySamples() const { return 0; }
 
+    // Called only while the chain's quality-transition gain is fully silent.
+    // Nonlinear nodes with multiple prepared oversampling engines reset their
+    // histories here; ordinary pedals have nothing to do.
+    virtual void oversamplingModeChanged() {}
+
 protected:
-    explicit PedalNode (juce::AudioProcessorValueTreeState& state) : apvts (state) {}
+    explicit PedalNode (juce::AudioProcessorValueTreeState& state,
+                        ProcessingQualityState* qualityToUse = nullptr)
+        : apvts (state), qualityState (qualityToUse) {}
 
     float p (const char* paramId) const { return apvts.getRawParameterValue (paramId)->load(); }
     bool pBool (const char* paramId) const { return p (paramId) > 0.5f; }
+    int oversamplingMode() const noexcept
+    {
+        return qualityState != nullptr ? qualityState->getEffectiveOversamplingMode()
+                                       : juce::jlimit (0, 2, (int) p ("ampOversampling"));
+    }
 
     // Generic click-free toggle: snapshots `buffer` as dry, invokes `runWet`
     // (expected to run the wrapped module fully in place), then crossfades
@@ -92,14 +105,17 @@ protected:
         return wasActive;
     }
 
-    void prepareCrossfade (double sampleRate, bool startActive)
+    void prepareCrossfade (const juce::dsp::ProcessSpec& spec, bool startActive)
     {
-        wetAmount.reset (sampleRate, 0.015);
+        dryScratch.setSize (static_cast<int> (spec.numChannels),
+                            static_cast<int> (spec.maximumBlockSize), false, false, true);
+        wetAmount.reset (spec.sampleRate, 0.015);
         wetAmount.setCurrentAndTargetValue (startActive ? 1.0f : 0.0f);
         wasActive = startActive;
     }
 
     juce::AudioProcessorValueTreeState& apvts;
+    ProcessingQualityState* qualityState = nullptr;
 
 private:
     juce::AudioBuffer<float> dryScratch;

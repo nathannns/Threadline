@@ -27,20 +27,22 @@ namespace
         static const float mixes[] = { 0.0f, 45.0f, 100.0f };
         static const float amps[] = { 0.1f, 0.5f, 2.0f };
         static const float freqs[] = { 40.0f, 440.0f, 4000.0f };
+        static const int modes[] = { 0, 1, 2 };
 
         JCChorusModule mod;
         juce::dsp::ProcessSpec spec { sampleRate, 256, 2 };
         mod.prepare (spec);
 
         float peak = 0.0f;
-        for (float rate : rates)
-            for (float depth : depths)
-                for (float mix : mixes)
-                    for (float amp : amps)
-                        for (float freq : freqs)
+        for (int mode : modes)
+            for (float rate : rates)
+                for (float depth : depths)
+                    for (float mix : mixes)
+                        for (float amp : amps)
+                            for (float freq : freqs)
                         {
                             mod.reset();
-                            mod.setParameters (rate, depth, mix, true);
+                            mod.setParameters (rate, depth, mix, true, mode);
                             for (int block = 0; block < 16; ++block)
                             {
                                 juce::AudioBuffer<float> buf (2, 256);
@@ -116,25 +118,31 @@ namespace
         juce::dsp::ProcessSpec spec { sampleRate, 256, 2 };
         mod.prepare (spec);
         mod.reset();
-        mod.setParameters (0.9f, 50.0f, 100.0f, true);  // full wet, stereo
-
-        double maxDiff = 0.0;
-        for (int block = 0; block < 16; ++block)
+        double smallestModeDiff = std::numeric_limits<double>::max();
+        for (int mode = 0; mode < 3; ++mode)
         {
-            juce::AudioBuffer<float> buf (2, 256);
-            for (int i = 0; i < 256; ++i)
+            mod.reset();
+            mod.setParameters (0.9f, 50.0f, 100.0f, true, mode);
+            double maxDiff = 0.0;
+            for (int block = 0; block < 16; ++block)
             {
-                const double phase = 2.0 * kPi * 440.0 * (double) (block * 256 + i) / sampleRate;
-                const auto v = (float) (0.5 * std::sin (phase));
-                buf.setSample (0, i, v);
-                buf.setSample (1, i, v);
+                juce::AudioBuffer<float> buf (2, 256);
+                for (int i = 0; i < 256; ++i)
+                {
+                    const double phase = 2.0 * kPi * 440.0 * (double) (block * 256 + i) / sampleRate;
+                    const auto v = (float) (0.5 * std::sin (phase));
+                    buf.setSample (0, i, v);
+                    buf.setSample (1, i, v);
+                }
+                mod.process (buf);
+                for (int i = 0; i < 256; ++i)
+                    maxDiff = juce::jmax (maxDiff, (double) std::fabs (buf.getSample (0, i) - buf.getSample (1, i)));
             }
-            mod.process (buf);
-            for (int i = 0; i < 256; ++i)
-                maxDiff = juce::jmax (maxDiff, (double) std::fabs (buf.getSample (0, i) - buf.getSample (1, i)));
+            smallestModeDiff = juce::jmin (smallestModeDiff, maxDiff);
         }
-        std::printf ("  stereo (pi-offset) at mix=100: max |L-R| = %.4f (should be well above 0)\n", maxDiff);
-        return maxDiff > 0.1;
+        std::printf ("  all modes at mix=100: smallest max |L-R| = %.4f (should be well above 0)\n",
+                     smallestModeDiff);
+        return smallestModeDiff > 0.1;
     }
 }
 
