@@ -54,12 +54,12 @@ namespace
     }
 
     Metrics analyseAmp (const juce::AudioBuffer<float>& monoInput, double sampleRate,
-                        int voice, float gain)
+                        int voice, float gain, float outputDb)
     {
         AmpModule amp;
         amp.prepare ({ sampleRate, blockSize, 2 }, 2);
         amp.setEnabled (true);
-        amp.setParameters (gain, 0.5f, -18.0f,
+        amp.setParameters (gain, 0.5f, outputDb,
                            static_cast<AmpModule::Voice> (voice),
                            0.5f, 0.5f, 0.5f);
 
@@ -92,7 +92,7 @@ int main (int argc, char** argv)
 {
     if (argc < 2)
     {
-        std::printf ("Usage: AmpDIProbe <focusrite-di.wav|aiff> [gain-0..1]\n");
+        std::printf ("Usage: AmpDIProbe <focusrite-di.wav|aiff> [gain-0..1] [output-dB]\n");
         std::printf ("Reads channel 1 exactly as captured; never normalises it.\n");
         return 2;
     }
@@ -101,6 +101,9 @@ int main (int argc, char** argv)
     const auto gain = argc >= 3
         ? juce::jlimit (0.0f, 1.0f, (float) std::atof (argv[2]))
         : 0.5f;
+    const auto outputDb = argc >= 4
+        ? juce::jlimit (-24.0f, 12.0f, (float) std::atof (argv[3]))
+        : -18.0f;
 
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
@@ -138,15 +141,15 @@ int main (int argc, char** argv)
 
     std::printf ("Threadline real-DI amp analysis\n");
     std::printf ("File: %s\n", inputFile.getFileName().toRawUTF8());
-    std::printf ("Rate: %.0f Hz, analysed: %.2f s, channel: 1, Gain: %.3f\n",
-                 reader->sampleRate, input.getNumSamples() / reader->sampleRate, gain);
+    std::printf ("Rate: %.0f Hz, analysed: %.2f s, channel: 1, Gain: %.3f, Output: %+.1f dB\n",
+                 reader->sampleRate, input.getNumSamples() / reader->sampleRate, gain, outputDb);
     std::printf ("Dry RMS %.6f, peak %.6f (amplitude preserved; no normalisation)\n\n",
                  dryRms, dryPeak);
     std::printf ("voice          RMS      peak   crest dB  low/mid dB  high/mid dB\n");
 
     for (int voice = 0; voice <= 6; ++voice)
     {
-        const auto metrics = analyseAmp (input, reader->sampleRate, voice, gain);
+        const auto metrics = analyseAmp (input, reader->sampleRate, voice, gain, outputDb);
         const auto rms = std::sqrt (metrics.sumSq / juce::jmax (1, metrics.samples));
         const auto crest = 20.0 * std::log10 (juce::jmax ((double) metrics.peak, 1.0e-15)
                                                / juce::jmax (rms, 1.0e-15));

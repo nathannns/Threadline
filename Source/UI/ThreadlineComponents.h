@@ -85,12 +85,6 @@ public:
         const auto side = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.645f;
         auto knobBounds = juce::Rectangle<float> (side, side).withCentre (bounds.getCentre());
 
-        // The source PNGs contain transparent pixels around and within the
-        // photographed hardware. A solid backing keeps light rack artwork
-        // from showing through.
-        g.setColour (juce::Colour (0xff211a16));
-        g.fillEllipse (knobBounds.reduced (side * 0.08f));
-
         const auto rotary = getRotaryParameters();
         const auto angle = rotary.startAngleRadians + normalised * (rotary.endAngleRadians - rotary.startAngleRadians);
 
@@ -105,12 +99,11 @@ public:
                               .rotated (angle)
                               .translated (knobBounds.getCentreX(), knobBounds.getCentreY());
 
-        // Shadow: same trick Rockalizer's own editor uses for its logo —
-        // draw the image offset with the alpha channel filled solid black
-        // (a silhouette), then the real image on top with no offset.
-        g.setColour (juce::Colours::black.withAlpha (0.5f));
-        g.drawImageTransformed (image, transform.translated (2.5f, 3.5f), true);
-
+        // Draw the supplied asset without a dark backing, tint, silhouette,
+        // or opacity change. Several of the bright knob PNGs contain soft
+        // translucent edge/highlight pixels; putting black beneath those
+        // pixels visibly darkened the face compared with the source image.
+        g.setOpacity (1.0f);
         g.drawImageTransformed (image, transform);
     }
 

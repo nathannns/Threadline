@@ -258,10 +258,13 @@ experiments unless the user explicitly changes them:
   both Balance endpoints, and mono fallback) in addition to the existing
   finite/bounded convolution sweep at 48/96/192k. Amp voice loudness now uses
   only one fixed final-Output offset per voice relative to Deluxe. The latest
-  Focusrite/nonlinear-staging pass recalibrated these at 100mV guitar input
-  and noon Gain: Vintage +3.31dB, Boutique +8.53dB, Vox -9.00dB, JTM45
-  -5.35dB, Mesa -0.17dB, and JC-120 +3.45dB. Deluxe remains 0dB. These multipliers sit after the complete
-  amp models and do not alter Gain, distortion, tone, sag, or latency.
+  calibration uses the combined RMS energy of the supplied unnormalised
+  59.6-second single-coil and P90 Focusrite WAVs at noon Gain/EQ: Vintage
+  -2.01dB, Boutique +4.73dB, Vox -12.22dB, JTM45 -7.40dB, Mesa +9.75dB,
+  and JC-120 +0.28dB. Deluxe remains 0dB. Both source files keep their captured
+  amplitudes; these fixed multipliers sit after the complete amp models and do
+  not alter Gain, distortion, tone, sag, or latency. The two-file results are
+  stored in `Tests/Baselines/AmpRealDI-2026-08-22.txt`.
 - **Guitar-DI gain staging (2026-08-21):** factory schematics were rechecked
   against the amp hot paths. Vintage/Boutique feed V1 directly and place the
   audio-taper Gain between V1 and V2. JC-120 now includes its IC2a/VR1
@@ -283,6 +286,15 @@ experiments unless the user explicitly changes them:
   amp-path changes were removed; the known earlier amp engines are restored.
   The independent UI work remains: Cab IR family submenus and title-anchored
   pedal swap menus.
+- **Mark I topology correction (2026-08-22):** the visually re-inspected Mark
+  I Reissue drawing exposed why JTM45 and Mark I sounded alike: the production
+  path had collapsed Mark I to the same two-stage ordering and Bassman values.
+  Mark I now follows V1A -> Vol 1 -> V1B -> its own 250p/.1u/.047u Fender-
+  derived stack -> fixed-noon Vol 2 -> V3A -> PI, plus the stiffer behavior of
+  its four-diode solid-state rectifier. Unlike the rolled-back experiment,
+  this uses the actual three 100k/1.5k/15uF stages and does not add an
+  arbitrary waveshaper. At noon it measures 0.23% THD versus JTM45's 1.39%,
+  and the guitar-pluck high/mid balance differs by about 8.9dB.
 - **Amp breakup/cab selector correction (2026-08-21):** the hierarchical Cab
   popup now uses ComboBox's native root menu and dismissal callback; the old
   custom popup left JUCE's private active-menu state latched after one choice.

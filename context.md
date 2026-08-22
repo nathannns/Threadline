@@ -47,6 +47,17 @@ level-matching change:
   refine that stage rather than increasing oversampling for every amp.
 - Compact measurements are stored in
   `Tests/Baselines/AmpStageAudit-2026-08-22.txt`.
+- The supplied `Single coil DI.wav` and `P90 DI.wav` are the permanent output
+  calibration sources. Process both at their captured amplitudes, Gain/EQ
+  noon, and combine their RMS energy; do not normalize either file or force
+  the quieter captured P90 take to match the single-coil take. The resulting
+  fixed post-model trims match every voice to Deluxe within about 2% RMS on
+  each file. Baseline: `Tests/Baselines/AmpRealDI-2026-08-22.txt`.
+- Mark I is not a JTM45 variant. The inspected Reissue drawing explicitly
+  traces V1A -> Vol 1 -> V1B -> Fender-derived B/M/T -> Vol 2 -> V3A -> PI,
+  with 100k/1.5k/15uF preamp stages and a four-diode solid-state rectifier.
+  Threadline maps Gain to Vol 1 after V1A, holds the otherwise-unexposed Vol 2
+  at physical noon, and leaves the user Output control after the complete amp.
 
 ## Reference / source links
 

@@ -406,43 +406,33 @@ public:
                 tube->prepare (processingSampleRate);
             }
 
-            // Mesa/Boogie Mark I -- see class comment for full sourcing
-            // (the Gil Ayan-drawn 1998 "Mark I Reissue" el34world scan plus
-            // Trevor Betts' 2011 UIUC build report, which reproduces a
-            // cleaner typed copy of the same widely-circulated schematic).
-            // V1 is the amp's signature "boogie" gain stage: the real
-            // circuit biases it with a 1N5303 constant-current diode
-            // instead of a plain cathode resistor (both schematics agree on
-            // this, and the report's own build notes confirm it directly --
-            // "1N5303 current regulating diodes in the preamp"). A CRD
-            // pins the cathode at a fixed current/voltage regardless of
-            // exact tolerances, which a directly-asserted fixed biasPoint
-            // models more faithfully than solving an equivalent Rk would --
-            // the schematic prints that stage's cathode sitting at 2.5V, so
-            // that's the bias point used directly, no two-pass solve
-            // needed since there's no real resistor to have solved through
-            // in the first place.
+            // Mesa/Boogie Mark I Reissue, traced directly from the Gil Ayan
+            // drawing in Boogie_mki_reissue.pdf. The normal input path is
+            // V1A -> Vol 1 -> V1B -> Fender-derived tone stack -> Vol 2 ->
+            // V3A -> PI. The previous implementation accidentally collapsed
+            // that to two stages and therefore followed almost exactly the
+            // same topology as JTM45. All three triodes on the drawing use
+            // 100k plate / 1.5k cathode with a 15uF bypass capacitor. Model
+            // the 1.5k DC bias by solving self-bias first, then retain that
+            // operating point in the faster bypassed-cathode path.
             triodeMarkOneV1[ch].Vb = 380.0f;
+            triodeMarkOneV1[ch].Rk = 1500.0f;
+            triodeMarkOneV1[ch].cathodeUnbypassed = true;
+            triodeMarkOneV1[ch].prepare (processingSampleRate);
+            triodeMarkOneV1[ch].biasPoint = -triodeMarkOneV1[ch].vk0;
             triodeMarkOneV1[ch].cathodeUnbypassed = false;
-            triodeMarkOneV1[ch].biasPoint = -2.5f;
             triodeMarkOneV1[ch].prepare (processingSampleRate);
 
-            // V2, the cascaded "boost" stage feeding the tone stack -- a
-            // conventional bypassed cathode-resistor stage this time (no
-            // CRD here on either schematic). 1.5k is the exact printed
-            // value of this stage's own boost-switch resistor pair, reused
-            // as the stage's resting cathode resistor since the schematic's
-            // print quality didn't hold up well enough to read this
-            // specific pin's own baseline resistor separately with
-            // confidence -- same "read what's legible, use the well-
-            // established figure otherwise" approach as JTM45's PI tail.
-            triodeMarkOneV2[ch].Vb = 400.0f;
-            triodeMarkOneV2[ch].Rk = 1500.0f;
-            triodeMarkOneV2[ch].cathodeUnbypassed = true;
-            triodeMarkOneV2[ch].prepare (processingSampleRate);
-            triodeMarkOneV2[ch].biasPoint = -triodeMarkOneV2[ch].vk0;
-            triodeMarkOneV2[ch].cathodeUnbypassed = false;
-            triodeMarkOneV2[ch].prepare (processingSampleRate);
+            for (auto* stage : { &triodeMarkOneV1B[ch], &triodeMarkOneV3A[ch] })
+            {
+                stage->Vb = 400.0f;
+                stage->Rk = 1500.0f;
+                stage->cathodeUnbypassed = true;
+                stage->prepare (processingSampleRate);
+                stage->biasPoint = -stage->vk0;
+                stage->cathodeUnbypassed = false;
+                stage->prepare (processingSampleRate);
+            }
             markOneInterstageCoupling[ch].prepare (osSpec);
 
             // Driver/PI -- both schematics show 220k plate resistors on
@@ -499,6 +489,11 @@ public:
         // difference was found sourced.
         fenderToneStack.C1 = 0.25e-9; fenderToneStack.C2 = 0.1e-6; fenderToneStack.C3 = 0.047e-6;
         fenderToneStack.R3 = 6800.0;
+        // Mark I drawing: 250p/.1u/.047u, 250k Treble, 1M Bass,
+        // 10k Mid, and the 100k slope resistor feeding the stack.
+        markOneToneStack.C1 = 0.25e-9; markOneToneStack.C2 = 0.1e-6; markOneToneStack.C3 = 0.047e-6;
+        markOneToneStack.R1 = 250000.0; markOneToneStack.R2 = 1000000.0;
+        markOneToneStack.R3 = 10000.0; markOneToneStack.R4 = 100000.0;
         sagAttack = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.045));
         sagRelease = std::exp (-1.0f / static_cast<float> (processingSampleRate * 0.240));
         // One-pole ~180Hz tap feeding the sag detector — bass notes draw far
@@ -545,7 +540,7 @@ public:
             jtm45PI[ch].reset();
             powerTubeJTM45A[ch].reset(); powerTubeJTM45B[ch].reset();
 
-            triodeMarkOneV1[ch].reset(); triodeMarkOneV2[ch].reset();
+            triodeMarkOneV1[ch].reset(); triodeMarkOneV1B[ch].reset(); triodeMarkOneV3A[ch].reset();
             markOneInterstageCoupling[ch].reset();
             markOnePI[ch].reset();
             powerTubeMarkOneA[ch].reset(); powerTubeMarkOneB[ch].reset();
@@ -818,8 +813,9 @@ public:
             // This fixed multiplier is after the complete amp model, so it
             // cannot change Gain, tone-stack drive, distortion character,
             // sag, power-stage behaviour, or latency. Deluxe is the 0dB
-            // reference; the other offsets are its measured output ratios at
-            // normal clean-pickup level with Gain/Tone at noon.
+            // reference; the other offsets are measured from the combined
+            // energy of the supplied unnormalised single-coil and P90 DIs at
+            // Gain/EQ noon. This is a fixed control calibration, not AGC.
             const auto gain = outputGain.getNextValue()
                             * deluxeReferencedOutput[(size_t) voice];
             for (int ch = 0; ch < channelCount; ++ch)
@@ -1079,15 +1075,13 @@ private:
         }
     }
 
-    // Mesa/Boogie Mark I -- same overall topology shape as JTM45's path
-    // above (V1 -> interstage coupling -> shared tone-stack family -> V2 ->
-    // long-tail-pair PI -> power pair -> OT saturation), see the
-    // Voice::mesaMarkI prepare() block for full sourcing. markOneToneStack
-    // reuses BassmanToneStack's own default component values -- Mesa's
-    // Mark-series tone stack is documented to derive directly from Fender's
-    // classic passive BMT network, and the pot values legible on both
-    // schematics (250k/250k/10k Bass/Treble/Mid) match that family's shape
-    // -- so it shares bassmanStackMakeupGain too, same reasoning as JTM45.
+    // Mesa/Boogie Mark I Reissue normal-input path. Unlike the JTM45 branch,
+    // this keeps the schematic's extra cascaded V1B stage before its own
+    // Fender-derived tone stack and V3A stage after Volume 2. Gain maps to
+    // the real Vol 1 position after V1A. Vol 2 is held at a fixed noon
+    // audio-taper setting because Threadline exposes one circuit Gain plus a
+    // separate, strictly post-model Output knob; this avoids tying two pots
+    // into an artificial x^14 gain law while retaining the genuine cascade.
     void processMarkOneSample (juce::dsp::AudioBlock<float>& block, int i, int channels) noexcept
     {
         float detector = 0.0f;
@@ -1097,18 +1091,20 @@ private:
             auto x = inputCoupling[ch].processSample (block.getSample (ch, i));
             const auto v1Input = GuitarSignalLevel::toVolts (x);
             THREADLINE_AMP_ANALYSIS_TAP (ch, v1Input, v1Input);
-            auto t1 = triodeMarkOneV1[ch].processSample (v1Input);
-            t1 = markOneInterstageCoupling[ch].processSample (t1) * standardGainStageLevel;
-            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, t1);
+            auto v1a = triodeMarkOneV1[ch].processSample (v1Input);
+            v1a = markOneInterstageCoupling[ch].processSample (v1a) * standardGainStageLevel;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v1Output, v1a);
 
-            const auto toned = markOneToneStack.processSample (ch, t1);
-            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, toned);
-            const auto t2Raw = triodeMarkOneV2[ch].processSample (toned);
-            const auto t2 = safetyCeiling * std::tanh (t2Raw * outputCalibration / safetyCeiling);
-            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, t2);
+            const auto v1b = triodeMarkOneV1B[ch].processSample (v1a);
+            const auto toned = markOneToneStack.processSample (ch, v1b);
+            const auto v3Input = toned * markOneVolumeTwoLevel;
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Input, v3Input);
+            const auto v3Raw = triodeMarkOneV3A[ch].processSample (v3Input);
+            const auto v3 = safetyCeiling * std::tanh (v3Raw * outputCalibration / safetyCeiling);
+            THREADLINE_AMP_ANALYSIS_TAP (ch, v2Output, v3);
 
             float p1, p2;
-            const auto piInput = t2 * cathodyneInputScale;
+            const auto piInput = v3 * cathodyneInputScale;
             THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterInput, piInput);
             markOnePI[ch].processSample (piInput, p1, p2);
             THREADLINE_AMP_ANALYSIS_TAP (ch, phaseInverterOutput, p1);
@@ -1123,7 +1119,10 @@ private:
 
         const auto coefficient = detector > sagEnvelope ? sagAttack : sagRelease;
         sagEnvelope = coefficient * sagEnvelope + (1.0f - coefficient) * detector;
-        const auto sag = juce::jlimit (0.0f, 0.42f, sagEnvelope * (0.20f + 0.34f * driveAmount));
+        // The Mark I drawing uses a four-diode solid-state rectifier, unlike
+        // JTM45's GZ34. Retain supply movement, but make it substantially
+        // stiffer than the Marshall's 42% ceiling/tube-rectifier bloom.
+        const auto sag = juce::jlimit (0.0f, 0.12f, sagEnvelope * (0.06f + 0.10f * driveAmount));
 
         for (int ch = 0; ch < channels; ++ch)
         {
@@ -2079,11 +2078,9 @@ private:
     PentodeStage powerTubeJTM45A[2], powerTubeJTM45B[2];
     juce::dsp::IIR::Filter<float> jtm45InterstageCoupling[2];
     BassmanToneStack jtm45ToneStack;
-    // Mesa/Boogie Mark I voice's own preamp/PI/power-stage instances -- see
-    // Voice::mesaMarkI's own comment. Reuses inputCoupling/transformerLowPass
-    // above too. markOneToneStack is deliberately left at BassmanToneStack's
-    // own default component values -- see processMarkOneSample()'s comment.
-    TriodeStage triodeMarkOneV1[2], triodeMarkOneV2[2];
+    // Mesa/Boogie Mark I voice's own V1A/V1B/V3A preamp cascade, PI and
+    // power stage -- see processMarkOneSample() and its prepare block.
+    TriodeStage triodeMarkOneV1[2], triodeMarkOneV1B[2], triodeMarkOneV3A[2];
     LongTailPairStage markOnePI[2];
     PentodeStage powerTubeMarkOneA[2], powerTubeMarkOneB[2];
     juce::dsp::IIR::Filter<float> markOneInterstageCoupling[2];
@@ -2141,6 +2138,10 @@ private:
         const auto x3 = x2 * x;
         return 0.002f + 0.998f * x3 * x3 * x;
     }
+    // Mark I's separate Vol 2 control is not exposed as the user-facing
+    // Output knob (Output must remain post-circuit). Hold it at the same
+    // deep audio taper's physical noon position: 0.2% + 99.8% * 0.5^7.
+    static constexpr float markOneVolumeTwoLevel = 0.009796875f;
     // Direct output-level boost for the Vintage 5E3/Boutique path only
     // (~+6dB) -- see its own use in process() for why this exists. Applies
     // to Vintage too, which doesn't go through either lossy tone-stack
@@ -2184,20 +2185,23 @@ private:
     static constexpr float cathodyneInputScale = 4.0f;
     static constexpr float powerStageInputScale = 0.02f;
     static constexpr float powerStageOutputScale = 0.20f;
-    // Fixed Output-knob offsets relative to Deluxe. These are deliberately
-    // outside every amp circuit and are not a gain-stage/model calibration.
+    // Fixed Output-knob offsets relative to Deluxe. Derived from the combined
+    // RMS energy of the supplied 59.6s single-coil and P90 Focusrite DIs at
+    // their captured amplitudes (no source normalisation), with Gain/EQ at
+    // noon. These sit outside every amp circuit, so pickup dynamics and each
+    // voice's gain/distortion behaviour remain intact.
     static constexpr float deluxeReferencedOutput[7] {
-        1.4637f, // Vintage  +3.31 dB
-        2.6717f, // Boutique +8.53 dB
-        0.3547f, // Vox      -9.00 dB
+        0.7935f, // Vintage  -2.01 dB
+        1.7233f, // Boutique +4.73 dB
+        0.2450f, // Vox     -12.22 dB
         1.0000f, // Deluxe    0.00 dB reference
-        0.5403f, // JTM45    -5.35 dB
-        0.9801f, // Mesa     -0.17 dB
-        1.4881f  // JC-120   +3.45 dB
+        0.4267f, // JTM45    -7.40 dB
+        3.0724f, // Mesa      +9.75 dB
+        1.0333f  // JC-120   +0.28 dB
     };
     // Soft-knee threshold for the final output trim -- linear below it, soft-
-    // clips toward 1.0 above, so the +8dB normalisation boost on the quiet
-    // voices can't hard-clip past full scale at maximum Drive (the same tanh
+    // clips toward 1.0 above, so a positive calibration trim on a naturally
+    // quiet voice can't hard-clip past full scale at maximum Drive (the same tanh
     // soft-knee math as the per-voice otKnee upstream, moved to the trim).
     static constexpr float outputLimiterKnee = 0.90f;
     double baseSampleRate = 44100.0, processingSampleRate = 176400.0;

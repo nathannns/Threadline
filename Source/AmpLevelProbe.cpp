@@ -19,17 +19,18 @@ namespace
     constexpr double kPi = 3.14159265358979323846;
     const char* voiceNames[] = { "vintage5E3", "modern3Band", "voxAC30", "fenderAB763",
                                  "jtm45", "mesaMarkI", "rolandJC120" };
-    const float probeFreqs[] = { 110.0f, 440.0f, 1760.0f };
+    const float probeFreqs[] = { 110.0f, 220.0f, 440.0f, 880.0f, 1760.0f, 3520.0f };
     constexpr int settleBlocks = 300;
     constexpr int measureBlocks = 64;
 
-    float measureRms (int voice, double sampleRate, float drive, float amp, float freq)
+    float measureRms (int voice, double sampleRate, float drive, float amp, float freq,
+                      float outputDb = 0.0f)
     {
         AmpModule mod;
         juce::dsp::ProcessSpec spec { sampleRate, 256, 2 };
         mod.prepare (spec, 2); // 4x oversampling (production default)
         mod.setEnabled (true);
-        mod.setParameters (drive, 0.5f, 0.0f, static_cast<AmpModule::Voice> (voice), 0.5f, 0.5f, 0.5f);
+        mod.setParameters (drive, 0.5f, outputDb, static_cast<AmpModule::Voice> (voice), 0.5f, 0.5f, 0.5f);
 
         double sumSq = 0.0; int count = 0;
         for (int block = 0; block < settleBlocks + measureBlocks; ++block)
@@ -53,6 +54,64 @@ namespace
                     }
         }
         return (float) std::sqrt (sumSq / (double) count);
+    }
+
+    // IEC 61672 A-weighting is used only by this offline calibration probe.
+    // It prevents a bass-heavy amp from appearing equally loud to a
+    // mid-forward amp merely because an unweighted meter gives 110 Hz the
+    // same importance as the guitar's most audible midrange. No weighting,
+    // analysis, follower, or automatic gain ever runs in the plugin.
+    double aWeightLinear (double frequency)
+    {
+        const auto f2 = frequency * frequency;
+        const auto numerator = 12194.0 * 12194.0 * f2 * f2;
+        const auto denominator = (f2 + 20.6 * 20.6)
+            * std::sqrt ((f2 + 107.7 * 107.7) * (f2 + 737.9 * 737.9))
+            * (f2 + 12194.0 * 12194.0);
+        const auto aDb = 20.0 * std::log10 (numerator / denominator) + 2.0;
+        return std::pow (10.0, aDb / 20.0);
+    }
+
+    float measureGuitarBandLoudness (int voice, float drive, float amp, float outputDb)
+    {
+        double weightedEnergy = 0.0;
+        double weightEnergy = 0.0;
+        for (const auto frequency : probeFreqs)
+        {
+            const auto weight = aWeightLinear (frequency);
+            const auto rms = measureRms (voice, 48000.0, drive, amp, frequency, outputDb);
+            weightedEnergy += weight * weight * rms * rms;
+            weightEnergy += weight * weight;
+        }
+        return (float) std::sqrt (weightedEnergy / weightEnergy);
+    }
+
+    void loudnessReference()
+    {
+        // 100mV RMS physical guitar signal at the fixed Focusrite reference.
+        const float nominalDiPeak = 0.100f * std::sqrt (2.0f)
+                                  * GuitarSignalLevel::digitalUnitsPerVolt;
+        constexpr int deluxe = 3;
+        const auto deluxeLoudness = measureGuitarBandLoudness (deluxe, 0.5f, nominalDiPeak, 0.0f);
+
+        std::printf ("A-weighted guitar-band calibration, 100mV RMS DI, Gain/EQ noon:\n");
+        std::printf ("  voice          loudness  new/old trim  correction\n");
+        for (int voice = 0; voice <= 6; ++voice)
+        {
+            const auto loudness = measureGuitarBandLoudness (voice, 0.5f, nominalDiPeak, 0.0f);
+            const auto correction = deluxeLoudness / juce::jmax (1.0e-9f, loudness);
+            std::printf ("  %-12s  %8.5f      %8.5f   %+.2f dB\n", voiceNames[voice], loudness,
+                         correction, juce::Decibels::gainToDecibels (correction));
+        }
+
+        std::printf ("\nOutput-knob linearity check (same fixed trims, no AGC):\n");
+        for (const auto outputDb : { -18.0f, -12.0f, -6.0f, 0.0f, 6.0f })
+        {
+            std::printf ("  %+.0f dB", outputDb);
+            for (int voice = 0; voice <= 6; ++voice)
+                std::printf (" %8.5f", measureGuitarBandLoudness (voice, 0.5f, nominalDiPeak, outputDb));
+            std::printf ("\n");
+        }
     }
 
     void reference (double sampleRate, float drive, float amp, float targetRms)
@@ -134,6 +193,11 @@ int main (int argc, char** argv)
         for (int voice = 0; voice <= 6; ++voice)
             std::printf ("  %-12s %8.3f  %8.3f  %8.3f\n", voiceNames[voice],
                          measureThd (voice, 0.0f), measureThd (voice, 0.5f), measureThd (voice, 1.0f));
+        return 0;
+    }
+    if (argc > 1 && juce::String (argv[1]) == "--loudness-level")
+    {
+        loudnessReference();
         return 0;
     }
     if (argc > 1 && juce::String (argv[1]) == "--di-thd-levels")

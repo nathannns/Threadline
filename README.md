@@ -66,10 +66,13 @@ AGC, or RMS follower: pickup differences are preserved. The circuit conversion
 is fixed and Gain acts after V1, so changing Gain does not change the input
 level expected by the plugin. Vintage/Boutique retain their
 audio-taper interstage Gain and JC-120 retains its documented IC2a/VR1,
-D7-D10 diode-feedback distortion stage. A later high-fidelity experiment that
-added extra cascaded stages was fully rolled back after guitar auditioning
-identified dense, fizzy high-order distortion. `AmpLevelProbe --di-thd`
-checks harmonic growth without adding analysis work to the shipping plugin.
+D7-D10 diode-feedback distortion stage. An earlier unsourced cascade
+experiment was rolled back after guitar auditioning identified dense, fizzy
+high-order distortion. The Mark I has since been corrected from the actual
+Reissue drawing: V1A -> Volume 1 -> V1B -> its own Fender-derived tone stack
+-> fixed-noon Volume 2 -> V3A, with Gain controlling the real Volume 1
+position after the initial stage. `AmpLevelProbe --di-thd` checks harmonic
+growth without adding analysis work to the shipping plugin.
 
 ### Permanent amp-input rules
 
@@ -106,7 +109,10 @@ missing elevated DC grid bias at `prepare()` for a centred operating point,
 and the JTM45 power pair uses fixed bias instead of the erroneous cathode-bias
 approximation. The standard Vox/Deluxe/JTM/Mesa Gain pots use a deep audio
 taper after V1, retaining full maximum drive while keeping low/noon settings
-out of accidental cutoff/fuzz clipping.
+out of accidental cutoff/fuzz clipping. Mark I now uses the schematic's
+250pF/0.1uF/0.047uF, 250k/1M/10k/100k tone network and the stiff response of
+its four-diode solid-state rectifier; JTM45 retains its Bassman-family stack,
+two-stage preamp and tube-rectifier sag.
 
 ### Amp character regression measurements
 
@@ -139,9 +145,11 @@ cmake --build build --target AmpDIProbe
 build/AmpDIProbe_artefacts/Release/AmpDIProbe path/to/guitar-di.wav 0.5
 ```
 
-The optional final number is the amp Gain position from 0 to 1. The report
-compares output RMS, peak, crest factor and low/mid/high band energy for all
-seven voices. `AmpBassAudit` separately records the existing coupling-filter
+The optional final numbers are the amp Gain position from 0 to 1 and Output in
+dB. The report compares output RMS, peak, crest factor and low/mid/high band
+energy for all seven voices. The current supplied single-coil/P90 calibration
+is stored in `Tests/Baselines/AmpRealDI-2026-08-22.txt`; both WAVs remain at
+their captured amplitudes. `AmpBassAudit` separately records the existing coupling-filter
 inventory and a calibrated low-frequency sweep; its first baseline is stored
 in `Tests/Baselines/AmpBassAudit-2026-08-22.txt`.
 

@@ -1,0 +1,38 @@
+Threadline real-DI amp output calibration baseline
+Captured 2026-08-22 at Gain/EQ noon and diagnostic final Output -18dB.
+
+The two user-supplied Focusrite WAV files are processed at their recorded
+amplitudes. There is no input normalisation, AGC, per-pickup compensation, or
+signal-following gain. The fixed per-voice Output multipliers are calibrated
+from their combined RMS energy with Deluxe as the 0dB reference.
+
+Single coil DI.wav
+Dry RMS 0.003769, peak 0.023808
+voice          RMS      peak
+Vintage     0.00448  0.02367
+Boutique    0.00454  0.02598
+Vox         0.00457  0.02876
+Deluxe      0.00451  0.02744
+JTM45       0.00456  0.02646
+Mesa        0.00459  0.03716
+JC-120      0.00456  0.02633
+
+P90 DI.wav
+Dry RMS 0.002605, peak 0.017079
+voice          RMS      peak
+Vintage     0.00327  0.02073
+Boutique    0.00319  0.01676
+Vox         0.00315  0.02110
+Deluxe      0.00323  0.01736
+JTM45       0.00315  0.01671
+Mesa        0.00315  0.02045
+JC-120      0.00317  0.01776
+
+Final fixed Output multipliers
+Vintage   0.7935 (-2.01dB)
+Boutique  1.7233 (+4.73dB)
+Vox       0.2450 (-12.22dB)
+Deluxe    1.0000 (0.00dB)
+JTM45     0.4267 (-7.40dB)
+Mesa      3.0724 (+9.75dB)
+JC-120    1.0333 (+0.28dB)
